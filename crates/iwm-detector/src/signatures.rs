@@ -43,31 +43,45 @@ pub fn match_signals(bytes: &[u8]) -> Vec<EngineFamily> {
 }
 
 pub fn match_inventory_signals(paths: &[String]) -> Vec<EngineFamily> {
-    let haystack = paths
+    let normalized_paths = paths
         .iter()
-        .map(|path| path.to_ascii_lowercase())
-        .collect::<Vec<_>>()
-        .join("\n");
+        .map(|path| path.replace('\\', "/").to_ascii_lowercase())
+        .collect::<Vec<_>>();
 
     let mut matched = Vec::new();
 
-    if haystack.contains("data.win") {
+    if normalized_paths
+        .iter()
+        .any(|path| file_name(path) == Some("data.win"))
+    {
         matched.push(EngineFamily::Gms);
     }
-    if haystack.contains("unityplayer.dll") {
+    if normalized_paths
+        .iter()
+        .any(|path| file_name(path) == Some("unityplayer.dll"))
+    {
         matched.push(EngineFamily::Unity);
     }
-    if haystack.contains("rpg_rt.exe")
-        || haystack.contains("game.rgss")
-        || haystack.contains("www/js/plugins")
-    {
+    if normalized_paths.iter().any(|path| {
+        file_name(path) == Some("rpg_rt.exe")
+            || file_name(path) == Some("game.rgss")
+            || path == "www/js/plugins"
+            || path.starts_with("www/js/plugins/")
+    }) {
         matched.push(EngineFamily::RpgMaker);
     }
-    if haystack.contains("nw.exe") {
+    if normalized_paths
+        .iter()
+        .any(|path| file_name(path) == Some("nw.exe"))
+    {
         matched.push(EngineFamily::Nwjs);
     }
 
     matched.sort_by_key(|family| *family as u8);
     matched.dedup();
     matched
+}
+
+fn file_name(path: &str) -> Option<&str> {
+    path.rsplit('/').next()
 }

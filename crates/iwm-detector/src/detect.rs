@@ -7,13 +7,19 @@ use std::path::Path;
 pub fn detect_input(path: &Path) -> Result<DetectionReport, String> {
     let package = load_package(path)?;
     let mut signals = Vec::new();
-    let mut warnings = Vec::new();
+    let mut warnings = package.warnings.clone();
 
     if package.executables.is_empty() {
         warnings.push("no executable found".into());
     }
+    if package.executables.len() > 1 {
+        warnings.push(format!(
+            "multiple executable candidates found: {}",
+            package.executables.len()
+        ));
+    }
 
-    for exe in package.executables.iter().take(2) {
+    for exe in &package.executables {
         let bytes = fs::read(exe).map_err(|e| e.to_string())?;
         signals.extend(match_signals(&bytes[..bytes.len().min(8_000_000)]));
     }

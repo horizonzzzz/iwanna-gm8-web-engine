@@ -12,6 +12,7 @@ pub struct LoadedPackage {
     pub executables: Vec<PathBuf>,
     pub dlls: Vec<String>,
     pub files: Vec<FileEntry>,
+    pub warnings: Vec<String>,
     pub _temp_dir: Option<TempDir>,
 }
 
@@ -35,37 +36,40 @@ fn load_directory(path: &Path) -> Result<LoadedPackage, String> {
     let mut executables = Vec::new();
     let mut dlls = Vec::new();
     let mut files = Vec::new();
+    let mut warnings = Vec::new();
 
-    for entry in WalkDir::new(path)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file())
-    {
-        let full = entry.path().to_path_buf();
-        let relative = full
-            .strip_prefix(path)
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/");
-        let metadata = fs::metadata(&full).map_err(|e| e.to_string())?;
-        let extension = full
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
+    for entry in WalkDir::new(path) {
+        match entry {
+            Ok(entry) if entry.file_type().is_file() => {
+                let full = entry.path().to_path_buf();
+                let relative = full
+                    .strip_prefix(path)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let metadata = fs::metadata(&full).map_err(|e| e.to_string())?;
+                let extension = full
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
 
-        if extension == "exe" {
-            executables.push(full.clone());
+                if extension == "exe" {
+                    executables.push(full.clone());
+                }
+                if extension == "dll" {
+                    dlls.push(relative.clone());
+                }
+
+                files.push(FileEntry {
+                    relative_path: relative,
+                    extension,
+                    size: metadata.len(),
+                });
+            }
+            Ok(_) => {}
+            Err(err) => warnings.push(format!("failed to inspect path: {err}")),
         }
-        if extension == "dll" {
-            dlls.push(relative.clone());
-        }
-
-        files.push(FileEntry {
-            relative_path: relative,
-            extension,
-            size: metadata.len(),
-        });
     }
 
     Ok(LoadedPackage {
@@ -79,33 +83,34 @@ fn load_directory(path: &Path) -> Result<LoadedPackage, String> {
         executables,
         dlls,
         files,
+        warnings,
         _temp_dir: None,
     })
 }
 
 fn load_single_exe(path: &Path) -> Result<LoadedPackage, String> {
-    let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
-    Ok(LoadedPackage {
-        source_name: path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string(),
-        input_kind: PackageInputKind::Exe,
-        root_dir: path.parent().unwrap_or(Path::new(".")).to_path_buf(),
-        executables: vec![path.to_path_buf()],
-        dlls: Vec::new(),
-        files: vec![FileEntry {
-            relative_path: path
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string(),
-            extension: "exe".into(),
-            size: metadata.len(),
-        }],
-        _temp_dir: None,
-    })
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let mut package = load_directory(parent)?;
+    let selected_exe = fs::canonicalize(path).map_err(|e| e.to_string())?;
+
+    package.executables.sort_by_key(|candidate| {
+        if fs::canonicalize(candidate)
+            .map(|canonical| canonical == selected_exe)
+            .unwrap_or(false)
+        {
+            0
+        } else {
+            1
+        }
+    });
+    package.source_name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    package.input_kind = PackageInputKind::Exe;
+
+    Ok(package)
 }
 
 fn load_zip(path: &Path) -> Result<LoadedPackage, String> {
