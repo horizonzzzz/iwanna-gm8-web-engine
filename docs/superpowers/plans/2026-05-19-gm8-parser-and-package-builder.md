@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Integrate a GM8 parser adapter and build the first normalized package output containing manifest, room summaries, object summaries, script summaries, and analysis data for likely GM8 games.
+**Goal:** Integrate a GM8 parser adapter and build the first V0 normalized package output containing manifest, room summaries, object summaries, script summaries, and analysis data for likely GM8 games.
 
 **Architecture:** Extend the Rust workspace with a parser crate that wraps a vendored or path-based `gm8exe` integration layer behind a small adapter boundary. The builder emits a filesystem package directory first, not a final compressed artifact, so downstream runtime work can start from stable JSON outputs before resource optimization.
+
+**Important scope note:** This phase emits a structural V0 package, not the final runtime-facing package described in the design spec. It produces `scripts.json` summaries rather than `scripts.ir.json`, and it does not yet export browser-ready resources.
 
 **Tech Stack:** Rust 1.77+, Cargo workspace, `serde`, `serde_json`, `anyhow`, `camino`, `gm8exe` integration, Rust test framework
 
@@ -28,12 +30,20 @@ Planned files for this phase:
 
 Responsibilities:
 
-- `iwm-parser`: translates detected GM8 candidates into normalized package files
+- `iwm-parser`: translates detected GM8 candidates into V0 normalized package files
 - `models.rs`: manifest, room summary, object summary, script summary, analysis models
 - `gm8_adapter.rs`: single boundary around `gm8exe::reader::from_exe`
 - `package_builder.rs`: directory package emission
 - CLI: add `build-package` command
 - `package-format-v0.md`: documents the first stable package shape
+
+## Preconditions
+
+Before starting this phase:
+
+- the detector workspace from the previous plan should already exist
+- the project-local sample path should be `samples/local/iwanna-examples/`
+- if `gm8exe` is used via a path dependency, a local checkout of `vendor/OpenGMK/` must exist on disk even though `vendor/` is git-ignored
 
 ### Task 1: Add Parser Crate Skeleton
 
@@ -307,7 +317,21 @@ git commit -m "feat: add normalized package models"
 - Create: `crates/iwm-parser/src/gm8_adapter.rs`
 - Modify: `crates/iwm-parser/Cargo.toml`
 
-- [ ] **Step 1: Write the failing compile check for missing gm8 integration dependency**
+- [ ] **Step 1: Confirm the local `vendor/OpenGMK/` checkout exists before adding the path dependency**
+
+Run:
+
+```bash
+Get-ChildItem .\vendor\OpenGMK
+```
+
+Expected:
+
+```text
+local OpenGMK checkout is present
+```
+
+- [ ] **Step 2: Write the failing compile check for missing gm8 integration dependency**
 
 Run:
 
@@ -321,7 +345,7 @@ Expected:
 unresolved import or missing dependency for gm8 integration
 ```
 
-- [ ] **Step 2: Add the integration dependency placeholder**
+- [ ] **Step 3: Add the integration dependency placeholder**
 
 ```toml
 [package]
@@ -339,7 +363,7 @@ iwm-detector = { path = "../iwm-detector" }
 gm8exe = { path = "../../vendor/OpenGMK/gm8exe" }
 ```
 
-- [ ] **Step 3: Create `gm8_adapter.rs`**
+- [ ] **Step 4: Create `gm8_adapter.rs`**
 
 ```rust
 use anyhow::{Context, Result};
@@ -356,7 +380,7 @@ pub fn read_gm8_assets(exe_path: &Path) -> Result<GameAssets> {
 }
 ```
 
-- [ ] **Step 4: Create a vendor note in the integration step comments**
+- [ ] **Step 5: Create a vendor note in the integration step comments**
 
 Add this comment above the dependency block in `crates/iwm-parser/Cargo.toml`:
 
@@ -365,7 +389,7 @@ Add this comment above the dependency block in `crates/iwm-parser/Cargo.toml`:
 # If the dependency strategy changes later, update this path without changing the adapter API.
 ```
 
-- [ ] **Step 5: Run parser tests to confirm the adapter compiles**
+- [ ] **Step 6: Run parser tests to confirm the adapter compiles**
 
 Run:
 
@@ -379,7 +403,7 @@ Expected:
 error[E0583]: file not found for module `package_builder`
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add crates/iwm-parser/Cargo.toml crates/iwm-parser/src/gm8_adapter.rs
@@ -393,7 +417,7 @@ git commit -m "feat: add gm8 adapter boundary"
 - Modify: `crates/iwm-parser/src/lib.rs`
 - Test: `crates/iwm-parser/tests/build_package_smoke.rs`
 
-- [ ] **Step 1: Write the failing unit test for manifest file emission**
+- [ ] **Step 1: Write the failing unit test for package file emission**
 
 ```rust
 use std::fs;
@@ -402,8 +426,17 @@ use std::fs;
 fn package_builder_writes_manifest_rooms_objects_and_analysis() {
     let out = tempfile::tempdir().unwrap();
     let manifest = out.path().join("manifest.json");
+    let rooms = out.path().join("rooms.json");
+    let objects = out.path().join("objects.json");
+    let scripts = out.path().join("scripts.json");
+    let analysis = out.path().join("analysis.json");
 
     assert!(!manifest.exists());
+    assert!(!rooms.exists());
+    assert!(!objects.exists());
+    assert!(!scripts.exists());
+    assert!(!analysis.exists());
+
     let _ = fs::metadata(&manifest).unwrap();
 }
 ```
@@ -520,7 +553,7 @@ fn write_json<T: Serialize>(path: impl AsRef<Path>, value: &T) -> Result<()> {
 }
 ```
 
-- [ ] **Step 3: Replace the temporary failing test with a smoke test shell**
+- [ ] **Step 3: Replace the temporary failing test with V0 contract tests**
 
 ```rust
 use iwm_parser::models::{CompatibilityLevel, PackageManifest};
@@ -544,6 +577,20 @@ fn manifest_serializes_expected_fields() {
     assert_eq!(json["engine_family"], "gm8");
     assert_eq!(json["compatibility"], "partial");
     assert_eq!(json["room_count"], 2);
+}
+
+#[test]
+fn package_format_v0_uses_scripts_json_not_scripts_ir_json() {
+    let outputs = [
+        "manifest.json",
+        "rooms.json",
+        "objects.json",
+        "scripts.json",
+        "analysis.json",
+    ];
+
+    assert!(outputs.contains(&"scripts.json"));
+    assert!(!outputs.contains(&"scripts.ir.json"));
 }
 ```
 
@@ -661,7 +708,12 @@ fn main() {
                 .files
                 .iter()
                 .find(|f| f.extension == "exe")
-                .map(|f| input.join(&f.relative_path))
+                .map(|f| match report.input_kind {
+                    iwm_detector::PackageInputKind::Directory | iwm_detector::PackageInputKind::Zip => {
+                        input.join(&f.relative_path)
+                    }
+                    iwm_detector::PackageInputKind::Exe => input.clone(),
+                })
                 .unwrap_or(input.clone());
 
             if let Err(err) = build_package(&exe, &output, &report.dlls) {
@@ -678,7 +730,7 @@ fn main() {
 Run:
 
 ```bash
-cargo run -p iwm-cli -- build-package --input "C:\\Users\\59164\\Desktop\\iwanna examples\\gm8-core\\IWBT_Dife" --output ".\\out\\iwbt-dife"
+cargo run -p iwm-cli -- build-package --input ".\\samples\\local\\iwanna-examples\\gm8-core\\IWBT_Dife" --output ".\\out\\iwbt-dife"
 ```
 
 Expected:
@@ -692,7 +744,7 @@ command exits successfully
 Run:
 
 ```bash
-rtk powershell -NoProfile -Command "Get-ChildItem -Force '.\\out\\iwbt-dife' | Select-Object Name | Format-Table -AutoSize"
+powershell -NoProfile -Command "Get-ChildItem -Force '.\\out\\iwbt-dife' | Select-Object Name | Format-Table -AutoSize"
 ```
 
 Expected:
@@ -754,6 +806,7 @@ Not yet included:
 - background exports
 - script IR
 - room instance normalization for runtime execution
+- browser-ready resources directory
 
 Purpose of V0:
 
@@ -845,8 +898,8 @@ test result: ok
 Run:
 
 ```bash
-cargo run -p iwm-cli -- detect --input "C:\\Users\\59164\\Desktop\\iwanna examples\\gm8-core\\IWBT_Dife"
-cargo run -p iwm-cli -- build-package --input "C:\\Users\\59164\\Desktop\\iwanna examples\\gm8-core\\IWBT_Dife" --output ".\\out\\iwbt-dife"
+cargo run -p iwm-cli -- detect --input ".\\samples\\local\\iwanna-examples\\gm8-core\\IWBT_Dife"
+cargo run -p iwm-cli -- build-package --input ".\\samples\\local\\iwanna-examples\\gm8-core\\IWBT_Dife" --output ".\\out\\iwbt-dife"
 ```
 
 Expected:
@@ -861,7 +914,7 @@ second command exits successfully
 Run:
 
 ```bash
-rtk powershell -NoProfile -Command "Get-Content -Raw '.\\out\\iwbt-dife\\manifest.json'"
+powershell -NoProfile -Command "Get-Content -Raw '.\\out\\iwbt-dife\\manifest.json'"
 ```
 
 Expected:
@@ -882,7 +935,7 @@ git commit -m "test: verify parser and package builder"
 Spec coverage for this plan:
 
 - GM8 parser integration: covered
-- normalized package manifest and summaries: covered
+- normalized package manifest and V0 summaries: covered
 - backend-side structural extraction: covered
 - resource export: intentionally deferred
 - script IR: intentionally deferred
@@ -899,6 +952,7 @@ Type consistency notes:
 - parser entrypoint is `build_package`
 - GM8 adapter entrypoint is `read_gm8_assets`
 - package outputs are `manifest.json`, `rooms.json`, `objects.json`, `scripts.json`, `analysis.json`
+- `scripts.ir.json` remains a later runtime-facing target, not a Phase 2 deliverable
 
 Next planned document after this phase:
 

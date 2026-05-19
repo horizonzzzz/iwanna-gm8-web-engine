@@ -19,7 +19,13 @@ The goal is not to emulate every Game Maker game. The first focus is a narrower 
 ## Current Status
 
 > [!IMPORTANT]
-> This repository is still in an early MVP stage. At the moment it mainly contains project documentation, a local sample corpus, and vendored upstream references. The detector, parser, package builder, and browser runtime are planned but not fully bootstrapped yet.
+> This repository is still in an early MVP stage. At the moment it mainly contains project documentation, a project-local sample corpus, and local vendored reference notes. The detector, parser, package builder, and browser runtime are planned, but the Rust workspace has not been bootstrapped yet.
+
+## Current Phases
+
+- Phase 1: add a Rust workspace plus detector and CLI
+- Phase 2: add a GM8 parser adapter and emit a V0 normalized package
+- Phase 3: build a browser runtime against a stricter runtime-facing package format
 
 ## Repository Contents
 
@@ -28,13 +34,18 @@ The goal is not to emulate every Game Maker game. The first focus is a narrower 
 - `samples/local/iwanna-examples/`
   Local sample corpus used for detector and parser validation
 - `vendor/`
-  Upstream reference repositories used for GM8 format study and parser research
+  Notes and local-only upstream reference checkouts used for GM8 format study and parser research
 
-Planned future areas include detector, parser, CLI, backend, and runtime code.
+Planned future areas include:
+
+- `crates/iwm-detector/`
+- `crates/iwm-parser/`
+- `crates/iwm-cli/`
+- later `backend/` and `runtime/` work
 
 ## Sample Corpus
 
-The local sample corpus is organized under `samples/local/iwanna-examples/`.
+The project-local sample corpus is organized under `samples/local/iwanna-examples/`.
 
 Current categories:
 
@@ -48,10 +59,17 @@ Suggested usage:
 - start smoke testing with `gm8-core`
 - use `non-target` for negative classification checks
 - treat current labels as working development categories, not final truth
+- prefer repo-local sample paths in scripts and plans instead of old desktop paths
 
 ## Vendored References
 
 The `vendor/` directory is used for upstream study and narrow integration experiments.
+
+Important repository rule:
+
+- `vendor/README.md` is tracked
+- heavyweight upstream checkouts under `vendor/` are intended to stay local and git-ignored
+- path dependencies such as `vendor/OpenGMK/gm8exe` should be treated as local development prerequisites, not guaranteed tracked files
 
 Current references:
 
@@ -75,6 +93,16 @@ The current project direction is centered on:
 - parsing targetable GM8 executables and related resources
 - building a normalized project-owned package format
 - preparing for a browser runtime that can execute core gameplay
+
+The first package-builder milestone is expected to emit a structural V0 package consisting of:
+
+- `manifest.json`
+- `rooms.json`
+- `objects.json`
+- `scripts.json`
+- `analysis.json`
+
+This V0 output is intentionally not the final runtime-facing package. Script IR lowering and browser-ready resource export come later.
 
 Out of scope for the MVP:
 

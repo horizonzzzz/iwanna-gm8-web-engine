@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the initial repository skeleton and a Rust-based detector that classifies uploaded IWanna packages as `gm8-likely`, `gms-likely`, `unknown`, or `blocked`.
+**Goal:** Add a Rust workspace to the existing docs-first repository and build a detector that classifies uploaded IWanna packages as `gm8-likely`, `gms-likely`, `unknown`, or `blocked`.
 
 **Architecture:** Use a small Rust workspace with one library crate for package inspection and one CLI crate for local execution. The detector works on directories, single EXEs, and ZIP archives, builds a normalized file inventory, runs signature heuristics, and emits structured JSON output for later backend integration.
 
@@ -15,8 +15,8 @@
 Planned files for this phase:
 
 - Create: `Cargo.toml`
-- Create: `.gitignore`
-- Create: `README.md`
+- Modify: `.gitignore`
+- Modify: `README.md`
 - Create: `crates/iwm-detector/Cargo.toml`
 - Create: `crates/iwm-detector/src/lib.rs`
 - Create: `crates/iwm-detector/src/models.rs`
@@ -27,8 +27,7 @@ Planned files for this phase:
 - Create: `crates/iwm-detector/tests/detect_zip.rs`
 - Create: `crates/iwm-cli/Cargo.toml`
 - Create: `crates/iwm-cli/src/main.rs`
-- Create: `testdata/README.md`
-- Create: `docs/notes/sample-corpus.md`
+- Modify: `docs/notes/sample-corpus.md`
 
 Responsibilities:
 
@@ -38,17 +37,16 @@ Responsibilities:
 - `package.rs`: input expansion and file inventory building
 - `detect.rs`: verdict calculation
 - `iwm-cli`: developer-facing CLI wrapper
-- `testdata/README.md`: fixture policy only, no copyrighted game binaries committed
-- `docs/notes/sample-corpus.md`: links local sample corpus to repo workflow
+- `docs/notes/sample-corpus.md`: records the project-local sample workflow used by detector smoke tests
 
-### Task 1: Initialize Repository Skeleton
+### Task 1: Add Cargo Workspace To The Existing Repository
 
 **Files:**
 - Create: `Cargo.toml`
-- Create: `.gitignore`
-- Create: `README.md`
+- Modify: `.gitignore`
+- Modify: `README.md`
 
-- [ ] **Step 1: Write the failing check by verifying the workspace does not build**
+- [ ] **Step 1: Write the failing check by verifying the repository does not yet contain a Cargo workspace**
 
 Run:
 
@@ -87,22 +85,17 @@ walkdir = "2.5"
 zip = "2.1"
 ```
 
-- [ ] **Step 3: Create `.gitignore`**
+- [ ] **Step 3: Extend `.gitignore` for Rust workspace outputs while preserving existing local sample and vendor rules**
 
 ```gitignore
 /target
-/.idea
-/.vscode
-.DS_Store
-Thumbs.db
-*.zip
-*.7z
-*.rar
-testdata/local/
-samples/local/
+/out
+
+# Rust and Cargo
+Cargo.lock
 ```
 
-- [ ] **Step 4: Create the initial README**
+- [ ] **Step 4: Update the root README current-status section with the detector phase**
 
 ```md
 # iwanna-gm8-web-engine
@@ -111,7 +104,7 @@ Browser-playable IWanna MVP targeting legacy GM8-style fangames.
 
 ## Current Phase
 
-Phase 1 builds the repository skeleton and a detector that classifies game packages before any parsing or runtime work begins.
+Phase 1 adds a Rust workspace and a detector that classifies game packages before parser or runtime work begins.
 
 ## Local Commands
 
@@ -138,9 +131,8 @@ error: failed to load manifest for workspace member
 - [ ] **Step 6: Commit**
 
 ```bash
-git init
 git add Cargo.toml .gitignore README.md
-git commit -m "chore: initialize detector workspace"
+git commit -m "chore: add detector workspace"
 ```
 
 ### Task 2: Create Detector Library and CLI Crates
@@ -177,7 +169,6 @@ license.workspace = true
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 tempfile.workspace = true
 walkdir.workspace = true
 zip.workspace = true
@@ -429,9 +420,10 @@ fn inventory_directory_collects_exes_dlls_and_files() {
 use crate::models::{FileEntry, PackageInputKind};
 use std::fs;
 use std::path::{Path, PathBuf};
+use tempfile::TempDir;
 use walkdir::WalkDir;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct LoadedPackage {
     pub source_name: String,
     pub input_kind: PackageInputKind,
@@ -439,6 +431,7 @@ pub struct LoadedPackage {
     pub executables: Vec<PathBuf>,
     pub dlls: Vec<String>,
     pub files: Vec<FileEntry>,
+    pub _temp_dir: Option<TempDir>,
 }
 
 pub fn load_package(path: &Path) -> Result<LoadedPackage, String> {
@@ -485,6 +478,7 @@ fn load_directory(path: &Path) -> Result<LoadedPackage, String> {
         executables,
         dlls,
         files,
+        _temp_dir: None,
     })
 }
 
@@ -501,6 +495,7 @@ fn load_single_exe(path: &Path) -> Result<LoadedPackage, String> {
             extension: "exe".into(),
             size: metadata.len(),
         }],
+        _temp_dir: None,
     })
 }
 
@@ -512,6 +507,7 @@ fn load_zip(path: &Path) -> Result<LoadedPackage, String> {
     load_directory(temp.path()).map(|mut package| {
         package.source_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
         package.input_kind = PackageInputKind::Zip;
+        package._temp_dir = Some(temp);
         package
     })
 }
@@ -630,6 +626,33 @@ pub fn match_signals(bytes: &[u8]) -> Vec<EngineFamily> {
     matched.dedup();
     matched
 }
+
+pub fn match_inventory_signals(paths: &[String]) -> Vec<EngineFamily> {
+    let haystack = paths
+        .iter()
+        .map(|path| path.to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut matched = Vec::new();
+
+    if haystack.contains("data.win") {
+        matched.push(EngineFamily::Gms);
+    }
+    if haystack.contains("unityplayer.dll") {
+        matched.push(EngineFamily::Unity);
+    }
+    if haystack.contains("rpg_rt.exe") || haystack.contains("game.rgss") || haystack.contains("www/js/plugins") {
+        matched.push(EngineFamily::RpgMaker);
+    }
+    if haystack.contains("nw.exe") {
+        matched.push(EngineFamily::Nwjs);
+    }
+
+    matched.sort_by_key(|family| *family as u8);
+    matched.dedup();
+    matched
+}
 ```
 
 - [ ] **Step 3: Implement `detect.rs`**
@@ -637,7 +660,7 @@ pub fn match_signals(bytes: &[u8]) -> Vec<EngineFamily> {
 ```rust
 use crate::models::{DetectionReport, DetectionVerdict, EngineFamily};
 use crate::package::load_package;
-use crate::signatures::match_signals;
+use crate::signatures::{match_inventory_signals, match_signals};
 use std::fs;
 use std::path::Path;
 
@@ -654,6 +677,13 @@ pub fn detect_input(path: &Path) -> Result<DetectionReport, String> {
         let bytes = fs::read(exe).map_err(|e| e.to_string())?;
         signals.extend(match_signals(&bytes[..bytes.len().min(8_000_000)]));
     }
+
+    let inventory_paths = package
+        .files
+        .iter()
+        .map(|file| file.relative_path.clone())
+        .collect::<Vec<_>>();
+    signals.extend(match_inventory_signals(&inventory_paths));
 
     signals.sort_by_key(|family| *family as u8);
     signals.dedup();
@@ -864,11 +894,10 @@ git add crates/iwm-cli/src/main.rs
 git commit -m "feat: add detector cli output"
 ```
 
-### Task 7: Document Local Sample Workflow
+### Task 7: Update Local Sample Workflow Notes
 
 **Files:**
-- Create: `testdata/README.md`
-- Create: `docs/notes/sample-corpus.md`
+- Modify: `docs/notes/sample-corpus.md`
 - Modify: `README.md`
 
 - [ ] **Step 1: Write the failing documentation check**
@@ -876,38 +905,23 @@ git commit -m "feat: add detector cli output"
 Run:
 
 ```bash
-rg "gm8-core|needs-manual-check|non-target" README.md docs testdata
+rg "gm8-core|needs-manual-check|non-target" README.md docs
 ```
 
 Expected:
 
 ```text
-no matches
+existing matches from the current docs set
 ```
 
-- [ ] **Step 2: Create `testdata/README.md`**
-
-```md
-# Test Data Policy
-
-Do not commit copyrighted game binaries or archives to this repository.
-
-Local-only sample files should live outside the repo or under ignored directories such as:
-
-- `testdata/local/`
-- `samples/local/`
-
-Use the manually curated local sample corpus on the workstation for detector validation.
-```
-
-- [ ] **Step 3: Create `docs/notes/sample-corpus.md`**
+- [ ] **Step 2: Update `docs/notes/sample-corpus.md`**
 
 ```md
 # Sample Corpus Notes
 
-Current workstation sample root:
+Current project-local sample root:
 
-- `C:\Users\59164\Desktop\iwanna examples`
+- `C:\Users\59164\work\playground\iwanna-gm8-web-engine\samples\local\iwanna-examples`
 
 Current local categories:
 
@@ -922,9 +936,14 @@ Detector development order:
 2. Run all `non-target` samples and confirm they are not classified as `gm8-likely`
 3. Review `needs-manual-check` output and record missing heuristics
 4. Defer DLL-heavy edge cases until detector stability is proven
+
+Practical rule:
+
+- future scripts, plans, and local smoke tests should prefer this project-local sample path
+- do not assume the old desktop path exists anymore
 ```
 
-- [ ] **Step 4: Extend the root README**
+- [ ] **Step 3: Extend the root README**
 
 ```md
 # iwanna-gm8-web-engine
@@ -942,7 +961,6 @@ This repo does not commit copyrighted game binaries.
 Use the local sample corpus described in:
 
 - `docs/notes/sample-corpus.md`
-- `testdata/README.md`
 
 ## Local Commands
 
@@ -952,12 +970,12 @@ cargo run -p iwm-cli -- detect --input C:\\path\\to\\game
 ```
 ```
 
-- [ ] **Step 5: Run the documentation grep**
+- [ ] **Step 4: Run the documentation grep**
 
 Run:
 
 ```bash
-rg "gm8-core|needs-manual-check|non-target" README.md docs testdata
+rg "gm8-core|needs-manual-check|non-target" README.md docs
 ```
 
 Expected:
@@ -965,13 +983,12 @@ Expected:
 ```text
 README.md
 docs/notes/sample-corpus.md
-testdata/README.md
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add README.md docs/notes/sample-corpus.md testdata/README.md
+git add README.md docs/notes/sample-corpus.md
 git commit -m "docs: add sample corpus workflow"
 ```
 
@@ -1014,8 +1031,8 @@ test result: ok
 Run:
 
 ```bash
-cargo run -p iwm-cli -- detect --input "C:\\Users\\59164\\Desktop\\iwanna examples\\gm8-core\\IWBT_Dife"
-cargo run -p iwm-cli -- detect --input "C:\\Users\\59164\\Desktop\\iwanna examples\\non-target\\I Wanna Be The GBC"
+cargo run -p iwm-cli -- detect --input ".\\samples\\local\\iwanna-examples\\gm8-core\\IWBT_Dife"
+cargo run -p iwm-cli -- detect --input ".\\samples\\local\\iwanna-examples\\non-target\\I Wanna Be The GBC"
 ```
 
 Expected:

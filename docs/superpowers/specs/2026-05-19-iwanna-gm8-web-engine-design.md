@@ -294,6 +294,28 @@ The package should logically contain the following parts:
 
 The package may eventually be compressed as a single archive, but its logical structure should remain explicit.
 
+### Phase 2 V0 package output
+
+Before resource export and IR lowering are implemented, the first package-builder milestone should emit a structural summary package directory containing:
+
+- `manifest.json`
+- `rooms.json`
+- `objects.json`
+- `scripts.json`
+- `analysis.json`
+
+This V0 output is intentionally not runtime-ready.
+
+Its purpose is to:
+
+- validate parser integration against real GM8 samples
+- stabilize JSON output shape for downstream tooling
+- expose compatibility and unsupported-feature data early
+
+In V0, `scripts.json` is a structural summary file rather than executable IR.
+
+Once logic lowering and browser-friendly resource export exist, V0 can evolve or be superseded by the runtime-facing package layout described below.
+
 ### manifest.json
 
 Purpose:
@@ -373,6 +395,8 @@ Each event entry should reference an IR block rather than relying on raw GML tex
 Purpose:
 
 - normalized executable logic
+
+This file is part of the runtime-facing package target, not the initial V0 structural package.
 
 This is the most important interface in the entire architecture.
 
@@ -642,7 +666,9 @@ Goal:
 
 Success criteria:
 
-- browser can load package metadata and render room layout statically
+- package builder emits deterministic structural summaries and analysis for a gold-sample game
+- downstream tooling can inspect manifest, room, object, script, and analysis outputs without re-parsing the original executable
+- browser-side static room rendering is deferred until resource export and room-instance normalization exist
 
 ### Milestone 3: Minimal Playable Runtime
 
@@ -696,22 +722,36 @@ The detailed design spec lives under:
 
 - `docs/superpowers/specs/`
 
+The current project-local sample root is:
+
+- `samples/local/iwanna-examples/`
+
+Vendored parser reference checkouts under `vendor/` may exist only as local, git-ignored development assets.
+
 This document is intended to provide enough context for future sessions started in that project directory.
 
 ## Recommended Early Repository Layout
 
-This is a recommended initial structure for the new project:
+The current repository already contains:
 
 - `docs/`
 - `docs/superpowers/specs/`
 - `docs/notes/`
 - `samples/`
-- `backend/`
-- `runtime/`
-- `tools/`
-- `testdata/`
+- `vendor/`
 
-The implementation may refine the names, but the separation should remain clear.
+The first implementation bootstrap should add:
+
+- `crates/iwm-detector/`
+- `crates/iwm-parser/`
+- `crates/iwm-cli/`
+
+Later phases may add:
+
+- `runtime/`
+- `backend/`
+
+The implementation may refine the names, but it should not assume `backend/`, `runtime/`, or other future directories already exist today.
 
 ## Risks
 
