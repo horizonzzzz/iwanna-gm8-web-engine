@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use iwm_detector::detect_input;
+use iwm_detector::{detect_input, load_package, selected_executable};
 use iwm_parser::build_package;
 use std::path::PathBuf;
 
@@ -38,6 +38,14 @@ fn main() {
             }
         },
         Commands::BuildPackage { input, output } => {
+            let package = match load_package(&input) {
+                Ok(package) => package,
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(1);
+                }
+            };
+
             let report = match detect_input(&input) {
                 Ok(report) => report,
                 Err(err) => {
@@ -51,18 +59,15 @@ fn main() {
                 std::process::exit(2);
             }
 
-            let exe = report
-                .files
-                .iter()
-                .find(|f| f.extension == "exe")
-                .map(|f| match report.input_kind {
-                    iwm_detector::PackageInputKind::Directory
-                    | iwm_detector::PackageInputKind::Zip => input.join(&f.relative_path),
-                    iwm_detector::PackageInputKind::Exe => input.clone(),
-                })
-                .unwrap_or(input.clone());
+            let exe = match selected_executable(&package) {
+                Ok(exe) => exe,
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(2);
+                }
+            };
 
-            if let Err(err) = build_package(&exe, &output, &report.dlls) {
+            if let Err(err) = build_package(exe, &output, &report.dlls) {
                 eprintln!("{err:#}");
                 std::process::exit(1);
             }

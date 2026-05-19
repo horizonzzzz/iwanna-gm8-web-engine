@@ -14,3 +14,7 @@ iwm-detector = { path = "../iwm-detector" }
 # This path expects a local checkout of OpenGMK under vendor/OpenGMK.
 # If the dependency strategy changes later, update this path without changing the adapter API.
 gm8exe = { path = "../../vendor/OpenGMK/gm8exe" }
+
+[dev-dependencies]
+tempfile.workspace = true
+zip.workspace = true

@@ -5,3 +5,4 @@ pub mod signatures;
 
 pub use detect::detect_input;
 pub use models::{DetectionReport, DetectionVerdict, EngineFamily, PackageInputKind};
+pub use package::{load_package, selected_executable, LoadedPackage};
