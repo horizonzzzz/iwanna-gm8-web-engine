@@ -1,0 +1,16 @@
+[package]
+name = "iwm-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+camino.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+iwm-detector = { path = "../iwm-detector" }
+# This path expects a local checkout of OpenGMK under vendor/OpenGMK.
+# If the dependency strategy changes later, update this path without changing the adapter API.
+gm8exe = { path = "../../vendor/OpenGMK/gm8exe" }
