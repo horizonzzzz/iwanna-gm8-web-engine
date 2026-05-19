@@ -4,7 +4,7 @@ Browser-playable IWanna MVP targeting legacy GM8-style fangames.
 
 ## Current Phase
 
-Phase 1 adds a Rust workspace and a detector that classifies game packages before parser or runtime work begins.
+Phase 2 adds a GM8 parser adapter and a normalized package builder on top of the existing detector.
 
 ## Local Commands
 
@@ -29,9 +29,18 @@ The goal is not to emulate every Game Maker game. The first focus is a narrower 
 
 ## Current Phases
 
-- Phase 1: add a Rust workspace plus detector and CLI
-- Phase 2: add a GM8 parser adapter and emit a V0 normalized package
-- Phase 3: build a browser runtime against a stricter runtime-facing package format
+- Phase 1: detector foundation
+- Phase 2: GM8 parser adapter and normalized package builder
+
+## Current Commands
+
+```bash
+cargo test
+cargo run -p iwm-cli -- detect --input C:\path\to\game
+cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\out\sample
+```
+
+See `docs/notes/package-format-v0.md` for the current package output.
 
 ## Repository Contents
 

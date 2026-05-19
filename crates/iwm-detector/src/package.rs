@@ -32,6 +32,26 @@ pub fn load_package(path: &Path) -> Result<LoadedPackage, String> {
     }
 }
 
+pub fn selected_executable(package: &LoadedPackage) -> Result<&Path, String> {
+    match package.executables.as_slice() {
+        [exe] => Ok(exe.as_path()),
+        [] => Err("no executable found".into()),
+        executables => Err(format!(
+            "multiple executable candidates found: {}",
+            executables
+                .iter()
+                .map(|path| {
+                    path.strip_prefix(&package.root_dir)
+                        .unwrap_or(path)
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+}
+
 fn load_directory(path: &Path) -> Result<LoadedPackage, String> {
     let mut executables = Vec::new();
     let mut dlls = Vec::new();
