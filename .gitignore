@@ -32,3 +32,6 @@ game_errors.log
 # Optional local scratch areas
 /tmp/
 /scratch/
+
+# Worktrees
+.worktrees/
