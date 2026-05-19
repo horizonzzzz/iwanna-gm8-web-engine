@@ -2,6 +2,17 @@
 
 Browser-playable IWanna MVP targeting legacy GM8-style fangames.
 
+## Current Phase
+
+Phase 1 adds a Rust workspace and a detector that classifies game packages before parser or runtime work begins.
+
+## Local Commands
+
+```bash
+cargo test
+cargo run -p iwm-cli -- detect --input C:\path\to\game
+```
+
 ## Overview
 
 This project explores a practical path for running mainstream legacy IWanna fangames in the browser.
@@ -15,11 +26,6 @@ The intended pipeline is:
 5. run that package in a browser runtime
 
 The goal is not to emulate every Game Maker game. The first focus is a narrower compatibility subset that can support core IWanna gameplay.
-
-## Current Status
-
-> [!IMPORTANT]
-> This repository is still in an early MVP stage. At the moment it mainly contains project documentation, a project-local sample corpus, and local vendored reference notes. The detector, parser, package builder, and browser runtime are planned, but the Rust workspace has not been bootstrapped yet.
 
 ## Current Phases
 
