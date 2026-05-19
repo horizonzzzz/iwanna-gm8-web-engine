@@ -1,0 +1,34 @@
+/target
+/out
+
+# Rust and Cargo
+Cargo.lock
+
+# Editors and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local archives and extracted packages
+*.zip
+*.7z
+*.rar
+
+# Local runtime outputs
+*.log
+game_errors.log
+
+# Local sample binaries and other copyrighted assets
+/samples/local/
+
+# Local vendored reference checkouts
+/vendor/
+
+# Optional local scratch areas
+/tmp/
+/scratch/
