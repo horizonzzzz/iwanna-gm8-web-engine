@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRuntimeShell } from './ui/shell';
 import type { RuntimePackage } from './types';
+import type { WasmRuntimeBridge } from './runtime/wasmBridge';
 
 const samplePackage: RuntimePackage = {
   manifest: {
@@ -287,6 +288,10 @@ function collectText(node: FakeElement): string {
   return parts.join(' ');
 }
 
+async function flushAsyncWork(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 describe('main runtime shell', () => {
   let doc: FakeDocument;
 
@@ -320,8 +325,7 @@ describe('main runtime shell', () => {
     expect(doc.querySelector('#inspectors')).not.toBeNull();
 
     button?.click();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushAsyncWork();
 
     expect(loadPackage).toHaveBeenCalledWith('/packages/sample');
     expect(select?.options).toHaveLength(2);
@@ -338,17 +342,17 @@ describe('main runtime shell', () => {
 
     select.value = '1';
     select.dispatchEvent(new FakeEvent('change'));
-    await Promise.resolve();
+    await flushAsyncWork();
 
     expect(renderStaticRoom).toHaveBeenCalledTimes(2);
     expect(collectText(doc.body)).toContain('Room 2');
 
     pauseButton?.click();
-    await Promise.resolve();
+    await flushAsyncWork();
     expect(pauseButton?.textContent).toContain('Pause');
 
     resetButton?.click();
-    await Promise.resolve();
+    await flushAsyncWork();
     expect(renderStaticRoom).toHaveBeenCalledTimes(4);
   });
 
@@ -374,5 +378,61 @@ describe('main runtime shell', () => {
     expect(renderStaticRoom).not.toHaveBeenCalled();
     expect(select?.disabled).toBe(true);
     expect(collectText(doc.body)).toContain('Load failed: bad package');
+  });
+
+  it('boots and drives the wasm bridge when one is available', async () => {
+    const loadPackage = vi.fn(async () => samplePackage);
+    const renderStaticRoom = vi.fn(async () => undefined);
+    const wasmBridge: WasmRuntimeBridge = {
+      backend: 'opengmk-wasm',
+      boot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: ['boot ok'] })),
+      snapshot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: ['boot ok'] })),
+      tick: vi.fn(async (frames = 1) => ({ tick: frames, roomId: 0, diagnostics: ['tick ok'] })),
+      reset: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: ['reset ok'] })),
+      selectRoom: vi.fn(async (roomId: number) => ({ tick: 0, roomId, diagnostics: ['select ok'] })),
+      diagnostics: vi.fn(async () => ['diag ok'])
+    };
+    const loadWasmBridge = vi.fn(async () => wasmBridge);
+
+    const root = doc.createElement('div');
+    root.attributes.set('id', 'app');
+    doc.body.append(root);
+
+    createRuntimeShell(root as unknown as HTMLElement, { loadPackage, renderStaticRoom, loadWasmBridge });
+
+    const buttons = doc.querySelectorAll<FakeElement>('button');
+    const button = buttons[0];
+    const pauseButton = buttons[1];
+    const resetButton = buttons[2];
+    const select = doc.querySelector<FakeElement>('select[name="roomSelect"]');
+
+    button?.click();
+    await flushAsyncWork();
+
+    expect(loadWasmBridge).toHaveBeenCalledTimes(1);
+    expect(wasmBridge.boot).toHaveBeenCalledWith(samplePackage);
+    expect(wasmBridge.snapshot).toHaveBeenCalled();
+    expect(collectText(doc.body)).toContain('WASM bridge available');
+    expect(collectText(doc.body)).toContain('WASM runtime active');
+
+    pauseButton?.click();
+    await flushAsyncWork();
+
+    expect(wasmBridge.tick).toHaveBeenCalled();
+
+    if (!select) {
+      throw new Error('missing room select');
+    }
+
+    select.value = '1';
+    select.dispatchEvent(new FakeEvent('change'));
+    await flushAsyncWork();
+
+    expect(wasmBridge.selectRoom).toHaveBeenCalledWith(1);
+
+    resetButton?.click();
+    await flushAsyncWork();
+
+    expect(wasmBridge.reset).toHaveBeenCalledTimes(1);
   });
 });

@@ -7,3 +7,4 @@ license.workspace = true
 [dependencies]
 iwm-runtime-host = { path = "../iwm-runtime-host" }
 iwm-runtime-model = { path = "../iwm-runtime-model" }
+serde = { workspace = true }

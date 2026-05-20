@@ -6,8 +6,9 @@ use iwm_runtime_model::{
 use iwm_runtime_host::{
     Rgba8, RuntimeButton, RuntimeDrawCommand, RuntimeHost, RuntimeHostError, RuntimeRenderFrame,
 };
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimePackage {
     pub manifest: RuntimeManifest,
     pub rooms: Vec<RoomDefinition>,

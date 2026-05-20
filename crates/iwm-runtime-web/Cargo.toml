@@ -11,3 +11,5 @@ crate-type = ["rlib", "cdylib"]
 iwm-runtime-core = { path = "../iwm-runtime-core" }
 iwm-runtime-host = { path = "../iwm-runtime-host" }
 iwm-runtime-model = { path = "../iwm-runtime-model" }
+serde = { workspace = true }
+serde_json = { workspace = true }
