@@ -18,6 +18,7 @@ Important direction note:
 
 - this package remains the current browser-shell input format
 - the current TypeScript runtime consumption path is transitional
+- the current WASM bridge also boots from this normalized JSON package today
 - if the WASM-hosted runtime later requires a richer execution input, this format may evolve again
 - until then, these outputs remain useful for package inspection, diagnostics, and shell bring-up
 
@@ -31,9 +32,24 @@ Included in this phase:
 - logic envelope in `scripts.ir.json` with executable/source-only distinction
 - runtime categorization: hazard, checkpoint, player-controlled hints
 
+## Current Shell Integration
+
+Today the browser shell expects a package directory under `runtime/public/packages/<name>/` and loads:
+
+- `manifest.json`
+- `rooms.json`
+- `objects.json`
+- `scripts.ir.json`
+- `analysis.json`
+- `resources/index.json`
+
+The default shell input is `/packages/sample`, which corresponds to `runtime/public/packages/sample/`.
+
+The current `iwm-runtime-web` bridge boots from the same normalized JSON payload after the frontend aggregates these files.
+
 ## Current Execution Status
 
-The execution notes below describe the current TypeScript/browser-shell runtime path. They should be treated as transitional implementation status, not as the final long-term engine direction.
+The execution notes below describe the current package contract and shell/runtime bring-up status. Any TypeScript execution notes are transitional implementation status, not the final long-term engine direction.
 
 ### Runtime-Consumable Static Data
 
@@ -59,6 +75,26 @@ The following `action-list` script blocks can be executed by the browser runtime
 
 This is currently useful for diagnostics and shell validation, but it is not the intended long-term execution architecture now that the project has adopted a WASM-first runtime strategy.
 
+### Current WASM Bridge Status
+
+The current `iwm-runtime-web` bridge can now:
+
+- accept the normalized runtime package as JSON
+- boot a headless runtime-core instance
+- return runtime snapshots
+- advance deterministic ticks
+- reset the runtime
+- switch rooms by room id
+- return formatted diagnostics
+
+It does **not** yet provide:
+
+- final browser render-command integration
+- audio playback
+- full input-host wiring
+- DLL/external support
+- gameplay-fidelity parity with OpenGMK runner semantics
+
 ### Still Deferred / Unsupported
 
 - `source-only` script blocks that require GML lowering
@@ -67,6 +103,8 @@ This is currently useful for diagnostics and shell validation, but it is not the
 - Menu systems and save/load functionality
 - DLL semantics and external function calls
 - Complex collision masks and advanced physics
+- browser-side final render-host integration for the WASM runtime
+- synchronized real input host for the WASM runtime path
 
 ### Analysis Warnings
 

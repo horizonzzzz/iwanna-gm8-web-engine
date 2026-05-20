@@ -1,10 +1,12 @@
+export type CompatibilityLevel = 'supported' | 'partial' | 'blocked';
+
 export type RuntimeManifest = {
   format_version: number;
   package_kind: string;
   source_name: string;
   source_hash: string;
   engine_family: string;
-  compatibility: 'supported' | 'partial' | 'blocked';
+  compatibility: CompatibilityLevel;
   default_room_id: number | null;
   room_count: number;
   object_count: number;

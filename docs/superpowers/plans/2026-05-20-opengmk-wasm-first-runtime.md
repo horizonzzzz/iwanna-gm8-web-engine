@@ -1,5 +1,11 @@
 # OpenGMK WASM-First Runtime Implementation Plan
 
+> **Implementation status note (2026-05-20):**
+>
+> - `crates/iwm-runtime-model/`, `crates/iwm-runtime-host/`, `crates/iwm-runtime-core/`, and `crates/iwm-runtime-web/` now exist
+> - the browser shell can now load a frontend-facing WASM bridge after `cargo build -p iwm-runtime-web --target wasm32-unknown-unknown` and `npm --prefix runtime run sync:wasm`
+> - the remaining work in this plan is to move from feasibility spike scaffolding toward fuller host fidelity, not to recreate these crates from scratch
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the previous TS-first gameplay-runtime direction with a WASM-first runtime path centered on adapting OpenGMK's `gm8emulator` into a browser-hosted execution core, while retaining the existing `runtime/` frontend as a shell, diagnostics surface, and package/debug harness.
@@ -65,9 +71,9 @@ Planned files for this phase:
 - Modify: `docs/notes/runtime-gold-sample.md`
 - Modify: `docs/superpowers/plans/2026-05-20-minimal-playable-runtime.md`
 - Create: `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md`
-- Later planned: `crates/iwm-runtime-core/`
-- Later planned: `crates/iwm-runtime-host/`
-- Later planned: `crates/iwm-runtime-web/`
+- Existing in repo: `crates/iwm-runtime-core/`
+- Existing in repo: `crates/iwm-runtime-host/`
+- Existing in repo: `crates/iwm-runtime-web/`
 
 Responsibilities:
 
@@ -197,7 +203,7 @@ For each blocker, record:
 ## Task 3: Define Runtime Host Traits
 
 **Files:**
-- Create later: `crates/iwm-runtime-host/src/lib.rs`
+- Existing: `crates/iwm-runtime-host/src/lib.rs`
 
 - [ ] **Step 1: Define the minimal host interfaces**
 
@@ -239,7 +245,7 @@ For the first spike, a null/headless renderer is acceptable if it unblocks core 
 ## Task 4: Extract Or Wrap A Headless Runtime Core
 
 **Files:**
-- Create later: `crates/iwm-runtime-core/`
+- Existing: `crates/iwm-runtime-core/`
 - Modify later: vendored integration adapters as needed
 
 - [ ] **Step 1: Prove that core initialization can run without desktop window ownership**
@@ -283,7 +289,7 @@ Do not patch around failures opaquely. Keep a written list of:
 ## Task 5: Add A Browser WASM Host Prototype
 
 **Files:**
-- Create later: `crates/iwm-runtime-web/`
+- Existing: `crates/iwm-runtime-web/`
 - Modify later: `runtime/src/`
 
 - [ ] **Step 1: Compile the extracted core for a browser-compatible WASM target**

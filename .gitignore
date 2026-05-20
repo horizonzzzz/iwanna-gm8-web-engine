@@ -2,6 +2,8 @@
 /out
 /runtime/dist/
 /runtime/node_modules/
+/runtime/public/wasm/*
+!/runtime/public/wasm/.gitkeep
 /runtime/public/packages/*
 !/runtime/public/packages/.gitkeep
 

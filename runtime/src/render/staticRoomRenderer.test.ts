@@ -40,7 +40,9 @@ describe('resolveBackgroundDraws', () => {
       views_enabled: false,
       views: [],
       instances: [],
-      creation_block_id: null
+      creation_block_id: null,
+      playable: true,
+      transition_targets: []
     };
 
     const backgroundPaths = new Map([[1, '/pkg/resources/backgrounds/1.png']]);
@@ -118,7 +120,9 @@ describe('renderStaticRoom', () => {
       views_enabled: false,
       views: [],
       instances: [],
-      creation_block_id: null
+      creation_block_id: null,
+      playable: true,
+      transition_targets: []
     };
 
     const backgroundPaths = new Map([
@@ -197,7 +201,10 @@ describe('renderStaticRoom', () => {
           yscale: 3,
           angle: 90,
           blend: 0xffffffff,
-          creation_block_id: null
+          creation_block_id: null,
+          is_solid: false,
+          is_hazard: false,
+          is_checkpoint: false
         },
         {
           instance_id: 2,
@@ -208,7 +215,10 @@ describe('renderStaticRoom', () => {
           yscale: 1,
           angle: 0,
           blend: 0xffffffff,
-          creation_block_id: null
+          creation_block_id: null,
+          is_solid: false,
+          is_hazard: false,
+          is_checkpoint: false
         },
         {
           instance_id: 3,
@@ -219,10 +229,15 @@ describe('renderStaticRoom', () => {
           yscale: 1,
           angle: 0,
           blend: 0xffffffff,
-          creation_block_id: null
+          creation_block_id: null,
+          is_solid: false,
+          is_hazard: false,
+          is_checkpoint: false
         }
       ],
-      creation_block_id: null
+      creation_block_id: null,
+      playable: true,
+      transition_targets: []
     };
 
     const objects: ObjectDefinition[] = [
@@ -236,6 +251,9 @@ describe('renderStaticRoom', () => {
         visible: true,
         solid: false,
         mask_index: -1,
+        is_hazard: null,
+        is_checkpoint: null,
+        is_player: true,
         events: []
       },
       {
@@ -248,6 +266,9 @@ describe('renderStaticRoom', () => {
         visible: false,
         solid: false,
         mask_index: -1,
+        is_hazard: null,
+        is_checkpoint: null,
+        is_player: false,
         events: []
       },
       {
@@ -260,6 +281,9 @@ describe('renderStaticRoom', () => {
         visible: true,
         solid: false,
         mask_index: -1,
+        is_hazard: null,
+        is_checkpoint: null,
+        is_player: false,
         events: []
       }
     ];

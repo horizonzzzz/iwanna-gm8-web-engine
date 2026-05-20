@@ -6,6 +6,7 @@ import { buildRoomState, cloneRoomState } from './roomState';
 import { dispatchEventBlocks } from './eventDispatch';
 import type {
   RuntimeDiagnostic,
+  RuntimeInstance,
   RuntimePreparedBlock,
   RuntimePreparedPackage,
   RuntimeRoomState,
@@ -190,9 +191,9 @@ export class GameRuntime {
 
     if (player) {
       if (input.left && !input.right) {
-        player.hspeed = -Math.abs(player.vars.maxSpeed instanceof Number ? Number(player.vars.maxSpeed) : 3);
+        player.hspeed = -Math.abs(typeof player.vars.maxSpeed === 'number' ? player.vars.maxSpeed : 3);
       } else if (input.right && !input.left) {
-        player.hspeed = Math.abs(player.vars.maxSpeed instanceof Number ? Number(player.vars.maxSpeed) : 3);
+        player.hspeed = Math.abs(typeof player.vars.maxSpeed === 'number' ? player.vars.maxSpeed : 3);
       } else {
         player.hspeed *= 0.85;
       }

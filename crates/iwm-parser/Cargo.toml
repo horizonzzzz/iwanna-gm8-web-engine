@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 camino.workspace = true
+iwm-runtime-model = { path = "../iwm-runtime-model" }
 png.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -17,5 +18,6 @@ iwm-detector = { path = "../iwm-detector" }
 gm8exe = { path = "../../vendor/OpenGMK/gm8exe" }
 
 [dev-dependencies]
+iwm-runtime-model = { path = "../iwm-runtime-model" }
 tempfile.workspace = true
 zip.workspace = true
