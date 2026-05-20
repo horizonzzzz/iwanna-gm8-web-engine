@@ -1,0 +1,10 @@
+[package]
+name = "iwm-runtime-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+iwm-parser = { path = "../iwm-parser" }
+iwm-runtime-host = { path = "../iwm-runtime-host" }
+

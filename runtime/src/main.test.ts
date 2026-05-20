@@ -328,6 +328,7 @@ describe('main runtime shell', () => {
     expect(collectText(doc.body)).toContain('sample.exe');
     expect(collectText(doc.body)).toContain('gm8');
     expect(collectText(doc.body)).toContain('partial');
+    expect(collectText(doc.body)).toContain('No WASM bridge configured');
     expect(renderStaticRoom).toHaveBeenCalledTimes(1);
     expect(doc.querySelectorAll('pre').length).toBeGreaterThanOrEqual(3);
 

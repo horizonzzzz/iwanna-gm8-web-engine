@@ -4,10 +4,16 @@ import { renderStaticRoom } from '../render/staticRoomRenderer';
 import { renderManifestSummary, renderObjectsSlice, renderRoomsSlice, renderScriptsSlice } from './inspectors';
 import type { RuntimePackage } from '../types';
 import { GameRuntime } from '../runtime/gameRuntime';
+import {
+  describeWasmBridgeAvailability,
+  loadWasmRuntimeBridge,
+  type WasmRuntimeBridge,
+} from '../runtime/wasmBridge';
 
 type ShellDependencies = {
   loadPackage: typeof loadPackage;
   renderStaticRoom: typeof renderStaticRoom;
+  loadWasmBridge?: typeof loadWasmRuntimeBridge;
 };
 
 const defaultDependencies: ShellDependencies = {
@@ -23,6 +29,7 @@ type ShellElements = {
   resetButton: HTMLButtonElement;
   status: HTMLElement;
   diagnostics: HTMLElement;
+  backendStatus: HTMLElement;
   metaRoot: HTMLElement;
   toolbar: HTMLElement;
   inspectors: HTMLElement;
@@ -97,10 +104,14 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
   const diagnostics = doc.createElement('section');
   diagnostics.className = 'diagnostics';
 
+  const backendStatus = doc.createElement('p');
+  backendStatus.className = 'hint';
+  backendStatus.textContent = 'Execution path: transitional TypeScript runtime. No WASM bridge configured yet.';
+
   const metaRoot = doc.createElement('section');
   metaRoot.className = 'meta';
 
-  sidebar.append(title, intro, packageField, button, pauseButton, resetButton, status, diagnostics, metaRoot);
+  sidebar.append(title, intro, packageField, button, pauseButton, resetButton, status, backendStatus, diagnostics, metaRoot);
 
   const stage = doc.createElement('main');
   stage.className = 'stage';
@@ -128,7 +139,7 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
 
   return {
     shell,
-    elements: { input, button, select, pauseButton, resetButton, status, diagnostics, metaRoot, toolbar, inspectors, canvas }
+    elements: { input, button, select, pauseButton, resetButton, status, diagnostics, backendStatus, metaRoot, toolbar, inspectors, canvas }
   };
 }
 
@@ -187,9 +198,10 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
   const { shell, elements } = createShell(doc);
   root.append(shell);
 
-  const { input, button, select, pauseButton, resetButton, status, diagnostics, metaRoot, inspectors, canvas } = elements;
+  const { input, button, select, pauseButton, resetButton, status, diagnostics, backendStatus, metaRoot, inspectors, canvas } = elements;
   const runtime = new GameRuntime();
   let loadedPackage: RuntimePackage | null = null;
+  let wasmBridge: WasmRuntimeBridge | null = null;
 
   const draw = async (): Promise<void> => {
     if (!loadedPackage) {
@@ -213,6 +225,17 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     select.disabled = true;
 
     try {
+      let wasmBridgeError: unknown = null;
+      wasmBridge = null;
+      if (resolved.loadWasmBridge) {
+        try {
+          wasmBridge = await resolved.loadWasmBridge(async () => ({}));
+        } catch (error) {
+          wasmBridgeError = error;
+        }
+      }
+      backendStatus.textContent = `Execution path: ${describeWasmBridgeAvailability(wasmBridge, wasmBridgeError)}`;
+
       const pkg = await resolved.loadPackage(input.value);
       loadedPackage = pkg;
       renderInspectors(doc, metaRoot, inspectors, pkg);
@@ -232,6 +255,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       metaRoot.replaceChildren();
       inspectors.replaceChildren();
       diagnostics.replaceChildren();
+      backendStatus.textContent = 'Execution path: transitional TypeScript runtime. WASM bridge probe did not complete.';
       resetRoomOptions(doc, select, 'Load a package first');
       clearCanvas(canvas);
       status.textContent = `Load failed: ${formatErrorMessage(error)}`;

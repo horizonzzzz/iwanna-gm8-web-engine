@@ -49,6 +49,7 @@ cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime
 
 See `docs/notes/package-format-v1-runtime.md` for the current runtime package contract.
 See `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md` for the current runtime implementation direction.
+See `docs/notes/opengmk-host-coupling-audit.md` for the first OpenGMK host-boundary audit.
 
 ## Repository Contents
 
@@ -59,12 +60,18 @@ See `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md` for the cu
 - `vendor/`
   Tracked upstream reference submodules used for GM8 format study and parser research
 
-Planned future areas include:
+Current workspace crates include:
 
 - `crates/iwm-detector/`
 - `crates/iwm-parser/`
 - `crates/iwm-cli/`
-- later `backend/` and `runtime/` work
+- `crates/iwm-runtime-host/`
+- `crates/iwm-runtime-core/`
+
+Later planned areas include:
+
+- `crates/iwm-runtime-web/`
+- `backend/`
 
 ## Sample Corpus
 

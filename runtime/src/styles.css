@@ -28,6 +28,13 @@ body {
   border-right: 1px solid #203040;
 }
 
+.status,
+.hint {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: #b8c7d9;
+}
+
 .stage {
   padding: 16px;
 }

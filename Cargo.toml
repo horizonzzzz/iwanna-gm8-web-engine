@@ -4,6 +4,9 @@ members = [
   "crates/iwm-detector",
   "crates/iwm-parser",
   "crates/iwm-cli",
+  "crates/iwm-runtime-core",
+  "crates/iwm-runtime-host",
+  "crates/iwm-runtime-web",
 ]
 
 [workspace.package]
