@@ -1,14 +1,27 @@
 use std::sync::{Mutex, OnceLock};
 
 use iwm_runtime_core::{RuntimeCore, RuntimePackage, RuntimeSnapshot, RuntimeStatus};
-use iwm_runtime_host::{HeadlessHost, RuntimeDiagnostic};
-use serde::Serialize;
+use iwm_runtime_host::{
+    ButtonState, HeadlessHost, RuntimeButton, RuntimeDiagnostic, RuntimeDrawCommand,
+};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
 pub struct WebRuntimeHost {
     host: HeadlessHost,
     core: Option<RuntimeCore>,
     package: Option<RuntimePackage>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebInputState {
+    pub left: bool,
+    pub right: bool,
+    pub jump: bool,
+    pub jump_pressed: bool,
+    pub jump_released: bool,
+    pub restart: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -20,6 +33,50 @@ pub struct BridgeSnapshot {
     pub room_name: Option<String>,
     pub instance_count: usize,
     pub diagnostics: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum BridgeDrawCommand {
+    Clear { colour: [u8; 4] },
+    DrawBackground {
+        background_id: usize,
+        x: i32,
+        y: i32,
+        stretch: bool,
+        tile_horz: bool,
+        tile_vert: bool,
+        is_foreground: bool,
+    },
+    DrawSprite {
+        sprite_id: usize,
+        frame_index: usize,
+        x: i32,
+        y: i32,
+        origin_x: i32,
+        origin_y: i32,
+        xscale: f64,
+        yscale: f64,
+        angle_degrees: f64,
+    },
+    FillRect {
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        colour: [u8; 4],
+    },
+    Present,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeFrameSnapshot {
+    pub tick: u64,
+    pub room_id: Option<usize>,
+    pub width: u32,
+    pub height: u32,
+    pub commands: Vec<BridgeDrawCommand>,
 }
 
 impl WebRuntimeHost {
@@ -44,6 +101,43 @@ impl WebRuntimeHost {
         let package =
             serde_json::from_str::<RuntimePackage>(package_json).map_err(|error| error.to_string())?;
         self.boot(package)
+    }
+
+    pub fn set_input(&mut self, input: WebInputState) {
+        self.host.input.replace_button_states([
+            (
+                RuntimeButton::Keyboard(0x25),
+                ButtonState {
+                    pressed: input.left,
+                    just_pressed: input.left,
+                    just_released: false,
+                },
+            ),
+            (
+                RuntimeButton::Keyboard(0x27),
+                ButtonState {
+                    pressed: input.right,
+                    just_pressed: input.right,
+                    just_released: false,
+                },
+            ),
+            (
+                RuntimeButton::Keyboard(0x20),
+                ButtonState {
+                    pressed: input.jump,
+                    just_pressed: input.jump_pressed,
+                    just_released: input.jump_released,
+                },
+            ),
+            (
+                RuntimeButton::Keyboard(0x52),
+                ButtonState {
+                    pressed: input.restart,
+                    just_pressed: input.restart,
+                    just_released: false,
+                },
+            ),
+        ]);
     }
 
     pub fn tick(&mut self, frames: u32) -> Result<BridgeSnapshot, String> {
@@ -91,6 +185,23 @@ impl WebRuntimeHost {
             .unwrap_or_default()
     }
 
+    pub fn frame_snapshot(&self) -> Result<BridgeFrameSnapshot, String> {
+        let frame = self
+            .host
+            .renderer
+            .submitted_frames
+            .last()
+            .ok_or_else(|| "runtime has not submitted a frame yet".to_string())?;
+
+        Ok(BridgeFrameSnapshot {
+            tick: frame.tick,
+            room_id: frame.room_id,
+            width: frame.width,
+            height: frame.height,
+            commands: frame.commands.iter().map(bridge_draw_command).collect(),
+        })
+    }
+
     pub fn host_frame_count(&self) -> usize {
         self.host.renderer.submitted_frames.len()
     }
@@ -110,6 +221,66 @@ fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
         room_name: snapshot.room_name,
         instance_count: snapshot.instance_count,
         diagnostics: format_diagnostics(&snapshot.diagnostics),
+    }
+}
+
+fn bridge_draw_command(command: &RuntimeDrawCommand) -> BridgeDrawCommand {
+    match command {
+        RuntimeDrawCommand::Clear { colour } => BridgeDrawCommand::Clear {
+            colour: [colour.r, colour.g, colour.b, colour.a],
+        },
+        RuntimeDrawCommand::DrawBackground {
+            background_id,
+            x,
+            y,
+            stretch,
+            tile_horz,
+            tile_vert,
+            is_foreground,
+        } => BridgeDrawCommand::DrawBackground {
+            background_id: *background_id,
+            x: *x,
+            y: *y,
+            stretch: *stretch,
+            tile_horz: *tile_horz,
+            tile_vert: *tile_vert,
+            is_foreground: *is_foreground,
+        },
+        RuntimeDrawCommand::DrawSprite {
+            sprite_id,
+            frame_index,
+            x,
+            y,
+            origin_x,
+            origin_y,
+            xscale,
+            yscale,
+            angle_degrees,
+        } => BridgeDrawCommand::DrawSprite {
+            sprite_id: *sprite_id,
+            frame_index: *frame_index,
+            x: *x,
+            y: *y,
+            origin_x: *origin_x,
+            origin_y: *origin_y,
+            xscale: *xscale,
+            yscale: *yscale,
+            angle_degrees: *angle_degrees,
+        },
+        RuntimeDrawCommand::FillRect {
+            x,
+            y,
+            width,
+            height,
+            colour,
+        } => BridgeDrawCommand::FillRect {
+            x: *x,
+            y: *y,
+            width: *width,
+            height: *height,
+            colour: [colour.r, colour.g, colour.b, colour.a],
+        },
+        RuntimeDrawCommand::Present => BridgeDrawCommand::Present,
     }
 }
 
@@ -236,6 +407,26 @@ pub extern "C" fn iwm_boot_json(pointer: *const u8, len: usize) -> usize {
 }
 
 #[no_mangle]
+pub extern "C" fn iwm_set_input_json(pointer: *const u8, len: usize) -> usize {
+    let input_json = match read_utf8_from_ptr(pointer, len) {
+        Ok(value) => value,
+        Err(error) => return store_error_result(error),
+    };
+
+    let input = match serde_json::from_str::<WebInputState>(&input_json) {
+        Ok(value) => value,
+        Err(error) => return store_error_result(error.to_string()),
+    };
+
+    let mut host = runtime_host().lock().expect("runtime host mutex poisoned");
+    host.set_input(input);
+    match host.snapshot() {
+        Some(snapshot) => store_json_result(&snapshot),
+        None => store_error_result("runtime core is not booted".into()),
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn iwm_tick(frames: u32) -> usize {
     let mut host = runtime_host().lock().expect("runtime host mutex poisoned");
     match host.tick(frames) {
@@ -268,6 +459,15 @@ pub extern "C" fn iwm_snapshot_json() -> usize {
     match host.snapshot() {
         Some(snapshot) => store_json_result(&snapshot),
         None => store_error_result("runtime core is not booted".into()),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn iwm_frame_json() -> usize {
+    let host = runtime_host().lock().expect("runtime host mutex poisoned");
+    match host.frame_snapshot() {
+        Ok(frame) => store_json_result(&frame),
+        Err(error) => store_error_result(error),
     }
 }
 
@@ -498,5 +698,27 @@ mod tests {
 
         assert!(diagnostics.iter().any(|entry| entry.contains("runtime-idle")));
         assert!(json!(diagnostics).is_array());
+    }
+
+    #[test]
+    fn web_runtime_host_accepts_input_and_returns_render_frame_json() {
+        let mut host = WebRuntimeHost::new();
+        host.boot(sample_package()).unwrap();
+
+        host.set_input(WebInputState {
+            left: true,
+            right: false,
+            jump: true,
+            jump_pressed: true,
+            jump_released: false,
+            restart: false,
+        });
+
+        host.tick(1).unwrap();
+        let frame = host.frame_snapshot().unwrap();
+
+        assert_eq!(frame.tick, 1);
+        assert_eq!(frame.room_id, Some(0));
+        assert!(!frame.commands.is_empty());
     }
 }

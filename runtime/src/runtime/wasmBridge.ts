@@ -9,10 +9,35 @@ export type WasmRuntimeBridgeSnapshot = {
   diagnostics: string[];
 };
 
+export type WasmRuntimeInputState = {
+  left: boolean;
+  right: boolean;
+  jump: boolean;
+  jumpPressed: boolean;
+  jumpReleased: boolean;
+  restart: boolean;
+};
+
+export type WasmRuntimeFrame = {
+  tick: number;
+  roomId: number | null;
+  width: number;
+  height: number;
+  commands: Array<
+    | { kind: 'clear'; colour: [number, number, number, number] }
+    | { kind: 'drawBackground'; backgroundId: number; x: number; y: number; stretch: boolean; tileHorz: boolean; tileVert: boolean; isForeground: boolean }
+    | { kind: 'drawSprite'; spriteId: number; frameIndex: number; x: number; y: number; originX: number; originY: number; xscale: number; yscale: number; angleDegrees: number }
+    | { kind: 'fillRect'; x: number; y: number; width: number; height: number; colour: [number, number, number, number] }
+    | { kind: 'present' }
+  >;
+};
+
 export type WasmRuntimeBridge = {
   backend: 'opengmk-wasm';
   boot: (pkg: RuntimePackage) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   snapshot: () => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
+  frame: () => Promise<WasmRuntimeFrame> | WasmRuntimeFrame;
+  setInput: (input: WasmRuntimeInputState) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   tick: (frames?: number) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   reset: () => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   selectRoom: (roomId: number) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
@@ -28,10 +53,12 @@ type WasmRuntimeExports = {
   iwm_alloc: (size: number) => number;
   iwm_free: (pointer: number, size: number) => void;
   iwm_boot_json: (pointer: number, size: number) => number;
+  iwm_set_input_json: (pointer: number, size: number) => number;
   iwm_tick: (frames: number) => number;
   iwm_reset: () => number;
   iwm_select_room: (roomId: number) => number;
   iwm_snapshot_json: () => number;
+  iwm_frame_json: () => number;
   iwm_diagnostics_json: () => number;
   iwm_last_result_len: () => number;
 };
@@ -49,6 +76,8 @@ export function isWasmRuntimeBridge(value: unknown): value is WasmRuntimeBridge 
   return candidate.backend === 'opengmk-wasm'
     && isFunction(candidate.boot)
     && isFunction(candidate.snapshot)
+    && isFunction(candidate.frame)
+    && isFunction(candidate.setInput)
     && isFunction(candidate.tick)
     && isFunction(candidate.reset)
     && isFunction(candidate.selectRoom)
@@ -65,10 +94,12 @@ function isWasmRuntimeExports(value: unknown): value is WasmRuntimeExports {
     && isFunction(candidate.iwm_alloc)
     && isFunction(candidate.iwm_free)
     && isFunction(candidate.iwm_boot_json)
+    && isFunction(candidate.iwm_set_input_json)
     && isFunction(candidate.iwm_tick)
     && isFunction(candidate.iwm_reset)
     && isFunction(candidate.iwm_select_room)
     && isFunction(candidate.iwm_snapshot_json)
+    && isFunction(candidate.iwm_frame_json)
     && isFunction(candidate.iwm_diagnostics_json)
     && isFunction(candidate.iwm_last_result_len);
 }
@@ -104,6 +135,17 @@ export function makeWasmRuntimeBridge(exports: WasmRuntimeExports): WasmRuntimeB
     },
     snapshot: async () => {
       return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_snapshot_json());
+    },
+    frame: async () => {
+      return readJsonResult<WasmRuntimeFrame>(exports, exports.iwm_frame_json());
+    },
+    setInput: async (input) => {
+      const { pointer, byteLength } = writeJsonInput(exports, input);
+      try {
+        return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_set_input_json(pointer, byteLength));
+      } finally {
+        exports.iwm_free(pointer, byteLength);
+      }
     },
     tick: async (frames = 1) => {
       return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_tick(Math.max(1, frames)));
