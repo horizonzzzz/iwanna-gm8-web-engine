@@ -8,15 +8,15 @@ Phase 4 has switched to a WASM-first runtime strategy.
 
 The current `runtime/` app remains the browser shell, package inspector, and diagnostics harness, but the long-term gameplay execution path is no longer the project-owned TypeScript runtime. Runtime fidelity work now targets adapting OpenGMK `gm8emulator` into a browser-hosted WASM execution core.
 
+Current implemented Phase 4 slices:
+
+- `crates/iwm-runtime-model/` holds the shared runtime package schema
+- `crates/iwm-runtime-host/` defines the first host-boundary traits and headless helpers
+- `crates/iwm-runtime-core/` provides a deterministic headless runtime-core skeleton
+- `crates/iwm-runtime-web/` exposes a browser-loadable WASM bridge surface
+- `runtime/` can load a normalized package, probe `/wasm/iwm_runtime_web.wasm`, and drive the bridge for boot/tick/diagnostics
+
 Phase 3 is complete and delivered the runtime-facing package format and development shell with static room viewer.
-
-## Local Commands
-
-```bash
-cargo test
-cargo run -p iwm-cli -- detect --input C:\path\to\game
-cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample
-```
 
 ## Overview
 
@@ -39,22 +39,71 @@ The goal is not to emulate every Game Maker game. The first focus is a narrower 
 - Phase 3: runtime-facing package format and development static room viewer (complete)
 - Phase 4: OpenGMK WASM-first runtime bring-up (in progress)
 
-## Current Commands
+See `docs/notes/package-format-v1-runtime.md` for the current runtime package contract.
+See `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md` for the current runtime implementation direction.
+See `docs/notes/opengmk-host-coupling-audit.md` for the first OpenGMK host-boundary audit.
 
-```bash
+## Setup
+
+```powershell
+git submodule update --init --recursive
+npm --prefix runtime install
+rustup target add wasm32-unknown-unknown
+```
+
+On Windows, build the WASM target from a Visual Studio Developer Command Prompt or otherwise ensure `clang` and `clang++` are on `PATH`.
+
+## Use And Test Now
+
+### 1. Verify Rust and frontend tests
+
+```powershell
 cargo test
+npm --prefix runtime test
+npm --prefix runtime run build
+```
+
+### 2. Build and sync the WASM bridge
+
+```powershell
+$env:PATH='C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\bin;' + $env:PATH
+$env:CC='clang'
+$env:CXX='clang++'
+cargo build -p iwm-runtime-web --target wasm32-unknown-unknown
+npm --prefix runtime run sync:wasm
+```
+
+This produces `target\wasm32-unknown-unknown\debug\iwm_runtime_web.wasm` and copies it to `runtime\public\wasm\iwm_runtime_web.wasm` for the browser shell.
+
+### 3. Build a runtime package if you have a local sample
+
+```powershell
 cargo run -p iwm-cli -- detect --input C:\path\to\game
 cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample
 ```
 
-See `docs/notes/package-format-v1-runtime.md` for the current runtime package contract.
-See `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md` for the current runtime implementation direction.
-See `docs/notes/opengmk-host-coupling-audit.md` for the first OpenGMK host-boundary audit.
+The shell default package path is `/packages/sample`, which maps to `runtime\public\packages\sample\`.
+
+### 4. Launch the browser shell
+
+```powershell
+npm --prefix runtime run dev -- --host 127.0.0.1
+```
+
+Then open `http://127.0.0.1:4173`.
+
+Important local-only paths:
+
+- `runtime/public/packages/` is intentionally empty in git except for `.gitkeep`
+- `runtime/public/wasm/iwm_runtime_web.wasm` is a generated local artifact and is not committed
+- `samples/local/iwanna-examples/` is a local sample area and may not exist in a fresh clone
 
 ## Repository Contents
 
 - `docs/`
   Project documentation and design notes
+- `runtime/`
+  Browser shell, package loader, diagnostics UI, and WASM bridge glue
 - `samples/local/iwanna-examples/`
   Local sample corpus used for detector and parser validation
 - `vendor/`
@@ -68,15 +117,15 @@ Current workspace crates include:
 - `crates/iwm-runtime-model/`
 - `crates/iwm-runtime-host/`
 - `crates/iwm-runtime-core/`
+- `crates/iwm-runtime-web/`
 
 Later planned areas include:
 
-- `crates/iwm-runtime-web/`
 - `backend/`
 
 ## Sample Corpus
 
-The project-local sample corpus is organized under `samples/local/iwanna-examples/`.
+The project-local sample corpus is organized under `samples/local/iwanna-examples/` when populated locally.
 
 Current categories:
 
@@ -91,6 +140,7 @@ Suggested usage:
 - use `non-target` for negative classification checks
 - treat current labels as working development categories, not final truth
 - prefer repo-local sample paths in scripts and plans instead of old desktop paths
+- expect a fresh clone to omit actual sample binaries unless you add them locally
 
 ## Vendored References
 
@@ -140,6 +190,7 @@ Important runtime direction note:
 - the current package and frontend shell remain useful
 - the current TypeScript gameplay runtime should be treated as transitional tooling, not the final compatibility engine
 - future runtime-fidelity work should accumulate in the WASM-hosted engine path, not in a parallel TS gameplay reimplementation
+- the current shell can still fall back to the transitional TS runtime when the WASM bridge is missing or unsynced
 
 Out of scope for the MVP:
 

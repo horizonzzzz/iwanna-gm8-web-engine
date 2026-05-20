@@ -6,6 +6,12 @@ This directory stores development sample data used to validate detector, parser,
 
 - `local/iwanna-examples/`
 
+Important repository note:
+
+- this repository does not commit the actual sample binaries
+- a fresh clone may contain only this README until you add local sample data under `samples/local/`
+- scripts and plans may refer to these paths as expected local development locations, not guaranteed tracked files
+
 Current local categories under `local/iwanna-examples/`:
 
 - `gm8-core`

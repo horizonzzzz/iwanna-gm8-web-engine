@@ -2,7 +2,12 @@
 
 This document captures the current validation samples for runtime bring-up.
 
-These samples were originally chosen for the prior TS-first minimal-playable-runtime direction. They remain useful under the WASM-first direction as runtime-core bring-up and fidelity validation targets.
+These samples remain useful under the WASM-first direction as runtime-core bring-up and fidelity validation targets.
+
+Important local-path note:
+
+- these sample paths are local development paths, not tracked sample binaries
+- a fresh clone may not contain `samples/local/iwanna-examples/` until you add local test data
 
 ## Primary Gold Sample
 
@@ -47,7 +52,9 @@ Under the WASM-first runtime direction, Phase 4 validation for `IWBT_Dife` shoul
 
 ## Known Risky Mechanics or Rooms
 
-TBD - will be updated after initial gold sample package analysis and runtime execution testing.
+No curated risky-room list is maintained yet.
+
+When a specific room or mechanic blocks package build, boot, tick, input, collision, or room transition bring-up, record it here with the exact sample path and blocker summary.
 
 ## Implementation Guidance
 
@@ -59,7 +66,10 @@ The gold sample drives implementation priorities:
 
 ## References
 
-- Implementation plan: `docs/superpowers/plans/2026-05-20-minimal-playable-runtime.md`
 - WASM-first runtime plan: `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md`
 - Package format: `docs/notes/package-format-v1-runtime.md`
 - Design spec: `docs/superpowers/specs/2026-05-19-iwanna-gm8-web-engine-design.md`
+
+Historical note:
+
+- `docs/superpowers/plans/2026-05-20-minimal-playable-runtime.md` is retained only as the previous TS-first plan and should not drive new gameplay-engine work
