@@ -59,7 +59,7 @@ Responsibilities:
 Before starting this phase:
 
 - Phase 2 code should already pass `cargo test`
-- `vendor/OpenGMK/gm8exe` must still be available locally for parser work
+- the tracked `vendor/OpenGMK/` submodule must be initialized for parser work
 - `samples/local/iwanna-examples/gm8-core/` remains the preferred first smoke-test corpus
 - `runtime/` does not exist yet, so this phase is allowed to introduce new frontend tooling
 

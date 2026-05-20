@@ -1,0 +1,6 @@
+[submodule "vendor/GM8Decompiler"]
+	path = vendor/GM8Decompiler
+	url = https://github.com/OpenGMK/GM8Decompiler.git
+[submodule "vendor/OpenGMK"]
+	path = vendor/OpenGMK
+	url = https://github.com/OpenGMK/OpenGMK.git

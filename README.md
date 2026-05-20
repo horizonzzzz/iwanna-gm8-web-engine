@@ -51,7 +51,7 @@ See `docs/notes/package-format-v1-runtime.md` for the current runtime package co
 - `samples/local/iwanna-examples/`
   Local sample corpus used for detector and parser validation
 - `vendor/`
-  Notes and local-only upstream reference checkouts used for GM8 format study and parser research
+  Tracked upstream reference submodules used for GM8 format study and parser research
 
 Planned future areas include:
 
@@ -85,8 +85,8 @@ The `vendor/` directory is used for upstream study and narrow integration experi
 Important repository rule:
 
 - `vendor/README.md` is tracked
-- heavyweight upstream checkouts under `vendor/` are intended to stay local and git-ignored
-- path dependencies such as `vendor/OpenGMK/gm8exe` should be treated as local development prerequisites, not guaranteed tracked files
+- upstream repositories under `vendor/` are tracked as git submodules
+- clone with submodules or run `git submodule update --init --recursive` after checkout
 
 Current references:
 

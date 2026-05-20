@@ -43,7 +43,7 @@ Before starting this phase:
 
 - the detector workspace from the previous plan should already exist
 - the project-local sample path should be `samples/local/iwanna-examples/`
-- if `gm8exe` is used via a path dependency, a local checkout of `vendor/OpenGMK/` must exist on disk even though `vendor/` is git-ignored
+- if `gm8exe` is used via a path dependency, initialize the tracked `vendor/OpenGMK/` submodule before parser work
 
 ### Task 1: Add Parser Crate Skeleton
 
