@@ -65,6 +65,7 @@ Current workspace crates include:
 - `crates/iwm-detector/`
 - `crates/iwm-parser/`
 - `crates/iwm-cli/`
+- `crates/iwm-runtime-model/`
 - `crates/iwm-runtime-host/`
 - `crates/iwm-runtime-core/`
 

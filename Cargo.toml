@@ -6,6 +6,7 @@ members = [
   "crates/iwm-cli",
   "crates/iwm-runtime-core",
   "crates/iwm-runtime-host",
+  "crates/iwm-runtime-model",
   "crates/iwm-runtime-web",
 ]
 

@@ -64,7 +64,7 @@ fn format_core_error(error: iwm_runtime_core::RuntimeCoreError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iwm_parser::models::{
+    use iwm_runtime_model::{
         AnalysisReport, BackgroundResource, CompatibilityLevel, LogicBlock, LogicOp, ObjectDefinition,
         ObjectEventEntry, ResourceIndex, RoomBackgroundLayer, RoomDefinition, RoomInstancePlacement, RoomView,
         RuntimeManifest, ScriptIrFile, SoundResource, SpriteResource,

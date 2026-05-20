@@ -1,4 +1,4 @@
-use iwm_parser::models::{CompatibilityLevel, ObjectDefinition, ObjectEventEntry, RoomDefinition, RuntimeManifest};
+use iwm_runtime_model::{CompatibilityLevel, ObjectDefinition, ObjectEventEntry, RoomDefinition, RuntimeManifest};
 use std::fs;
 use std::process::Command;
 

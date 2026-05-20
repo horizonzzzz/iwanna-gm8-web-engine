@@ -10,6 +10,4 @@ crate-type = ["rlib", "cdylib"]
 [dependencies]
 iwm-runtime-core = { path = "../iwm-runtime-core" }
 iwm-runtime-host = { path = "../iwm-runtime-host" }
-
-[dev-dependencies]
-iwm-parser = { path = "../iwm-parser" }
+iwm-runtime-model = { path = "../iwm-runtime-model" }

@@ -5,6 +5,5 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-iwm-parser = { path = "../iwm-parser" }
 iwm-runtime-host = { path = "../iwm-runtime-host" }
-
+iwm-runtime-model = { path = "../iwm-runtime-model" }

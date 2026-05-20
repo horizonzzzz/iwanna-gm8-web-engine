@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use iwm_parser::models::{
+use iwm_runtime_model::{
     AnalysisReport, ObjectDefinition, ResourceIndex, RoomDefinition, RuntimeManifest, ScriptIrFile,
 };
 use iwm_runtime_host::{
@@ -255,7 +255,7 @@ impl RuntimeCore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iwm_parser::models::{
+    use iwm_runtime_model::{
         AnalysisReport, BackgroundResource, CompatibilityLevel, LogicBlock, LogicOp,
         ObjectEventEntry, ResourceIndex, RoomBackgroundLayer, RoomInstancePlacement, RoomView,
         RuntimeManifest, ScriptIrFile, SoundResource, SpriteResource,
