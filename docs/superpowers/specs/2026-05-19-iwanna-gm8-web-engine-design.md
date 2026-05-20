@@ -9,7 +9,7 @@ The project goal is not to emulate all Game Maker games, and not to support ever
 - Accept original uploaded game packages from users
 - Identify whether a package is likely a supported GM8-style IWanna game
 - Convert supported games into a normalized internal package
-- Run that package in a browser with a custom runtime
+- Run that package in a browser through a WASM-first runtime path
 - Optimize for "can start and play core gameplay" before "perfect behavioral parity"
 
 The project will use a backend-assisted pipeline. The browser will not directly parse every possible GM8 executable format on its own.
@@ -22,7 +22,7 @@ The MVP is intended to answer these questions:
 
 1. Can the system reliably detect mainstream GM8 IWanna games?
 2. Can the system extract enough structure from those games to produce a normalized runtime package?
-3. Can a browser runtime execute a useful compatibility subset that is sufficient for a meaningful portion of classic fangames?
+3. Can a browser-hosted runtime path execute enough real runner behavior to support a meaningful portion of classic fangames?
 4. Can the system classify unsupported games cleanly instead of failing opaquely?
 
 The MVP is not required to:
@@ -40,7 +40,7 @@ The MVP is not required to:
 - Legacy GM8-style mainstream IWanna fangames
 - Single-exe and multi-file GM8 distribution packages
 - Backend parsing, normalization, and compatibility analysis
-- Browser runtime for a compatibility subset
+- Browser-hosted runtime execution path for a compatibility subset, with room to move toward deeper runner fidelity
 - Upload flow for user-provided original game packages
 - Sample corpus management and classification
 - Compatibility reporting and runtime diagnostics
@@ -59,21 +59,21 @@ The MVP is not required to:
 Three broad implementation strategies were considered:
 
 1. Full browser-side GM8 runtime recreation
-2. Backend parsing plus custom browser runtime
+2. Backend parsing plus normalized package outputs plus a WASM-first browser runtime
 3. Server-side native execution with browser streaming
 
 The selected strategy is:
 
-### Backend parsing plus custom browser runtime
+### Backend parsing plus normalized package outputs plus a WASM-first browser runtime
 
-Users upload original game packages. The backend identifies and parses target games, converts them into a normalized internal package format, and ships that format to a browser runtime that implements an IWanna-focused compatibility subset.
+Users upload original game packages. The backend identifies and parses target games, converts them into a normalized internal package format, and ships that format to a browser-hosted runtime path. The browser-facing `runtime/` app acts as the shell, diagnostics surface, and host glue, while the long-term execution engine is a WASM-hosted runtime core rather than a project-owned TypeScript gameplay reimplementation.
 
 This is selected because it balances:
 
 - user experience: users still upload original files
 - technical control: heavy parsing and compatibility analysis stay on the backend
-- long-term extensibility: the runtime can remain stable while the parser improves
-- MVP feasibility: avoids re-implementing all of GM8 before any visible progress
+- long-term extensibility: the normalized package and shell can remain stable while parser and runtime fidelity improve
+- MVP feasibility: avoids requiring the browser to parse raw executables directly while preserving a path toward deeper runner-level behavior
 
 ## Supported Input Model
 
@@ -144,7 +144,7 @@ This is more valuable early than pursuing perfect parity on one extremely comple
 
 The backend should solve parsing and normalization problems.
 
-The browser runtime should solve execution problems against a stable internal package format.
+The browser runtime path should solve execution problems against a stable internal package format, but the outer browser shell and the execution engine should be treated as separate responsibilities.
 
 ### 3. Treat compatibility as a measured process
 
@@ -163,7 +163,7 @@ The MVP should be explicitly designed so it can later expand to:
 
 - more GM8 features
 - more external resource forms
-- more robust IR execution
+- more robust runtime data and execution inputs where required by the WASM runtime path
 - possibly more engine families
 
 without redesigning the entire project structure.
@@ -259,23 +259,23 @@ The backend should own everything related to original package interpretation.
 
 ## Browser Runtime Responsibilities
 
-The browser runtime should only need to understand the normalized internal package.
+The browser runtime path should only need to understand the normalized internal package.
 
 ### Runtime responsibilities include:
 
-- package loading
-- fixed-timestep game loop
-- keyboard input
-- room loading
+- package loading and validation in the browser shell
+- fixed-timestep host control around the runtime core
+- keyboard input capture and host injection
+- room loading and runtime boot
 - instance lifecycle
-- supported event execution
-- drawing
+- runtime-driven drawing through a browser-consumable frame surface
 - collision handling
-- audio playback
+- audio playback or explicit no-op diagnostics when unsupported
 - death and respawn
-- minimal runtime debug overlays
+- minimal runtime debug overlays and diagnostics
 
 The runtime should not be tightly coupled to raw GM8 executable structure.
+The current TypeScript runtime remains useful as a fallback harness and inspection tool, but it should not be treated as the final gameplay engine direction.
 
 ## Internal Package Format
 
@@ -439,11 +439,11 @@ This file should help answer why a game works, partially works, or fails.
 
 ## Logic Execution Model
 
-The browser runtime should execute a supported subset rather than full GM8 semantics.
+The browser runtime path should start from a constrained compatibility target, but the strategic execution direction is no longer a handwritten TypeScript subset model. Runtime fidelity should accumulate in the WASM-hosted engine path.
 
 ### Phase-one target
 
-A deliberately constrained compatibility subset focused on mainstream fangame patterns:
+A deliberately constrained early compatibility target focused on mainstream fangame patterns:
 
 - player movement logic
 - object trigger logic
@@ -468,7 +468,7 @@ Uploaded packages should resolve to one of several explicit states.
 
 ### supported
 
-The package appears targetable and the currently supported compatibility subset is expected to run core gameplay.
+The package appears targetable and the current normalized package plus browser-hosted runtime path is expected to run core gameplay, subject to current runtime fidelity limits.
 
 ### partial
 
@@ -782,7 +782,7 @@ These items do not block the design, but they must be resolved in implementation
 - backend language and framework
 - whether to wrap or directly reuse existing GM8 parsing projects
 - exact IR shape
-- browser runtime language split between JS and WASM
+- exact browser host boundary between TypeScript shell code and WASM runtime code
 - archive upload format support details
 - whether sample corpus metadata lives inside the repo or separately
 
@@ -793,7 +793,7 @@ The recommended path is:
 1. build a backend detector and classifier
 2. build a backend GM8 normalization pipeline
 3. define a stable internal package and logic IR
-4. build a browser runtime for a strict IWanna-focused subset
+4. build a WASM-first browser runtime path that can start narrow and then grow toward deeper runner fidelity
 5. grow compatibility by measuring the sample corpus, not by intuition
 
 This path preserves the best balance of feasibility, user experience, and long-term technical leverage.

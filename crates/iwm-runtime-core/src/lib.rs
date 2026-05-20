@@ -158,6 +158,12 @@ impl RuntimeCore {
         Ok(())
     }
 
+    pub fn render<H: RuntimeHost>(&mut self, host: &mut H) -> Result<(), RuntimeCoreError> {
+        let frame = self.build_render_frame()?;
+        host.submit_frame(frame)?;
+        Ok(())
+    }
+
     pub fn tick<H: RuntimeHost>(&mut self, host: &mut H) -> Result<(), RuntimeCoreError> {
         let Some(room) = self.current_room.as_ref() else {
             self.status = RuntimeStatus::Error;
@@ -187,22 +193,7 @@ impl RuntimeCore {
             });
         }
 
-        host.submit_frame(RuntimeRenderFrame {
-            width: room.width,
-            height: room.height,
-            commands: vec![
-                RuntimeDrawCommand::Clear {
-                    colour: Rgba8 {
-                        r: 12,
-                        g: 16,
-                        b: 22,
-                        a: 255,
-                    },
-                },
-                RuntimeDrawCommand::Present,
-            ],
-        })?;
-
+        self.render(host)?;
         Ok(())
     }
 
@@ -251,6 +242,105 @@ impl RuntimeCore {
             instances,
         })
     }
+
+    fn build_render_frame(&self) -> Result<RuntimeRenderFrame, RuntimeCoreError> {
+        let room = self.current_room.as_ref().ok_or(RuntimeCoreError::NoRooms)?;
+        let source_room = self
+            .room_index
+            .get(&room.room_id)
+            .and_then(|index| self.package.rooms.get(*index))
+            .ok_or(RuntimeCoreError::RoomMissing(room.room_id))?;
+
+        let mut commands = vec![RuntimeDrawCommand::Clear {
+            colour: Rgba8 {
+                r: 12,
+                g: 16,
+                b: 22,
+                a: 255,
+            },
+        }];
+
+        commands.extend(
+            source_room
+                .backgrounds
+                .iter()
+                .filter(|layer| layer.visible_on_start && !layer.is_foreground && layer.source_bg >= 0)
+                .map(|layer| RuntimeDrawCommand::DrawBackground {
+                    background_id: layer.source_bg as usize,
+                    x: layer.xoffset,
+                    y: layer.yoffset,
+                    stretch: layer.stretch,
+                    tile_horz: layer.tile_horz,
+                    tile_vert: layer.tile_vert,
+                    is_foreground: false,
+                }),
+        );
+
+        for instance in &room.instances {
+            if let Some(object) = self.package.objects.get(instance.object_id) {
+                if object.visible && object.sprite_index >= 0 {
+                    let sprite = self
+                        .package
+                        .resources
+                        .sprites
+                        .iter()
+                        .find(|sprite| sprite.id == object.sprite_index as usize);
+
+                    commands.push(RuntimeDrawCommand::DrawSprite {
+                        sprite_id: object.sprite_index as usize,
+                        frame_index: 0,
+                        x: instance.x,
+                        y: instance.y,
+                        origin_x: sprite.map(|sprite| sprite.origin_x).unwrap_or(0),
+                        origin_y: sprite.map(|sprite| sprite.origin_y).unwrap_or(0),
+                        xscale: 1.0,
+                        yscale: 1.0,
+                        angle_degrees: 0.0,
+                    });
+                    continue;
+                }
+            }
+
+            commands.push(RuntimeDrawCommand::FillRect {
+                x: instance.x - 4,
+                y: instance.y - 4,
+                width: 8,
+                height: 8,
+                colour: Rgba8 {
+                    r: 96,
+                    g: 112,
+                    b: 138,
+                    a: 255,
+                },
+            });
+        }
+
+        commands.extend(
+            source_room
+                .backgrounds
+                .iter()
+                .filter(|layer| layer.visible_on_start && layer.is_foreground && layer.source_bg >= 0)
+                .map(|layer| RuntimeDrawCommand::DrawBackground {
+                    background_id: layer.source_bg as usize,
+                    x: layer.xoffset,
+                    y: layer.yoffset,
+                    stretch: layer.stretch,
+                    tile_horz: layer.tile_horz,
+                    tile_vert: layer.tile_vert,
+                    is_foreground: true,
+                }),
+        );
+
+        commands.push(RuntimeDrawCommand::Present);
+
+        Ok(RuntimeRenderFrame {
+            tick: self.tick,
+            room_id: Some(room.room_id),
+            width: room.width,
+            height: room.height,
+            commands,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -274,10 +364,10 @@ mod tests {
                 compatibility: CompatibilityLevel::Partial,
                 default_room_id: Some(7),
                 room_count: 1,
-                object_count: 1,
+                object_count: 2,
                 script_block_count: 1,
-                sprite_count: 0,
-                background_count: 0,
+                sprite_count: 1,
+                background_count: 1,
                 sound_count: 0,
                 resource_index_path: "resources/index.json".into(),
                 warnings: vec![],
@@ -327,6 +417,19 @@ mod tests {
                     is_solid: false,
                     is_hazard: false,
                     is_checkpoint: false,
+                }, RoomInstancePlacement {
+                    instance_id: 12,
+                    object_id: 1,
+                    x: 48,
+                    y: 64,
+                    xscale: 1.0,
+                    yscale: 1.0,
+                    angle: 0.0,
+                    blend: 0x00ff_ffff,
+                    creation_block_id: None,
+                    is_solid: false,
+                    is_hazard: false,
+                    is_checkpoint: false,
                 }],
                 creation_block_id: None,
                 playable: true,
@@ -335,7 +438,7 @@ mod tests {
             objects: vec![ObjectDefinition {
                 id: 0,
                 name: "obj_player".into(),
-                sprite_index: -1,
+                sprite_index: 0,
                 parent_index: -1,
                 depth: 0,
                 persistent: false,
@@ -352,6 +455,20 @@ mod tests {
                     block_id: "object:0:event:0:0".into(),
                     action_count: 0,
                 }],
+            }, ObjectDefinition {
+                id: 1,
+                name: "obj_marker".into(),
+                sprite_index: -1,
+                parent_index: -1,
+                depth: 0,
+                persistent: false,
+                visible: true,
+                solid: false,
+                mask_index: -1,
+                is_hazard: Some(false),
+                is_checkpoint: Some(false),
+                is_player: false,
+                events: vec![],
             }],
             scripts: ScriptIrFile {
                 format: "iwm-script-ir-v1".into(),
@@ -408,7 +525,7 @@ mod tests {
         assert_eq!(core.current_room().map(|room| room.room_id), Some(7));
         assert_eq!(
             core.current_room().map(|room| room.instances.len()),
-            Some(1)
+            Some(2)
         );
         assert!(core.current_room().unwrap().instances[0].player_candidate);
     }
@@ -427,6 +544,30 @@ mod tests {
             .commands
             .iter()
             .any(|command| matches!(command, RuntimeDrawCommand::Present)));
+    }
+
+    #[test]
+    fn runtime_core_emits_browser_consumable_draw_commands() {
+        let package = sample_package();
+        let mut core = RuntimeCore::load(package).unwrap();
+        let mut host = HeadlessHost::new("runtime-core");
+
+        core.render(&mut host).unwrap();
+
+        let frame = host.renderer.submitted_frames.last().unwrap();
+        assert_eq!(frame.room_id, Some(7));
+        assert!(frame.commands.iter().any(|command| matches!(
+            command,
+            RuntimeDrawCommand::DrawBackground { background_id: 0, .. }
+        )));
+        assert!(frame.commands.iter().any(|command| matches!(
+            command,
+            RuntimeDrawCommand::DrawSprite { sprite_id: 0, .. }
+        )));
+        assert!(frame.commands.iter().any(|command| matches!(
+            command,
+            RuntimeDrawCommand::FillRect { .. }
+        )));
     }
 
     #[test]

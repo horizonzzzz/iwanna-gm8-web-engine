@@ -32,14 +32,43 @@ pub struct Rgba8 {
     pub a: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeDrawCommand {
     Clear { colour: Rgba8 },
+    DrawBackground {
+        background_id: usize,
+        x: i32,
+        y: i32,
+        stretch: bool,
+        tile_horz: bool,
+        tile_vert: bool,
+        is_foreground: bool,
+    },
+    DrawSprite {
+        sprite_id: usize,
+        frame_index: usize,
+        x: i32,
+        y: i32,
+        origin_x: i32,
+        origin_y: i32,
+        xscale: f64,
+        yscale: f64,
+        angle_degrees: f64,
+    },
+    FillRect {
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        colour: Rgba8,
+    },
     Present,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeRenderFrame {
+    pub tick: u64,
+    pub room_id: Option<usize>,
     pub width: u32,
     pub height: u32,
     pub commands: Vec<RuntimeDrawCommand>,
@@ -255,6 +284,21 @@ pub struct SnapshotInputHost {
 impl SnapshotInputHost {
     pub fn set_button_state(&mut self, button: RuntimeButton, state: ButtonState) {
         self.buttons.insert(button, state);
+    }
+
+    pub fn replace_button_states(
+        &mut self,
+        states: impl IntoIterator<Item = (RuntimeButton, ButtonState)>,
+    ) {
+        self.buttons.clear();
+        self.buttons.extend(states);
+    }
+
+    pub fn clear_transitions(&mut self) {
+        for state in self.buttons.values_mut() {
+            state.just_pressed = false;
+            state.just_released = false;
+        }
     }
 
     pub fn set_mouse_position(&mut self, mouse_position: (i32, i32)) {
@@ -576,6 +620,8 @@ mod tests {
         let mut renderer = NullRenderHost::default();
         renderer
             .submit_frame(RuntimeRenderFrame {
+                tick: 0,
+                room_id: None,
                 width: 320,
                 height: 240,
                 commands: vec![
@@ -594,6 +640,22 @@ mod tests {
 
         assert_eq!(renderer.submitted_frames.len(), 1);
         assert_eq!(renderer.submitted_frames[0].commands.len(), 2);
+    }
+
+    #[test]
+    fn snapshot_input_host_replaces_button_states() {
+        let mut input = SnapshotInputHost::default();
+        input.replace_button_states([(
+            RuntimeButton::Keyboard(0x25),
+            ButtonState {
+                pressed: true,
+                just_pressed: true,
+                just_released: false,
+            },
+        )]);
+
+        assert!(input.button_state(RuntimeButton::Keyboard(0x25)).pressed);
+        assert!(!input.button_state(RuntimeButton::Keyboard(0x27)).pressed);
     }
 
     #[test]
@@ -630,6 +692,8 @@ mod tests {
         });
         host.play_sound(7, RuntimeSoundMode::Once).unwrap();
         host.submit_frame(RuntimeRenderFrame {
+            tick: 1,
+            room_id: Some(7),
             width: 1,
             height: 1,
             commands: vec![RuntimeDrawCommand::Present],
