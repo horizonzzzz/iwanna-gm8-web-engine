@@ -19,14 +19,70 @@ Included in this phase:
 - browser-ready sprite exports
 - browser-ready background exports
 - audio file exports
-- normalized room instance placements
-- normalized object event table
-- first logic envelope in `scripts.ir.json`
+- normalized room instance placements with runtime categorization hints
+- normalized object event table with event tags for dispatch
+- logic envelope in `scripts.ir.json` with executable/source-only distinction
+- runtime categorization: hazard, checkpoint, player-controlled hints
 
-Still deferred:
+## Current Execution Status
 
-- fixed-step gameplay execution
-- collision runtime
-- player control
-- death and respawn
-- room-transition simulation
+### Runtime-Consumable Static Data
+
+- Room dimensions, backgrounds, views, and instance placements
+- Instance-level `is_solid`, `is_hazard`, `is_checkpoint` flags
+- Room-level `playable` flag and `transition_targets` hints
+- Object definitions with sprite references and event tables
+- Object-level `is_hazard`, `is_checkpoint`, `is_player` hints
+- Event entries with normalized `event_tag` for runtime dispatch
+- Resource index with paths to browser-loadable assets
+- Manifest with default room and compatibility metadata
+
+### Currently Executable Action-List Subset
+
+The following `action-list` script blocks can be executed by the browser runtime:
+
+- Basic variable reads and writes for instance-local state
+- Simple arithmetic operations
+- Conditional branches (if/else)
+- Movement-related action calls (when implemented in logic runner)
+
+`LogicBlock.executable_action_count` indicates how many actions can run without GML lowering.
+
+### Still Deferred / Unsupported
+
+- `source-only` script blocks that require GML lowering
+- Advanced GML functions not yet in the supported action subset
+- Particle systems, surfaces, and advanced drawing
+- Menu systems and save/load functionality
+- DLL semantics and external function calls
+- Complex collision masks and advanced physics
+
+### Analysis Warnings
+
+Current `analysis.json` warnings include actionable categories:
+
+- `runtime-missing-source-lowering:<block_id>` - source-only blocks requiring GML lowering
+- `runtime-unsupported-event:<event_tag>` - event types not yet supported (e.g., triggers, user events)
+- `runtime-unsupported-action:<fn_name>` - actions not yet implemented (e.g., file_*, sound_*, window_*)
+- `logic-execution-not-yet-implemented` - general execution placeholder
+
+These warnings guide Phase 4 implementation priorities.
+
+### Event Tag Normalization
+
+Event entries include a normalized `event_tag` for runtime dispatch:
+
+| Event Type | Tag Format | Example |
+|------------|-----------|---------|
+| Create | `create` | `create` |
+| Destroy | `destroy` | `destroy` |
+| Alarm | `alarm:<n>` | `alarm:0`, `alarm:5` |
+| Step | `step`, `step:begin`, `step:end` | `step` |
+| Collision | `collision` | `collision` |
+| Keyboard | `keyboard:<key>` | `keyboard:a` |
+| Mouse | `mouse:left`, `mouse:right`, etc. | `mouse:left` |
+| Other | `other:<name>` | `other:outside`, `other:no-health` |
+| Draw | `draw` | `draw` |
+| Key Press | `keypress:<key>` | `keypress:a` |
+| Key Release | `keyrelease:<key>` | `keyrelease:a` |
+| Trigger | `trigger:<n>` | `trigger:0` |

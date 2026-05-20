@@ -1,6 +1,6 @@
 use crate::gm8_adapter::read_gm8_assets;
 use crate::logic_export::export_rooms_and_logic;
-use crate::models::{AnalysisReport, CompatibilityLevel, RuntimeManifest};
+use crate::models::{AnalysisReport, CompatibilityLevel, LogicOp, RuntimeManifest};
 use crate::resource_export::export_resources;
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -23,7 +23,53 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     let resource_index = export_resources(&assets, output_dir)?;
     let (rooms, objects, script_ir) = export_rooms_and_logic(&assets.rooms, &assets.objects);
 
-    let warnings = vec!["script-ir-partial".to_string()];
+    // Generate actionable warnings
+    let mut warnings = Vec::new();
+
+    // Check for source-only blocks that are critical for gameplay
+    for block in &script_ir.blocks {
+        if block.support == "source-only" {
+            warnings.push(format!("runtime-missing-source-lowering:{}", block.id));
+        }
+    }
+
+    // Check for unsupported event types
+    let mut seen_event_types: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for obj in &objects {
+        for event in &obj.events {
+            let tag = &event.event_tag;
+            // Group unsupported event types (trigger, timeline, etc.)
+            if tag.starts_with("trigger:") || tag.starts_with("other:user") {
+                if !seen_event_types.contains(tag) {
+                    seen_event_types.insert(tag.clone());
+                    warnings.push(format!("runtime-unsupported-event:{}", tag));
+                }
+            }
+        }
+    }
+
+    // Check for unsupported actions
+    let mut seen_actions: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let unsupported_action_prefixes = ["game_", "file_", "sound_", "window_", "os_", "http_", "shopify_", "steam_"];
+    for block in &script_ir.blocks {
+        for op in &block.ops {
+            if let LogicOp::ActionCall { fn_name, .. } = op {
+                let lower = fn_name.to_lowercase();
+                if unsupported_action_prefixes.iter().any(|p| lower.starts_with(p)) {
+                    if !seen_actions.contains(&lower) {
+                        seen_actions.insert(lower.clone());
+                        warnings.push(format!("runtime-unsupported-action:{}", fn_name));
+                    }
+                }
+            }
+        }
+    }
+
+    // Add a note about partial execution support
+    if !warnings.is_empty() {
+        warnings.push("script-ir-partial".to_string());
+    }
+
     let analysis = AnalysisReport {
         dlls: dlls.to_vec(),
         included_files: assets
@@ -32,10 +78,7 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
             .map(|f| f.file_name.to_string())
             .collect(),
         warnings: warnings.clone(),
-        unsupported_features: vec![
-            "logic-execution-not-yet-implemented".into(),
-            "room-runtime-not-yet-implemented".into(),
-        ],
+        unsupported_features: vec!["logic-execution-not-yet-implemented".into()],
     };
 
     let manifest = RuntimeManifest {

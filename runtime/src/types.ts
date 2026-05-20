@@ -84,8 +84,18 @@ export type RoomDefinition = {
     angle: number;
     blend: number;
     creation_block_id: string | null;
+    /** Runtime hint: whether this instance is solid */
+    is_solid: boolean;
+    /** Runtime hint: whether this instance is a hazard */
+    is_hazard: boolean;
+    /** Runtime hint: whether this instance is a checkpoint */
+    is_checkpoint: boolean;
   }>;
   creation_block_id: string | null;
+  /** Runtime hint: whether this room is playable */
+  playable: boolean;
+  /** Runtime hint: room IDs this room can transition to */
+  transition_targets: number[];
 };
 
 export type ObjectDefinition = {
@@ -98,9 +108,17 @@ export type ObjectDefinition = {
   visible: boolean;
   solid: boolean;
   mask_index: number;
+  /** Runtime hint: whether this object is a hazard (null if cannot determine) */
+  is_hazard: boolean | null;
+  /** Runtime hint: whether this object is a checkpoint (null if cannot determine) */
+  is_checkpoint: boolean | null;
+  /** Runtime hint: whether this object is player-controlled */
+  is_player: boolean;
   events: Array<{
     event_type: number;
     sub_event: number;
+    /** Normalized event tag for runtime dispatch */
+    event_tag: string;
     block_id: string;
     action_count: number;
   }>;
@@ -112,7 +130,10 @@ export type ScriptIrFile = {
     id: string;
     name: string;
     kind: string;
+    /** Support level: "action-list" (executable) or "source-only" (requires GML lowering) */
     support: string;
+    /** Count of actions that can be executed without GML lowering */
+    executable_action_count: number;
     ops: Array<Record<string, unknown>>;
   }>;
 };

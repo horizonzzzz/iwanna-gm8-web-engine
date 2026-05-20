@@ -4,7 +4,9 @@ Browser-playable IWanna MVP targeting legacy GM8-style fangames.
 
 ## Current Phase
 
-Phase 3 upgrades the package output to a runtime-facing format and adds a development runtime shell with a static room viewer.
+Phase 4 is implementing a minimal playable runtime that advances from static room inspection to a first playable browser experience with core interaction: entering a room, moving, jumping, colliding, dying, respawning, and performing basic room transitions.
+
+Phase 3 is complete and delivered the runtime-facing package format and development shell with static room viewer.
 
 ## Local Commands
 
@@ -32,7 +34,8 @@ The goal is not to emulate every Game Maker game. The first focus is a narrower 
 
 - Phase 1: detector foundation
 - Phase 2: GM8 parser adapter and normalized package builder
-- Phase 3: runtime-facing package format and development static room viewer
+- Phase 3: runtime-facing package format and development static room viewer (complete)
+- Phase 4: minimal playable runtime with core gameplay (in progress)
 
 ## Current Commands
 

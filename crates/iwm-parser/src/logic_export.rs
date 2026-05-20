@@ -13,10 +13,10 @@ pub fn export_rooms_and_logic(
 ) -> (Vec<RoomDefinition>, Vec<ObjectDefinition>, ScriptIrFile) {
     let mut blocks = Vec::new();
 
-    let room_defs = rooms
+    let mut room_defs: Vec<RoomDefinition> = rooms
         .iter()
         .enumerate()
-        .filter_map(|(room_id, room)| room.as_ref().map(|room| (room_id, room)))
+        .filter_map(|ri| ri.1.as_ref().map(|r| (ri.0, r)))
         .map(|(room_id, room)| {
             let creation_block_id = if room.creation_code.0.is_empty() {
                 None
@@ -27,6 +27,7 @@ pub fn export_rooms_and_logic(
                     name: format!("room {} creation", room.name),
                     kind: "room-creation".into(),
                     support: "source-only".into(),
+                    executable_action_count: 0,
                     ops: vec![LogicOp::SourceSnippet {
                         code: room.creation_code.to_string(),
                     }],
@@ -34,7 +35,7 @@ pub fn export_rooms_and_logic(
                 Some(id)
             };
 
-            let instances = room
+            let instances: Vec<RoomInstancePlacement> = room
                 .instances
                 .iter()
                 .map(|instance| {
@@ -47,11 +48,25 @@ pub fn export_rooms_and_logic(
                             name: format!("room {room_id} instance {} creation", instance.id),
                             kind: "instance-creation".into(),
                             support: "source-only".into(),
+                            executable_action_count: 0,
                             ops: vec![LogicOp::SourceSnippet {
                                 code: instance.creation_code.to_string(),
                             }],
                         });
                         Some(id)
+                    };
+
+                    // Look up the object to get solid/hazard/checkpoint hints
+                    let (is_solid, is_hazard, is_checkpoint) = match objects.get(instance.object as usize) {
+                        Some(Some(obj)) => {
+                            let name_str = String::from_utf8_lossy(&obj.name.0);
+                            (
+                                obj.solid,
+                                detect_hazard(&name_str),
+                                detect_checkpoint(&name_str),
+                            )
+                        }
+                        _ => (false, false, false),
                     };
 
                     RoomInstancePlacement {
@@ -64,9 +79,23 @@ pub fn export_rooms_and_logic(
                         angle: instance.angle,
                         blend: instance.blend,
                         creation_block_id,
+                        is_solid,
+                        is_hazard,
+                        is_checkpoint,
                     }
                 })
                 .collect();
+
+            // Detect if room is playable (has instances with sprites that aren't decorative)
+            let playable = instances.iter().any(|i| {
+                match objects.get(i.object_id as usize) {
+                    Some(Some(obj)) => {
+                        let name_str = String::from_utf8_lossy(&obj.name.0);
+                        obj.sprite_index >= 0 && !is_decorative_object(&name_str)
+                    }
+                    _ => false,
+                }
+            });
 
             RoomDefinition {
                 id: room_id,
@@ -110,30 +139,66 @@ pub fn export_rooms_and_logic(
                     .collect(),
                 instances,
                 creation_block_id,
+                playable,
+                // Transition targets will be populated by analyzing room_goto actions
+                transition_targets: Vec::new(),
             }
         })
         .collect();
 
+    // Collect room transition targets from object events
+    let mut room_transition_map: std::collections::HashMap<usize, Vec<usize>> =
+        std::collections::HashMap::new();
+    for (object_id, object) in objects.iter().enumerate() {
+        if let Some(obj) = object.as_ref() {
+            for sub_events in &obj.events {
+                for (_sub_event, actions) in sub_events {
+                    for action in actions {
+                        if let Some(_target_room) = detect_room_goto_target(action) {
+                            // Note: we currently only track which objects can trigger transitions,
+                            // not the specific sub_events. For more precise tracking, we'd need
+                            // to also record sub_event in room_transition_map.
+                            room_transition_map
+                                .entry(_target_room)
+                                .or_default()
+                                .push(object_id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let object_defs = objects
         .iter()
         .enumerate()
-        .filter_map(|(object_id, object)| object.as_ref().map(|object| (object_id, object)))
+        .filter_map(|(object_id, object)| object.as_ref().map(|o| (object_id, o)))
         .map(|(object_id, object)| {
             let mut events = Vec::new();
 
             for (event_type, sub_events) in object.events.iter().enumerate() {
                 for (sub_event, actions) in sub_events {
                     let block_id = event_block_id(object_id, event_type, *sub_event);
+                    let executable_count = count_executable_actions(actions);
+                    let support = if executable_count > 0 {
+                        "action-list"
+                    } else {
+                        "source-only"
+                    };
+
                     blocks.push(LogicBlock {
                         id: block_id.clone(),
                         name: format!("object {} event {}:{}", object.name, event_type, sub_event),
                         kind: "object-event".into(),
-                        support: detect_support(actions),
+                        support: support.into(),
+                        executable_action_count: executable_count,
                         ops: actions.iter().map(action_to_logic_op).collect(),
                     });
+
                     events.push(ObjectEventEntry {
                         event_type,
                         sub_event: *sub_event,
+                        event_tag: normalize_event_tag(event_type, *sub_event),
                         block_id,
                         action_count: actions.len(),
                     });
@@ -150,10 +215,29 @@ pub fn export_rooms_and_logic(
                 visible: object.visible,
                 solid: object.solid,
                 mask_index: object.mask_index,
+                is_hazard: detect_hazard(&String::from_utf8_lossy(object.name.0.as_ref())).then_some(true),
+                is_checkpoint: detect_checkpoint(&String::from_utf8_lossy(object.name.0.as_ref())).then_some(true),
+                is_player: detect_player(&String::from_utf8_lossy(object.name.0.as_ref())),
                 events,
             }
         })
         .collect();
+
+    // Update room transition_targets based on discovered targets
+    for room in &mut room_defs.iter_mut() {
+        // Find objects in this room that trigger transitions
+        if let Some(triggering_objects) = room_transition_map.get(&room.id) {
+            // For now, we can't easily trace which specific instances trigger transitions
+            // without deeper analysis, so we leave transition_targets as discoverable
+            // from the objects present in the room
+            room.transition_targets = room
+                .instances
+                .iter()
+                .filter(|i| triggering_objects.contains(&(i.object_id as usize)))
+                .map(|i| i.object_id as usize)
+                .collect();
+        }
+    }
 
     (
         room_defs,
@@ -163,6 +247,146 @@ pub fn export_rooms_and_logic(
             blocks,
         },
     )
+}
+
+/// Normalize event type and sub-event into a runtime-dispatchable tag
+fn normalize_event_tag(event_type: usize, sub_event: u32) -> String {
+    match event_type {
+        0 => "create".to_string(),
+        1 => "destroy".to_string(),
+        2 => format!("alarm:{}", sub_event),
+        3 => match sub_event {
+            0 => "step".to_string(),
+            1 => "step:begin".to_string(),
+            2 => "step:end".to_string(),
+            _ => format!("step:{}", sub_event),
+        },
+        4 => "collision".to_string(), // Collision target is dynamic
+        5 => format!("keyboard:0x{:02x}", sub_event as u8),
+        6 => match sub_event {
+            0 => "mouse:left".to_string(),
+            1 => "mouse:right".to_string(),
+            2 => "mouse:middle".to_string(),
+            3 => "mouse:no-button".to_string(),
+            4 => "mouse:left-pressed".to_string(),
+            5 => "mouse:right-pressed".to_string(),
+            6 => "mouse:middle-pressed".to_string(),
+            7 => "mouse:left-released".to_string(),
+            8 => "mouse:right-released".to_string(),
+            9 => "mouse:middle-released".to_string(),
+            10 => "mouse:enter".to_string(),
+            11 => "mouse:leave".to_string(),
+            12 => "mouse:global-pressed".to_string(),
+            13 => "mouse:global-released".to_string(),
+            50 => "mouse:global-left".to_string(),
+            51 => "mouse:global-right".to_string(),
+            52 => "mouse:global-middle".to_string(),
+            53 => "mouse:global-left-pressed".to_string(),
+            54 => "mouse:global-right-pressed".to_string(),
+            55 => "mouse:global-middle-pressed".to_string(),
+            56 => "mouse:global-left-released".to_string(),
+            57 => "mouse:global-right-released".to_string(),
+            58 => "mouse:global-middle-released".to_string(),
+            60 => "mouse:wheel-up".to_string(),
+            61 => "mouse:wheel-down".to_string(),
+            _ => format!("mouse:{}", sub_event),
+        },
+        7 => match sub_event {
+            0 => "other:outside".to_string(),
+            1 => "other:boundary".to_string(),
+            2 => "other:game-start".to_string(),
+            3 => "other:game-end".to_string(),
+            4 => "other:room-start".to_string(),
+            5 => "other:room-end".to_string(),
+            6 => "other:no-health".to_string(),
+            7 => "other:animation-end".to_string(),
+            8 => "other:end-of-path".to_string(),
+            9 => "other:no-more-lives".to_string(),
+            10 => "other:animation-update".to_string(),
+            11 => "other:user0".to_string(),
+            12 => "other:user1".to_string(),
+            13 => "other:user2".to_string(),
+            14 => "other:user3".to_string(),
+            15 => "other:user4".to_string(),
+            16 => "other:user5".to_string(),
+            17 => "other:user6".to_string(),
+            18 => "other:user7".to_string(),
+            19 => "other:user8".to_string(),
+            20 => "other:user9".to_string(),
+            21 => "other:user10".to_string(),
+            22 => "other:user11".to_string(),
+            23 => "other:user12".to_string(),
+            24 => "other:user13".to_string(),
+            25 => "other:user14".to_string(),
+            26 => "other:user15".to_string(),
+            n if (40..48).contains(&n) => format!("other:outside-view-{}", n - 40),
+            n if (50..58).contains(&n) => format!("other:intersect-view-{}", n - 50),
+            _ => format!("other:{}", sub_event),
+        },
+        8 => "draw".to_string(),
+        9 => format!("keypress:{}", (sub_event as u8) as char),
+        10 => format!("keyrelease:{}", (sub_event as u8) as char),
+        11 => format!("trigger:{}", sub_event),
+        _ => format!("event:{}-{}", event_type, sub_event),
+    }
+}
+
+/// Count how many actions in a list can be executed without GML lowering
+fn count_executable_actions(actions: &[CodeAction]) -> usize {
+    actions
+        .iter()
+        .filter(|a| a.fn_code.0.is_empty())
+        .count()
+}
+
+/// Detect if an object name suggests it's a hazard
+fn detect_hazard(name: &str) -> bool {
+    let name_lower = name.to_lowercase();
+    let hazard_patterns = [
+        "hazard", "spike", "trap", "danger", "killer", "death", "hurt", "enemy", "bad",
+    ];
+    hazard_patterns.iter().any(|p| name_lower.contains(p))
+}
+
+/// Detect if an object name suggests it's a checkpoint
+fn detect_checkpoint(name: &str) -> bool {
+    let name_lower = name.to_lowercase();
+    let checkpoint_patterns = ["checkpoint", "cp", "save", "flag", "spawn", "start"];
+    checkpoint_patterns.iter().any(|p| name_lower.contains(p))
+}
+
+/// Detect if an object name suggests it's player-controlled
+fn detect_player(name: &str) -> bool {
+    let name_lower = name.to_lowercase();
+    let player_patterns = ["player", "p1", "p2", "hero", "character", "avatar"];
+    player_patterns.iter().any(|p| name_lower.contains(p))
+}
+
+/// Check if an object is decorative (not part of gameplay)
+fn is_decorative_object(name: &str) -> bool {
+    let name_lower = name.to_lowercase();
+    let decorative_patterns = ["bg_", "back", "deco", "particle", "effect"];
+    decorative_patterns.iter().any(|p| name_lower.contains(p))
+}
+
+/// Try to detect room_goto target from an action
+fn detect_room_goto_target(action: &CodeAction) -> Option<usize> {
+    // room_goto(room) sets first arg to room index
+    let fn_name_str = String::from_utf8_lossy(action.fn_name.0.as_ref());
+    if fn_name_str.contains("room_goto") && !action.fn_code.0.is_empty() {
+        // This is source code - we'd need to parse it to get the room
+        None
+    } else if fn_name_str.contains("room_goto") {
+        // Action call - check args
+        if let Some(room_arg) = action.param_strings.first() {
+            let room_arg_str = String::from_utf8_lossy(room_arg.0.as_ref());
+            room_arg_str.parse().ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    }
 }
 
 pub fn event_block_id(object_id: usize, event_type: usize, sub_event: u32) -> String {
@@ -205,13 +429,5 @@ fn action_to_logic_op(action: &CodeAction) -> LogicOp {
         fn_name: action.fn_name.to_string(),
         fn_code: action.fn_code.to_string(),
         args,
-    }
-}
-
-fn detect_support(actions: &[CodeAction]) -> String {
-    if actions.iter().any(|action| !action.fn_code.0.is_empty()) {
-        "source-only".into()
-    } else {
-        "action-list".into()
     }
 }

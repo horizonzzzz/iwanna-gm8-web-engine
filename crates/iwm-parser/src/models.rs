@@ -76,6 +76,10 @@ pub struct RoomDefinition {
     pub views: Vec<RoomView>,
     pub instances: Vec<RoomInstancePlacement>,
     pub creation_block_id: Option<String>,
+    /// Runtime hint: whether this room is playable (has playable objects, not just decorative)
+    pub playable: bool,
+    /// Runtime hint: room IDs this room can transition to (discovered from room_goto events)
+    pub transition_targets: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +121,12 @@ pub struct RoomInstancePlacement {
     pub angle: f64,
     pub blend: u32,
     pub creation_block_id: Option<String>,
+    /// Runtime hint: whether this instance is solid (from object.solid or collision check)
+    pub is_solid: bool,
+    /// Runtime hint: whether this instance is a hazard (derived from object name heuristics)
+    pub is_hazard: bool,
+    /// Runtime hint: whether this instance is a checkpoint (derived from object name heuristics)
+    pub is_checkpoint: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,6 +140,12 @@ pub struct ObjectDefinition {
     pub visible: bool,
     pub solid: bool,
     pub mask_index: i32,
+    /// Runtime hint: whether this object is a hazard (null if cannot determine)
+    pub is_hazard: Option<bool>,
+    /// Runtime hint: whether this object is a checkpoint (null if cannot determine)
+    pub is_checkpoint: Option<bool>,
+    /// Runtime hint: whether this object is player-controlled
+    pub is_player: bool,
     pub events: Vec<ObjectEventEntry>,
 }
 
@@ -137,6 +153,8 @@ pub struct ObjectDefinition {
 pub struct ObjectEventEntry {
     pub event_type: usize,
     pub sub_event: u32,
+    /// Normalized event tag for runtime dispatch (e.g., "create", "step", "keyboard:a")
+    pub event_tag: String,
     pub block_id: String,
     pub action_count: usize,
 }
@@ -152,7 +170,10 @@ pub struct LogicBlock {
     pub id: String,
     pub name: String,
     pub kind: String,
+    /// Support level: "action-list" (executable) or "source-only" (requires GML lowering)
     pub support: String,
+    /// Count of actions that can be executed without GML lowering
+    pub executable_action_count: usize,
     pub ops: Vec<LogicOp>,
 }
 
