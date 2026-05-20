@@ -1,6 +1,8 @@
 # Runtime Gold Sample
 
-This document captures the gold sample chosen for Phase 4 minimal playable runtime implementation.
+This document captures the current validation samples for runtime bring-up.
+
+These samples were originally chosen for the prior TS-first minimal-playable-runtime direction. They remain useful under the WASM-first direction as runtime-core bring-up and fidelity validation targets.
 
 ## Primary Gold Sample
 
@@ -22,19 +24,16 @@ This document captures the gold sample chosen for Phase 4 minimal playable runti
 - `Kamilia` currently produces mostly `action-list` blocks (useful contrast when debugging IR execution)
 - Can serve as a secondary validation target after gold sample is playable
 
-## Expected Milestone Behaviors
+## Expected Validation Behaviors
 
-Phase 4 targets the following gameplay path for IWBT_Dife:
+Under the WASM-first runtime direction, Phase 4 validation for `IWBT_Dife` should eventually prove:
 
 - [ ] Package loads successfully
-- [ ] Runtime boots into the manifest default room
-- [ ] Player can move left and right
-- [ ] Player can jump
-- [ ] Player collides with solid terrain
-- [ ] Player dies on at least one basic hazard
-- [ ] Player respawns correctly (room restart or spawn-point reset)
-- [ ] At least one room transition works (triggered through supported action subset)
-- [ ] Runtime diagnostics remain explicit when unsupported logic is encountered
+- [ ] Extracted runtime core boots into the manifest default room or equivalent first-room path
+- [ ] Browser host can drive deterministic ticks
+- [ ] Player movement and collision fidelity can be validated against runner semantics
+- [ ] At least one room transition can be exercised through the WASM-hosted runtime path
+- [ ] Diagnostics remain explicit when unsupported logic, externals, or host gaps are encountered
 
 ## Out-of-Scope for Phase 4
 
@@ -54,12 +53,13 @@ TBD - will be updated after initial gold sample package analysis and runtime exe
 
 The gold sample drives implementation priorities:
 
-- If `IWBT_Dife` needs action X to be playable, implement action X first
-- If a specific `source-only` block blocks critical gameplay, lower that block or classify it as unsupported-but-noncritical
-- Do not optimize for multiple games before one gold sample is playable
+- If `IWBT_Dife` exposes a host-bound blocker in OpenGMK runtime extraction, solve that before improving the old TS gameplay runtime
+- If parser output lacks data needed for the WASM-hosted path, extend parser outputs deliberately
+- Do not optimize for multiple games before one sample can boot and tick correctly through the target runtime architecture
 
 ## References
 
 - Implementation plan: `docs/superpowers/plans/2026-05-20-minimal-playable-runtime.md`
+- WASM-first runtime plan: `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md`
 - Package format: `docs/notes/package-format-v1-runtime.md`
 - Design spec: `docs/superpowers/specs/2026-05-19-iwanna-gm8-web-engine-design.md`

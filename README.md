@@ -4,7 +4,9 @@ Browser-playable IWanna MVP targeting legacy GM8-style fangames.
 
 ## Current Phase
 
-Phase 4 is implementing a minimal playable runtime that advances from static room inspection to a first playable browser experience with core interaction: entering a room, moving, jumping, colliding, dying, respawning, and performing basic room transitions.
+Phase 4 has switched to a WASM-first runtime strategy.
+
+The current `runtime/` app remains the browser shell, package inspector, and diagnostics harness, but the long-term gameplay execution path is no longer the project-owned TypeScript runtime. Runtime fidelity work now targets adapting OpenGMK `gm8emulator` into a browser-hosted WASM execution core.
 
 Phase 3 is complete and delivered the runtime-facing package format and development shell with static room viewer.
 
@@ -35,7 +37,7 @@ The goal is not to emulate every Game Maker game. The first focus is a narrower 
 - Phase 1: detector foundation
 - Phase 2: GM8 parser adapter and normalized package builder
 - Phase 3: runtime-facing package format and development static room viewer (complete)
-- Phase 4: minimal playable runtime with core gameplay (in progress)
+- Phase 4: OpenGMK WASM-first runtime bring-up (in progress)
 
 ## Current Commands
 
@@ -46,6 +48,7 @@ cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime
 ```
 
 See `docs/notes/package-format-v1-runtime.md` for the current runtime package contract.
+See `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md` for the current runtime implementation direction.
 
 ## Repository Contents
 
@@ -112,7 +115,7 @@ The current project direction is centered on:
 - detecting likely GM8-style IWanna fangame packages
 - parsing targetable GM8 executables and related resources
 - building a normalized project-owned package format
-- preparing for a browser runtime that can execute core gameplay
+- preparing for a browser runtime that can execute core gameplay through a WASM-hosted engine path
 
 The Phase 2 package-builder milestone emitted a structural V0 package consisting of:
 
@@ -123,6 +126,12 @@ The Phase 2 package-builder milestone emitted a structural V0 package consisting
 - `analysis.json`
 
 That V0 output has been superseded by the current runtime-facing Phase 3 package, which now includes browser-ready `resources/` exports and `scripts.ir.json`.
+
+Important runtime direction note:
+
+- the current package and frontend shell remain useful
+- the current TypeScript gameplay runtime should be treated as transitional tooling, not the final compatibility engine
+- future runtime-fidelity work should accumulate in the WASM-hosted engine path, not in a parallel TS gameplay reimplementation
 
 Out of scope for the MVP:
 

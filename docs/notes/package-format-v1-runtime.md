@@ -14,6 +14,13 @@ Current emitted runtime package directory contents:
 
 This package is runtime-consumable but still phase-limited.
 
+Important direction note:
+
+- this package remains the current browser-shell input format
+- the current TypeScript runtime consumption path is transitional
+- if the WASM-hosted runtime later requires a richer execution input, this format may evolve again
+- until then, these outputs remain useful for package inspection, diagnostics, and shell bring-up
+
 Included in this phase:
 
 - browser-ready sprite exports
@@ -25,6 +32,8 @@ Included in this phase:
 - runtime categorization: hazard, checkpoint, player-controlled hints
 
 ## Current Execution Status
+
+The execution notes below describe the current TypeScript/browser-shell runtime path. They should be treated as transitional implementation status, not as the final long-term engine direction.
 
 ### Runtime-Consumable Static Data
 
@@ -48,6 +57,8 @@ The following `action-list` script blocks can be executed by the browser runtime
 
 `LogicBlock.executable_action_count` indicates how many actions can run without GML lowering.
 
+This is currently useful for diagnostics and shell validation, but it is not the intended long-term execution architecture now that the project has adopted a WASM-first runtime strategy.
+
 ### Still Deferred / Unsupported
 
 - `source-only` script blocks that require GML lowering
@@ -66,7 +77,7 @@ Current `analysis.json` warnings include actionable categories:
 - `runtime-unsupported-action:<fn_name>` - actions not yet implemented (e.g., file_*, sound_*, window_*)
 - `logic-execution-not-yet-implemented` - general execution placeholder
 
-These warnings guide Phase 4 implementation priorities.
+These warnings still guide parser and shell diagnostics work, but gameplay-runtime prioritization now belongs to the WASM-first runtime plan.
 
 ### Event Tag Normalization
 

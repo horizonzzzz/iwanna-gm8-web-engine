@@ -1,5 +1,9 @@
 # Minimal Playable Runtime Implementation Plan
 
+> **Status note:** This document reflects the previous TS-first gameplay-runtime direction. It is now superseded in strategic direction by `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md`.
+>
+> This plan may still contain useful shell/UI/diagnostics tasks, but gameplay-engine work should no longer use this document as the primary implementation route.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Advance the current runtime shell from static room inspection to a first playable browser runtime that can boot one gold-sample IWanna game and support core interaction: entering a room, moving, jumping, colliding, dying, respawning, and performing a basic room transition.
