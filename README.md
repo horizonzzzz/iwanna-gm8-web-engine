@@ -4,13 +4,14 @@ Browser-playable IWanna MVP targeting legacy GM8-style fangames.
 
 ## Current Phase
 
-Phase 2 adds a GM8 parser adapter and a normalized package builder on top of the existing detector.
+Phase 3 upgrades the package output to a runtime-facing format and adds a development runtime shell with a static room viewer.
 
 ## Local Commands
 
 ```bash
 cargo test
 cargo run -p iwm-cli -- detect --input C:\path\to\game
+cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample
 ```
 
 ## Overview
@@ -40,7 +41,7 @@ cargo run -p iwm-cli -- detect --input C:\path\to\game
 cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\out\sample
 ```
 
-See `docs/notes/package-format-v0.md` for the current package output.
+See `docs/notes/package-format-v1-runtime.md` for the current runtime package contract.
 
 ## Repository Contents
 
