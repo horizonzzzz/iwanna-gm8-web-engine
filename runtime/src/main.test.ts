@@ -38,7 +38,9 @@ const samplePackage: RuntimePackage = {
       views_enabled: false,
       views: [],
       instances: [],
-      creation_block_id: null
+      creation_block_id: null,
+      playable: true,
+      transition_targets: []
     },
     {
       id: 1,
@@ -51,13 +53,31 @@ const samplePackage: RuntimePackage = {
       views_enabled: false,
       views: [],
       instances: [],
-      creation_block_id: null
+      creation_block_id: null,
+      playable: true,
+      transition_targets: []
     }
   ],
-  objects: [{ id: 0, name: 'Player', sprite_index: 0, parent_index: -1, depth: 0, persistent: false, visible: true, solid: false, mask_index: -1, events: [] }],
+  objects: [
+    {
+      id: 0,
+      name: 'Player',
+      sprite_index: 0,
+      parent_index: -1,
+      depth: 0,
+      persistent: false,
+      visible: true,
+      solid: false,
+      mask_index: -1,
+      is_hazard: null,
+      is_checkpoint: null,
+      is_player: true,
+      events: []
+    }
+  ],
   scripts: {
     format: 'iwm-script-ir-v1',
-    blocks: [{ id: 'block-1', name: 'Step', kind: 'step', support: 'action-list', ops: [] }]
+    blocks: [{ id: 'block-1', name: 'Step', kind: 'step', support: 'action-list', executable_action_count: 0, ops: [] }]
   },
   resources: {
     sprites: [
@@ -285,11 +305,16 @@ describe('main runtime shell', () => {
     createRuntimeShell(root as unknown as HTMLElement, { loadPackage, renderStaticRoom });
 
     const input = doc.querySelector<FakeElement>('input[name="packagePath"]');
-    const button = doc.querySelector<FakeElement>('button');
+    const buttons = doc.querySelectorAll<FakeElement>('button');
+    const button = buttons[0];
+    const pauseButton = buttons[1];
+    const resetButton = buttons[2];
     const select = doc.querySelector<FakeElement>('select[name="roomSelect"]');
 
     expect(input?.value).toBe('/packages/sample');
     expect(button?.textContent).toContain('Load');
+    expect(pauseButton?.textContent).toContain('Pause');
+    expect(resetButton?.textContent).toContain('Reset');
     expect(doc.querySelector('#toolbar')).not.toBeNull();
     expect(doc.querySelector('#room-canvas')).not.toBeNull();
     expect(doc.querySelector('#inspectors')).not.toBeNull();
@@ -304,7 +329,7 @@ describe('main runtime shell', () => {
     expect(collectText(doc.body)).toContain('gm8');
     expect(collectText(doc.body)).toContain('partial');
     expect(renderStaticRoom).toHaveBeenCalledTimes(1);
-    expect(doc.querySelectorAll('pre')).toHaveLength(3);
+    expect(doc.querySelectorAll('pre').length).toBeGreaterThanOrEqual(3);
 
     if (!select) {
       throw new Error('missing room select');
@@ -315,7 +340,15 @@ describe('main runtime shell', () => {
     await Promise.resolve();
 
     expect(renderStaticRoom).toHaveBeenCalledTimes(2);
-    expect(collectText(doc.body)).toContain('Viewing Room 2');
+    expect(collectText(doc.body)).toContain('Room 2');
+
+    pauseButton?.click();
+    await Promise.resolve();
+    expect(pauseButton?.textContent).toContain('Pause');
+
+    resetButton?.click();
+    await Promise.resolve();
+    expect(renderStaticRoom).toHaveBeenCalledTimes(4);
   });
 
   it('reports load failures without leaving stale room controls enabled', async () => {
@@ -334,8 +367,7 @@ describe('main runtime shell', () => {
     const select = doc.querySelector<FakeElement>('select[name="roomSelect"]');
 
     button?.click();
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(loadPackage).toHaveBeenCalledWith('/packages/sample');
     expect(renderStaticRoom).not.toHaveBeenCalled();

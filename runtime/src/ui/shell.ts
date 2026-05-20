@@ -1,13 +1,9 @@
 import { loadPackage } from '../loadPackage';
 import { makeBackgroundPathMap, makeSpriteFrameMap } from '../render/resourceCache';
 import { renderStaticRoom } from '../render/staticRoomRenderer';
-import {
-  renderManifestSummary,
-  renderObjectsSlice,
-  renderRoomsSlice,
-  renderScriptsSlice
-} from './inspectors';
+import { renderManifestSummary, renderObjectsSlice, renderRoomsSlice, renderScriptsSlice } from './inspectors';
 import type { RuntimePackage } from '../types';
+import { GameRuntime } from '../runtime/gameRuntime';
 
 type ShellDependencies = {
   loadPackage: typeof loadPackage;
@@ -23,7 +19,10 @@ type ShellElements = {
   input: HTMLInputElement;
   button: HTMLButtonElement;
   select: HTMLSelectElement;
+  pauseButton: HTMLButtonElement;
+  resetButton: HTMLButtonElement;
   status: HTMLElement;
+  diagnostics: HTMLElement;
   metaRoot: HTMLElement;
   toolbar: HTMLElement;
   inspectors: HTMLElement;
@@ -42,28 +41,21 @@ function resetRoomOptions(doc: Document, select: HTMLSelectElement, message: str
 function clearCanvas(canvas: HTMLCanvasElement): void {
   canvas.width = 960;
   canvas.height = 540;
-
   const getContext = (canvas as Partial<HTMLCanvasElement>).getContext;
   if (typeof getContext !== 'function') {
     return;
   }
-
   const context = getContext.call(canvas, '2d');
   if (!context) {
     return;
   }
-
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = '#0c1118';
   context.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function formatErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
+  return error instanceof Error ? error.message : String(error);
 }
 
 function createShell(doc: Document): { shell: HTMLElement; elements: ShellElements } {
@@ -76,7 +68,7 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
   const title = doc.createElement('h1');
   title.textContent = 'IWanna Runtime Shell';
   const intro = doc.createElement('p');
-  intro.textContent = 'Developer harness for runtime package inspection and static room rendering.';
+  intro.textContent = 'Developer harness for runtime package inspection and playable runtime execution.';
 
   const packageField = doc.createElement('label');
   packageField.className = 'field';
@@ -90,14 +82,25 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
   button.type = 'button';
   button.textContent = 'Load Package';
 
+  const pauseButton = doc.createElement('button');
+  pauseButton.type = 'button';
+  pauseButton.textContent = 'Pause';
+
+  const resetButton = doc.createElement('button');
+  resetButton.type = 'button';
+  resetButton.textContent = 'Reset';
+
   const status = doc.createElement('p');
   status.className = 'status';
   status.textContent = 'Idle';
 
+  const diagnostics = doc.createElement('section');
+  diagnostics.className = 'diagnostics';
+
   const metaRoot = doc.createElement('section');
   metaRoot.className = 'meta';
 
-  sidebar.append(title, intro, packageField, button, status, metaRoot);
+  sidebar.append(title, intro, packageField, button, pauseButton, resetButton, status, diagnostics, metaRoot);
 
   const stage = doc.createElement('main');
   stage.className = 'stage';
@@ -125,7 +128,7 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
 
   return {
     shell,
-    elements: { input, button, select, status, metaRoot, toolbar, inspectors, canvas }
+    elements: { input, button, select, pauseButton, resetButton, status, diagnostics, metaRoot, toolbar, inspectors, canvas }
   };
 }
 
@@ -142,11 +145,35 @@ function setRoomOptions(doc: Document, select: HTMLSelectElement, pkg: RuntimePa
 
 function renderInspectors(doc: Document, metaRoot: HTMLElement, inspectors: HTMLElement, pkg: RuntimePackage): void {
   metaRoot.replaceChildren(renderManifestSummary(doc, pkg.manifest, pkg.analysis));
-  inspectors.replaceChildren(
-    renderRoomsSlice(doc, pkg.rooms),
-    renderObjectsSlice(doc, pkg.objects),
-    renderScriptsSlice(doc, pkg.scripts)
-  );
+  inspectors.replaceChildren(renderRoomsSlice(doc, pkg.rooms), renderObjectsSlice(doc, pkg.objects), renderScriptsSlice(doc, pkg.scripts));
+}
+
+function renderDiagnostics(doc: Document, root: HTMLElement, diagnostics: ReturnType<GameRuntime['getDiagnostics']>): void {
+  root.replaceChildren();
+  const section = doc.createElement('section');
+  section.className = 'inspector';
+  const heading = doc.createElement('h3');
+  heading.textContent = 'Diagnostics';
+  const pre = doc.createElement('pre');
+  pre.textContent = JSON.stringify(diagnostics.slice(-12), null, 2);
+  section.append(heading, pre);
+  root.append(section);
+}
+
+function renderRuntimeRoom(
+  basePath: string,
+  canvas: HTMLCanvasElement,
+  roomId: number,
+  pkg: RuntimePackage,
+  renderStatic: typeof renderStaticRoom
+): Promise<void> {
+  const room = pkg.rooms.find((candidate) => candidate.id === roomId);
+  if (!room) {
+    return Promise.resolve();
+  }
+  const backgroundPaths = makeBackgroundPathMap(basePath, pkg.resources);
+  const spritePaths = makeSpriteFrameMap(basePath, pkg.resources);
+  return renderStatic(canvas, room, pkg.objects, backgroundPaths, spritePaths);
 }
 
 export function createRuntimeShell(root: HTMLElement, dependencies: Partial<ShellDependencies> = {}): void {
@@ -160,28 +187,24 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
   const { shell, elements } = createShell(doc);
   root.append(shell);
 
-  const { input, button, select, status, metaRoot, inspectors, canvas } = elements;
+  const { input, button, select, pauseButton, resetButton, status, diagnostics, metaRoot, inspectors, canvas } = elements;
+  const runtime = new GameRuntime();
   let loadedPackage: RuntimePackage | null = null;
 
-  const drawRoom = async (roomId: number): Promise<void> => {
+  const draw = async (): Promise<void> => {
     if (!loadedPackage) {
       return;
     }
-
-    const room = loadedPackage.rooms.find((candidate) => candidate.id === roomId);
-    if (!room) {
-      status.textContent = `Room ${roomId} is not available`;
-      return;
+    const snapshot = runtime.snapshot;
+    renderDiagnostics(doc, diagnostics, snapshot.diagnostics);
+    if (snapshot.roomId != null) {
+      await renderRuntimeRoom(input.value, canvas, snapshot.roomId, loadedPackage, resolved.renderStaticRoom);
+      status.textContent = `${snapshot.status}: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`;
     }
+  };
 
-    const backgroundPaths = makeBackgroundPathMap(input.value, loadedPackage.resources);
-    const spritePaths = makeSpriteFrameMap(input.value, loadedPackage.resources);
-    try {
-      await resolved.renderStaticRoom(canvas, room, loadedPackage.objects, backgroundPaths, spritePaths);
-      status.textContent = `Viewing ${room.name}`;
-    } catch (error) {
-      status.textContent = `Render failed: ${formatErrorMessage(error)}`;
-    }
+  const updatePausedButton = (): void => {
+    pauseButton.textContent = runtime.snapshot.paused ? 'Resume' : 'Pause';
   };
 
   button.addEventListener('click', async () => {
@@ -194,18 +217,21 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       loadedPackage = pkg;
       renderInspectors(doc, metaRoot, inspectors, pkg);
       setRoomOptions(doc, select, pkg);
-      const initialRoomId = pkg.manifest.default_room_id ?? pkg.rooms[0]?.id;
-      if (initialRoomId != null) {
-        select.value = String(initialRoomId);
-        await drawRoom(initialRoomId);
-      } else {
-        clearCanvas(canvas);
-        status.textContent = 'Package loaded with no rooms';
+      runtime.load(pkg);
+      runtime.pause();
+      updatePausedButton();
+      const roomId = runtime.snapshot.roomId ?? pkg.manifest.default_room_id ?? pkg.rooms[0]?.id;
+      if (roomId != null) {
+        select.value = String(roomId);
       }
+      await draw();
+      status.textContent =
+        runtime.snapshot.roomId != null ? `Loaded ${pkg.manifest.source_name}` : 'Package loaded';
     } catch (error) {
       loadedPackage = null;
       metaRoot.replaceChildren();
       inspectors.replaceChildren();
+      diagnostics.replaceChildren();
       resetRoomOptions(doc, select, 'Load a package first');
       clearCanvas(canvas);
       status.textContent = `Load failed: ${formatErrorMessage(error)}`;
@@ -217,7 +243,36 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     }
   });
 
+  pauseButton.addEventListener('click', async () => {
+    if (!loadedPackage) {
+      return;
+    }
+    if (runtime.snapshot.paused) {
+      runtime.resume();
+      runtime.tick();
+    } else {
+      runtime.pause();
+    }
+    updatePausedButton();
+    await draw();
+  });
+
+  resetButton.addEventListener('click', async () => {
+    if (!loadedPackage) {
+      return;
+    }
+    runtime.reset();
+    runtime.tick();
+    await draw();
+  });
+
   select.addEventListener('change', async () => {
-    await drawRoom(Number(select.value));
+    if (!loadedPackage) {
+      return;
+    }
+    const roomId = Number(select.value);
+    runtime.queueRoomTransition({ roomId });
+    runtime.tick();
+    await draw();
   });
 }
