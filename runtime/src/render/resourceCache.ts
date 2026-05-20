@@ -1,5 +1,15 @@
 import type { ResourceIndex } from '../types';
 
+export type BackgroundPathMap = Map<number, string>;
+
+export type SpriteFrame = {
+  imagePath: string;
+  originX: number;
+  originY: number;
+};
+
+export type SpriteFrameMap = Map<number, SpriteFrame>;
+
 export class ResourceCache {
   private readonly images = new Map<string, HTMLImageElement>();
 
@@ -20,16 +30,23 @@ export class ResourceCache {
   }
 }
 
-export function makeBackgroundPathMap(basePath: string, resources: ResourceIndex): Map<number, string> {
+export function makeBackgroundPathMap(basePath: string, resources: ResourceIndex): BackgroundPathMap {
   return new Map(
     resources.backgrounds.map((background) => [background.id, `${basePath}/${background.image_path}`])
   );
 }
 
-export function makeSpriteFrameMap(basePath: string, resources: ResourceIndex): Map<number, string> {
+export function makeSpriteFrameMap(basePath: string, resources: ResourceIndex): SpriteFrameMap {
   return new Map(
     resources.sprites
       .filter((sprite) => sprite.frame_paths[0])
-      .map((sprite) => [sprite.id, `${basePath}/${sprite.frame_paths[0]}`])
+      .map((sprite) => [
+        sprite.id,
+        {
+          imagePath: `${basePath}/${sprite.frame_paths[0]}`,
+          originX: sprite.origin_x,
+          originY: sprite.origin_y
+        }
+      ])
   );
 }

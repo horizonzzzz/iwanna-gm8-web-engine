@@ -30,6 +30,42 @@ type ShellElements = {
   canvas: HTMLCanvasElement;
 };
 
+function resetRoomOptions(doc: Document, select: HTMLSelectElement, message: string): void {
+  select.innerHTML = '';
+  const option = doc.createElement('option');
+  option.value = '';
+  option.textContent = message;
+  select.append(option);
+  select.disabled = true;
+}
+
+function clearCanvas(canvas: HTMLCanvasElement): void {
+  canvas.width = 960;
+  canvas.height = 540;
+
+  const getContext = (canvas as Partial<HTMLCanvasElement>).getContext;
+  if (typeof getContext !== 'function') {
+    return;
+  }
+
+  const context = getContext.call(canvas, '2d');
+  if (!context) {
+    return;
+  }
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#0c1118';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function formatErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
 function createShell(doc: Document): { shell: HTMLElement; elements: ShellElements } {
   const shell = doc.createElement('div');
   shell.className = 'shell';
@@ -72,11 +108,7 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
   roomLabel.append('Room');
   const select = doc.createElement('select');
   select.name = 'roomSelect';
-  select.disabled = true;
-  const emptyOption = doc.createElement('option');
-  emptyOption.value = '';
-  emptyOption.textContent = 'Load a package first';
-  select.append(emptyOption);
+  resetRoomOptions(doc, select, 'Load a package first');
   roomLabel.append(select);
   toolbar.append(roomLabel);
 
@@ -138,25 +170,50 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
 
     const room = loadedPackage.rooms.find((candidate) => candidate.id === roomId);
     if (!room) {
+      status.textContent = `Room ${roomId} is not available`;
       return;
     }
 
     const backgroundPaths = makeBackgroundPathMap(input.value, loadedPackage.resources);
     const spritePaths = makeSpriteFrameMap(input.value, loadedPackage.resources);
-    await resolved.renderStaticRoom(canvas, room, loadedPackage.objects, backgroundPaths, spritePaths);
-    status.textContent = `Viewing ${room.name}`;
+    try {
+      await resolved.renderStaticRoom(canvas, room, loadedPackage.objects, backgroundPaths, spritePaths);
+      status.textContent = `Viewing ${room.name}`;
+    } catch (error) {
+      status.textContent = `Render failed: ${formatErrorMessage(error)}`;
+    }
   };
 
   button.addEventListener('click', async () => {
     status.textContent = 'Loading package...';
-    const pkg = await resolved.loadPackage(input.value);
-    loadedPackage = pkg;
-    renderInspectors(doc, metaRoot, inspectors, pkg);
-    setRoomOptions(doc, select, pkg);
-    const initialRoomId = pkg.manifest.default_room_id ?? pkg.rooms[0]?.id;
-    if (initialRoomId != null) {
-      select.value = String(initialRoomId);
-      await drawRoom(initialRoomId);
+    button.disabled = true;
+    select.disabled = true;
+
+    try {
+      const pkg = await resolved.loadPackage(input.value);
+      loadedPackage = pkg;
+      renderInspectors(doc, metaRoot, inspectors, pkg);
+      setRoomOptions(doc, select, pkg);
+      const initialRoomId = pkg.manifest.default_room_id ?? pkg.rooms[0]?.id;
+      if (initialRoomId != null) {
+        select.value = String(initialRoomId);
+        await drawRoom(initialRoomId);
+      } else {
+        clearCanvas(canvas);
+        status.textContent = 'Package loaded with no rooms';
+      }
+    } catch (error) {
+      loadedPackage = null;
+      metaRoot.replaceChildren();
+      inspectors.replaceChildren();
+      resetRoomOptions(doc, select, 'Load a package first');
+      clearCanvas(canvas);
+      status.textContent = `Load failed: ${formatErrorMessage(error)}`;
+    } finally {
+      button.disabled = false;
+      if (loadedPackage && loadedPackage.rooms.length > 0) {
+        select.disabled = false;
+      }
     }
   });
 

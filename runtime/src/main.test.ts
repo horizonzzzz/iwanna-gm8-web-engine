@@ -315,5 +315,31 @@ describe('main runtime shell', () => {
     await Promise.resolve();
 
     expect(renderStaticRoom).toHaveBeenCalledTimes(2);
+    expect(collectText(doc.body)).toContain('Viewing Room 2');
+  });
+
+  it('reports load failures without leaving stale room controls enabled', async () => {
+    const loadPackage = vi.fn(async () => {
+      throw new Error('bad package');
+    });
+    const renderStaticRoom = vi.fn(async () => undefined);
+
+    const root = doc.createElement('div');
+    root.attributes.set('id', 'app');
+    doc.body.append(root);
+
+    createRuntimeShell(root as unknown as HTMLElement, { loadPackage, renderStaticRoom });
+
+    const button = doc.querySelector<FakeElement>('button');
+    const select = doc.querySelector<FakeElement>('select[name="roomSelect"]');
+
+    button?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(loadPackage).toHaveBeenCalledWith('/packages/sample');
+    expect(renderStaticRoom).not.toHaveBeenCalled();
+    expect(select?.disabled).toBe(true);
+    expect(collectText(doc.body)).toContain('Load failed: bad package');
   });
 });

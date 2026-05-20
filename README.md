@@ -32,13 +32,14 @@ The goal is not to emulate every Game Maker game. The first focus is a narrower 
 
 - Phase 1: detector foundation
 - Phase 2: GM8 parser adapter and normalized package builder
+- Phase 3: runtime-facing package format and development static room viewer
 
 ## Current Commands
 
 ```bash
 cargo test
 cargo run -p iwm-cli -- detect --input C:\path\to\game
-cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\out\sample
+cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample
 ```
 
 See `docs/notes/package-format-v1-runtime.md` for the current runtime package contract.
@@ -110,7 +111,7 @@ The current project direction is centered on:
 - building a normalized project-owned package format
 - preparing for a browser runtime that can execute core gameplay
 
-The first package-builder milestone is expected to emit a structural V0 package consisting of:
+The Phase 2 package-builder milestone emitted a structural V0 package consisting of:
 
 - `manifest.json`
 - `rooms.json`
@@ -118,7 +119,7 @@ The first package-builder milestone is expected to emit a structural V0 package 
 - `scripts.json`
 - `analysis.json`
 
-This V0 output is intentionally not the final runtime-facing package. Script IR lowering and browser-ready resource export come later.
+That V0 output has been superseded by the current runtime-facing Phase 3 package, which now includes browser-ready `resources/` exports and `scripts.ir.json`.
 
 Out of scope for the MVP:
 
