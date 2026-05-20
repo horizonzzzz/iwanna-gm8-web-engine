@@ -726,7 +726,7 @@ The current project-local sample root is:
 
 - `samples/local/iwanna-examples/`
 
-Vendored parser reference checkouts under `vendor/` may exist only as local, git-ignored development assets.
+Vendored parser reference repositories under `vendor/` are tracked as git submodules and should be initialized after clone.
 
 This document is intended to provide enough context for future sessions started in that project directory.
 

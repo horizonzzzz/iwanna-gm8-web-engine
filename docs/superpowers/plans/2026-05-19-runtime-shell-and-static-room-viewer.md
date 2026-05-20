@@ -59,7 +59,7 @@ Responsibilities:
 Before starting this phase:
 
 - Phase 2 code should already pass `cargo test`
-- `vendor/OpenGMK/gm8exe` must still be available locally for parser work
+- the tracked `vendor/OpenGMK/` submodule must be initialized for parser work
 - `samples/local/iwanna-examples/gm8-core/` remains the preferred first smoke-test corpus
 - `runtime/` does not exist yet, so this phase is allowed to introduce new frontend tooling
 
@@ -71,7 +71,7 @@ Before starting this phase:
 - Modify: `crates/iwm-parser/tests/build_package_smoke.rs`
 - Create: `docs/notes/package-format-v1-runtime.md`
 
-- [ ] **Step 1: Write the failing contract test for runtime-facing manifest and file names**
+- [x] **Step 1: Write the failing contract test for runtime-facing manifest and file names**
 
 ```rust
 use iwm_parser::models::{CompatibilityLevel, RuntimeManifest};
@@ -119,7 +119,7 @@ fn runtime_package_uses_ir_and_resource_index_outputs() {
 }
 ```
 
-- [ ] **Step 2: Replace the V0 summary types in `crates/iwm-parser/src/models.rs` with runtime-facing models**
+- [x] **Step 2: Replace the V0 summary types in `crates/iwm-parser/src/models.rs` with runtime-facing models**
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -311,7 +311,7 @@ pub struct AnalysisReport {
 }
 ```
 
-- [ ] **Step 3: Replace the parser smoke test file with runtime package contract checks**
+- [x] **Step 3: Replace the parser smoke test file with runtime package contract checks**
 
 ```rust
 use iwm_parser::models::{CompatibilityLevel, RuntimeManifest};
@@ -359,7 +359,7 @@ fn runtime_package_uses_ir_and_resource_index_outputs() {
 }
 ```
 
-- [ ] **Step 4: Document the runtime package in `docs/notes/package-format-v1-runtime.md`**
+- [x] **Step 4: Document the runtime package in `docs/notes/package-format-v1-runtime.md`**
 
 ```md
 # Package Format V1 Runtime
@@ -396,7 +396,7 @@ Still deferred:
 - room-transition simulation
 ```
 
-- [ ] **Step 5: Update the root README to describe Phase 3 correctly**
+- [x] **Step 5: Update the root README to describe Phase 3 correctly**
 
 ```md
 ## Current Phase
@@ -414,7 +414,7 @@ cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime
 See `docs/notes/package-format-v1-runtime.md` for the current runtime package contract.
 ```
 
-- [ ] **Step 6: Run the targeted parser test**
+- [x] **Step 6: Run the targeted parser test**
 
 Run:
 

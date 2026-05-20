@@ -1,5 +1,9 @@
 /target
 /out
+/runtime/dist/
+/runtime/node_modules/
+/runtime/public/packages/*
+!/runtime/public/packages/.gitkeep
 
 # Rust and Cargo
 Cargo.lock
@@ -25,9 +29,6 @@ game_errors.log
 
 # Local sample binaries and other copyrighted assets
 /samples/local/
-
-# Local vendored reference checkouts
-/vendor/
 
 # Optional local scratch areas
 /tmp/

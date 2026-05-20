@@ -4,13 +4,14 @@ Browser-playable IWanna MVP targeting legacy GM8-style fangames.
 
 ## Current Phase
 
-Phase 2 adds a GM8 parser adapter and a normalized package builder on top of the existing detector.
+Phase 3 upgrades the package output to a runtime-facing format and adds a development runtime shell with a static room viewer.
 
 ## Local Commands
 
 ```bash
 cargo test
 cargo run -p iwm-cli -- detect --input C:\path\to\game
+cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample
 ```
 
 ## Overview
@@ -31,16 +32,17 @@ The goal is not to emulate every Game Maker game. The first focus is a narrower 
 
 - Phase 1: detector foundation
 - Phase 2: GM8 parser adapter and normalized package builder
+- Phase 3: runtime-facing package format and development static room viewer
 
 ## Current Commands
 
 ```bash
 cargo test
 cargo run -p iwm-cli -- detect --input C:\path\to\game
-cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\out\sample
+cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample
 ```
 
-See `docs/notes/package-format-v0.md` for the current package output.
+See `docs/notes/package-format-v1-runtime.md` for the current runtime package contract.
 
 ## Repository Contents
 
@@ -49,7 +51,7 @@ See `docs/notes/package-format-v0.md` for the current package output.
 - `samples/local/iwanna-examples/`
   Local sample corpus used for detector and parser validation
 - `vendor/`
-  Notes and local-only upstream reference checkouts used for GM8 format study and parser research
+  Tracked upstream reference submodules used for GM8 format study and parser research
 
 Planned future areas include:
 
@@ -83,8 +85,8 @@ The `vendor/` directory is used for upstream study and narrow integration experi
 Important repository rule:
 
 - `vendor/README.md` is tracked
-- heavyweight upstream checkouts under `vendor/` are intended to stay local and git-ignored
-- path dependencies such as `vendor/OpenGMK/gm8exe` should be treated as local development prerequisites, not guaranteed tracked files
+- upstream repositories under `vendor/` are tracked as git submodules
+- clone with submodules or run `git submodule update --init --recursive` after checkout
 
 Current references:
 
@@ -109,7 +111,7 @@ The current project direction is centered on:
 - building a normalized project-owned package format
 - preparing for a browser runtime that can execute core gameplay
 
-The first package-builder milestone is expected to emit a structural V0 package consisting of:
+The Phase 2 package-builder milestone emitted a structural V0 package consisting of:
 
 - `manifest.json`
 - `rooms.json`
@@ -117,7 +119,7 @@ The first package-builder milestone is expected to emit a structural V0 package 
 - `scripts.json`
 - `analysis.json`
 
-This V0 output is intentionally not the final runtime-facing package. Script IR lowering and browser-ready resource export come later.
+That V0 output has been superseded by the current runtime-facing Phase 3 package, which now includes browser-ready `resources/` exports and `scripts.ir.json`.
 
 Out of scope for the MVP:
 

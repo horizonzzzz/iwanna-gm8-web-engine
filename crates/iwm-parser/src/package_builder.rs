@@ -1,7 +1,7 @@
 use crate::gm8_adapter::read_gm8_assets;
-use crate::models::{
-    AnalysisReport, CompatibilityLevel, ObjectSummary, PackageManifest, RoomSummary, ScriptSummary,
-};
+use crate::logic_export::export_rooms_and_logic;
+use crate::models::{AnalysisReport, CompatibilityLevel, RuntimeManifest};
+use crate::resource_export::export_resources;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -20,55 +20,10 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
         format!("{:x}", hasher.finalize())
     };
 
-    let rooms: Vec<RoomSummary> = assets
-        .rooms
-        .iter()
-        .enumerate()
-        .filter_map(|(id, room)| {
-            room.as_ref().map(|room| RoomSummary {
-                id,
-                name: room.name.to_string(),
-                width: room.width,
-                height: room.height,
-                speed: room.speed,
-                persistent: room.persistent,
-                instance_count: room.instances.len(),
-            })
-        })
-        .collect();
+    let resource_index = export_resources(&assets, output_dir)?;
+    let (rooms, objects, script_ir) = export_rooms_and_logic(&assets.rooms, &assets.objects);
 
-    let objects: Vec<ObjectSummary> = assets
-        .objects
-        .iter()
-        .enumerate()
-        .filter_map(|(id, object)| {
-            object.as_ref().map(|object| ObjectSummary {
-                id,
-                name: object.name.to_string(),
-                sprite_index: object.sprite_index,
-                parent_index: object.parent_index,
-                depth: object.depth,
-                persistent: object.persistent,
-                visible: object.visible,
-                solid: object.solid,
-                event_count: object.events.len(),
-            })
-        })
-        .collect();
-
-    let scripts: Vec<ScriptSummary> = assets
-        .scripts
-        .iter()
-        .enumerate()
-        .filter_map(|(id, script)| {
-            script.as_ref().map(|script| ScriptSummary {
-                id,
-                name: script.name.to_string(),
-                code_len: script.source.0.len(),
-            })
-        })
-        .collect();
-
+    let warnings = vec!["script-ir-partial".to_string()];
     let analysis = AnalysisReport {
         dlls: dlls.to_vec(),
         included_files: assets
@@ -76,17 +31,16 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
             .iter()
             .map(|f| f.file_name.to_string())
             .collect(),
-        warnings: Vec::new(),
+        warnings: warnings.clone(),
         unsupported_features: vec![
-            "resource-export-not-yet-implemented".into(),
-            "script-ir-not-yet-implemented".into(),
+            "logic-execution-not-yet-implemented".into(),
+            "room-runtime-not-yet-implemented".into(),
         ],
     };
 
-    let compatibility = CompatibilityLevel::Partial;
-
-    let manifest = PackageManifest {
-        format_version: 0,
+    let manifest = RuntimeManifest {
+        format_version: 1,
+        package_kind: "runtime-v1".into(),
         source_name: input_exe
             .file_name()
             .unwrap_or_default()
@@ -94,19 +48,27 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
             .to_string(),
         source_hash,
         engine_family: "gm8".into(),
-        compatibility,
+        compatibility: CompatibilityLevel::Partial,
+        default_room_id: rooms.first().map(|room| room.id),
         room_count: rooms.len(),
         object_count: objects.len(),
-        script_count: scripts.len(),
-        sprite_count: assets.sprites.iter().flatten().count(),
-        warnings: analysis.warnings.clone(),
+        script_block_count: script_ir.blocks.len(),
+        sprite_count: resource_index.sprites.len(),
+        background_count: resource_index.backgrounds.len(),
+        sound_count: resource_index.sounds.len(),
+        resource_index_path: "resources/index.json".into(),
+        warnings,
     };
 
     write_json(output_dir.join("manifest.json"), &manifest)?;
     write_json(output_dir.join("rooms.json"), &rooms)?;
     write_json(output_dir.join("objects.json"), &objects)?;
-    write_json(output_dir.join("scripts.json"), &scripts)?;
+    write_json(output_dir.join("scripts.ir.json"), &script_ir)?;
     write_json(output_dir.join("analysis.json"), &analysis)?;
+    write_json(
+        output_dir.join("resources").join("index.json"),
+        &resource_index,
+    )?;
 
     Ok(())
 }
