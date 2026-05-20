@@ -196,6 +196,7 @@ class FakeElement {
 
 class FakeDocument {
   public readonly body: FakeElement;
+  public listeners = new Map<string, Array<(event: KeyboardEvent) => void>>();
 
   constructor() {
     this.body = new FakeElement('body', this);
@@ -211,6 +212,18 @@ class FakeDocument {
 
   querySelectorAll<T extends FakeElement>(selector: string): T[] {
     return this.body.querySelectorAll<T>(selector);
+  }
+
+  addEventListener(type: string, listener: (event: KeyboardEvent) => void): void {
+    const listeners = this.listeners.get(type) ?? [];
+    listeners.push(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  dispatchKeyboardEvent(type: string, key: string): void {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener({ key } as KeyboardEvent);
+    }
   }
 }
 
@@ -383,10 +396,13 @@ describe('main runtime shell', () => {
   it('boots and drives the wasm bridge when one is available', async () => {
     const loadPackage = vi.fn(async () => samplePackage);
     const renderStaticRoom = vi.fn(async () => undefined);
+    const renderWasmFrame = vi.fn(async () => undefined);
     const wasmBridge: WasmRuntimeBridge = {
       backend: 'opengmk-wasm',
       boot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: ['boot ok'] })),
       snapshot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: ['boot ok'] })),
+      frame: vi.fn(async () => ({ tick: 1, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] })),
+      setInput: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [] })),
       tick: vi.fn(async (frames = 1) => ({ tick: frames, roomId: 0, diagnostics: ['tick ok'] })),
       reset: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: ['reset ok'] })),
       selectRoom: vi.fn(async (roomId: number) => ({ tick: 0, roomId, diagnostics: ['select ok'] })),
@@ -398,7 +414,7 @@ describe('main runtime shell', () => {
     root.attributes.set('id', 'app');
     doc.body.append(root);
 
-    createRuntimeShell(root as unknown as HTMLElement, { loadPackage, renderStaticRoom, loadWasmBridge });
+    createRuntimeShell(root as unknown as HTMLElement, { loadPackage, renderStaticRoom, renderWasmFrame, loadWasmBridge });
 
     const buttons = doc.querySelectorAll<FakeElement>('button');
     const button = buttons[0];
@@ -411,13 +427,16 @@ describe('main runtime shell', () => {
 
     expect(loadWasmBridge).toHaveBeenCalledTimes(1);
     expect(wasmBridge.boot).toHaveBeenCalledWith(samplePackage);
-    expect(wasmBridge.snapshot).toHaveBeenCalled();
+    expect(wasmBridge.frame).toHaveBeenCalled();
+    expect(renderWasmFrame).toHaveBeenCalled();
     expect(collectText(doc.body)).toContain('WASM bridge available');
     expect(collectText(doc.body)).toContain('WASM runtime active');
 
+    doc.dispatchKeyboardEvent('keydown', 'ArrowLeft');
     pauseButton?.click();
     await flushAsyncWork();
 
+    expect(wasmBridge.setInput).toHaveBeenCalled();
     expect(wasmBridge.tick).toHaveBeenCalled();
 
     if (!select) {
@@ -429,6 +448,7 @@ describe('main runtime shell', () => {
     await flushAsyncWork();
 
     expect(wasmBridge.selectRoom).toHaveBeenCalledWith(1);
+    expect(wasmBridge.frame).toHaveBeenCalledTimes(4);
 
     resetButton?.click();
     await flushAsyncWork();

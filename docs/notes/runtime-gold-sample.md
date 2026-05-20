@@ -64,6 +64,16 @@ The gold sample drives implementation priorities:
 - If parser output lacks data needed for the WASM-hosted path, extend parser outputs deliberately
 - Do not optimize for multiple games before one sample can boot and tick correctly through the target runtime architecture
 
+## Current Browser Smoke Checklist
+
+- [ ] Build the normalized package into `runtime/public/packages/sample/`
+- [ ] Build `iwm_runtime_web.wasm`
+- [ ] Run `npm --prefix runtime run sync:wasm`
+- [ ] Start the Vite shell and load `/packages/sample`
+- [ ] Verify the first room frame draws on canvas
+- [ ] Verify left/right/jump/restart input reaches the WASM path
+- [ ] Record the first visible blocker if movement or room transition fidelity still diverges
+
 ## References
 
 - WASM-first runtime plan: `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md`

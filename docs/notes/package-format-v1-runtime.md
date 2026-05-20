@@ -81,7 +81,9 @@ The current `iwm-runtime-web` bridge can now:
 
 - accept the normalized runtime package as JSON
 - boot a headless runtime-core instance
+- accept browser-submitted keyboard input snapshots
 - return runtime snapshots
+- return browser-consumable frame snapshots
 - advance deterministic ticks
 - reset the runtime
 - switch rooms by room id
@@ -89,11 +91,20 @@ The current `iwm-runtime-web` bridge can now:
 
 It does **not** yet provide:
 
-- final browser render-command integration
 - audio playback
-- full input-host wiring
 - DLL/external support
 - gameplay-fidelity parity with OpenGMK runner semantics
+- a fully continuous real-time gameplay loop in the shell
+
+### Current Browser Host Status
+
+The current browser-hosted runtime flow is:
+
+- frontend package loader aggregates the normalized runtime package
+- `iwm-runtime-web` boots and ticks against that normalized payload
+- the browser shell submits keyboard input snapshots to the bridge
+- the bridge returns frame commands for the active room
+- `runtime/` draws those commands onto the existing canvas using `resources/index.json`
 
 ### Still Deferred / Unsupported
 
@@ -103,8 +114,7 @@ It does **not** yet provide:
 - Menu systems and save/load functionality
 - DLL semantics and external function calls
 - Complex collision masks and advanced physics
-- browser-side final render-host integration for the WASM runtime
-- synchronized real input host for the WASM runtime path
+- high-fidelity continuous browser host timing and play-loop controls
 
 ### Analysis Warnings
 

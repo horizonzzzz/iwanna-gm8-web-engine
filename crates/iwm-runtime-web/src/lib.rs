@@ -89,11 +89,13 @@ impl WebRuntimeHost {
     }
 
     pub fn boot(&mut self, package: RuntimePackage) -> Result<BridgeSnapshot, String> {
-        let core = RuntimeCore::load(package.clone()).map_err(format_core_error)?;
+        let mut core = RuntimeCore::load(package.clone()).map_err(format_core_error)?;
+        let mut host = HeadlessHost::new("runtime-web");
+        core.render(&mut host).map_err(format_core_error)?;
         let snapshot = bridge_snapshot(core.snapshot());
         self.core = Some(core);
         self.package = Some(package);
-        self.host = HeadlessHost::new("runtime-web");
+        self.host = host;
         Ok(snapshot)
     }
 
@@ -159,9 +161,11 @@ impl WebRuntimeHost {
             return Err("runtime core is not booted".into());
         };
 
-        self.host = HeadlessHost::new("runtime-web");
-        let core = RuntimeCore::load(package).map_err(format_core_error)?;
+        let mut host = HeadlessHost::new("runtime-web");
+        let mut core = RuntimeCore::load(package).map_err(format_core_error)?;
+        core.render(&mut host).map_err(format_core_error)?;
         let snapshot = bridge_snapshot(core.snapshot());
+        self.host = host;
         self.core = Some(core);
         Ok(snapshot)
     }
@@ -172,6 +176,7 @@ impl WebRuntimeHost {
         };
 
         core.reload_room(room_id).map_err(format_core_error)?;
+        core.render(&mut self.host).map_err(format_core_error)?;
         Ok(bridge_snapshot(core.snapshot()))
     }
 
@@ -645,11 +650,12 @@ mod tests {
         let boot = host.boot(sample_package()).unwrap();
         assert_eq!(boot.room_id, Some(0));
         assert_eq!(boot.status, "ready");
+        assert_eq!(host.host_frame_count(), 1);
 
         let after_tick = host.tick(2).unwrap();
         assert_eq!(after_tick.tick, 2);
         assert_eq!(after_tick.room_id, Some(0));
-        assert_eq!(host.host_frame_count(), 2);
+        assert_eq!(host.host_frame_count(), 3);
     }
 
     #[test]

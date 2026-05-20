@@ -14,7 +14,7 @@ Current implemented Phase 4 slices:
 - `crates/iwm-runtime-host/` defines the first host-boundary traits and headless helpers
 - `crates/iwm-runtime-core/` provides a deterministic headless runtime-core skeleton
 - `crates/iwm-runtime-web/` exposes a browser-loadable WASM bridge surface
-- `runtime/` can load a normalized package, probe `/wasm/iwm_runtime_web.wasm`, and drive the bridge for boot/tick/diagnostics
+- `runtime/` can load a normalized package, probe `/wasm/iwm_runtime_web.wasm`, drive the bridge for boot/tick/diagnostics, submit keyboard input, and draw returned frame commands onto the browser canvas
 
 Phase 3 is complete and delivered the runtime-facing package format and development shell with static room viewer.
 
@@ -91,6 +91,15 @@ npm --prefix runtime run dev -- --host 127.0.0.1
 ```
 
 Then open `http://127.0.0.1:4173`.
+
+Current browser controls for the WASM runtime path:
+
+- click `Load Package`
+- use `ArrowLeft` / `A` for left
+- use `ArrowRight` / `D` for right
+- use `Space` / `ArrowUp` / `W` for jump
+- use `R` for restart
+- use `Pause` as the current deterministic single-step button for the WASM path
 
 Important local-only paths:
 
