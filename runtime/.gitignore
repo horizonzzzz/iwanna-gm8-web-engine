@@ -1,0 +1,7 @@
+/test-results
+node_modules
+dist
+/public/wasm/*
+!/public/wasm/.gitkeep
+/public/packages/*
+!/public/packages/.gitkeep

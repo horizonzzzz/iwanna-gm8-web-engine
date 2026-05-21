@@ -124,4 +124,110 @@ describe('loadPackage', () => {
     expect(fetchMock).toHaveBeenCalledWith('/packages/sample/logic.lowered.json');
     expect(fetchMock).toHaveBeenCalledWith('/packages/sample/resources/index.json');
   });
+
+  it('falls back when older local packages are missing raw and lowered logic files', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const fixtures: Record<string, unknown> = {
+        '/packages/legacy/manifest.json': {
+          format_version: 1,
+          package_kind: 'runtime-v1',
+          source_name: 'legacy.exe',
+          source_hash: 'def456',
+          engine_family: 'gm8',
+          compatibility: 'partial',
+          default_room_id: 0,
+          room_count: 1,
+          object_count: 1,
+          script_block_count: 1,
+          sprite_count: 0,
+          background_count: 0,
+          sound_count: 0,
+          resource_index_path: 'resources/index.json',
+          warnings: []
+        },
+        '/packages/legacy/rooms.json': [{
+          id: 0,
+          name: 'Legacy Room',
+          width: 320,
+          height: 240,
+          speed: 30,
+          persistent: false,
+          backgrounds: [],
+          views_enabled: false,
+          views: [],
+          instances: [],
+          creation_block_id: null,
+          playable: true,
+          transition_targets: []
+        }],
+        '/packages/legacy/objects.json': [{
+          id: 0,
+          name: 'obj_player',
+          sprite_index: -1,
+          parent_index: -1,
+          depth: 0,
+          persistent: false,
+          visible: true,
+          solid: false,
+          mask_index: -1,
+          is_hazard: null,
+          is_checkpoint: null,
+          is_player: true,
+          events: []
+        }],
+        '/packages/legacy/scripts.ir.json': {
+          format: 'iwm-script-ir-v1',
+          blocks: []
+        },
+        '/packages/legacy/analysis.json': {
+          dlls: [],
+          included_files: [],
+          warnings: ['legacy'],
+          unsupported_features: []
+        },
+        '/packages/legacy/resources/index.json': {
+          sprites: [],
+          backgrounds: [],
+          sounds: []
+        }
+      };
+
+      if (url === '/packages/legacy/logic.raw.json' || url === '/packages/legacy/logic.lowered.json') {
+        return new Response('<!doctype html><html><body>fallback</body></html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html' }
+        });
+      }
+
+      if (!(url in fixtures)) {
+        return new Response('', { status: 404 });
+      }
+
+      return new Response(JSON.stringify(fixtures[url]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await loadPackage('/packages/legacy');
+
+    expect(result.manifest.source_name).toBe('legacy.exe');
+    expect(result.analysis.warnings).toEqual(['legacy']);
+    expect(result.rawLogic).toEqual({
+      format: 'iwm-raw-logic-v1',
+      room_creation_codes: [],
+      instance_creation_codes: [],
+      object_events: [],
+      scripts: [],
+      triggers: [],
+      timelines: []
+    });
+    expect(result.loweredLogic).toEqual({
+      format: 'iwm-lowered-logic-v1',
+      entries: []
+    });
+  });
 });

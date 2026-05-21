@@ -11,7 +11,7 @@ test('mashikaku exposes runtime telemetry for boot and room selection', async ({
 
   await expect(page.locator('#runtime-status')).toContainText('WASM runtime active');
   await expect(page.locator('#runtime-room')).toContainText('2: rInit');
-  await expect(page.locator('#runtime-player')).toContainText('Player: unavailable');
+  await expect(page.locator('#runtime-player')).toContainText('Player: x=');
   await expect(page.locator('#runtime-tick')).toContainText('Tick: 0');
 
   await page.locator('select[name="roomSelect"]').selectOption('87');
