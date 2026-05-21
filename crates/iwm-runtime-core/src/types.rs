@@ -1,0 +1,155 @@
+use std::collections::HashMap;
+
+use iwm_runtime_host::{RuntimeDiagnostic, RuntimeHostError};
+use iwm_runtime_model::{
+    AnalysisReport, ObjectDefinition, ResourceIndex, RoomDefinition, RuntimeManifest,
+    ScriptIrFile,
+};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoweredLogicFile {
+    pub format: String,
+    pub entries: Vec<LoweredLogicEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoweredLogicEntry {
+    pub block_id: String,
+    pub statements: Vec<LoweredLogicStatement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum LoweredLogicStatement {
+    Assignment {
+        lhs: String,
+        rhs: String,
+    },
+    FunctionCall {
+        name: String,
+        args: Vec<String>,
+    },
+    Conditional {
+        condition: String,
+        then_branch: Vec<LoweredLogicStatement>,
+        else_branch: Vec<LoweredLogicStatement>,
+    },
+    With {
+        target: String,
+        body: Vec<LoweredLogicStatement>,
+    },
+    Repeat {
+        count: String,
+        body: Vec<LoweredLogicStatement>,
+    },
+    While {
+        condition: String,
+        body: Vec<LoweredLogicStatement>,
+    },
+    For {
+        init: String,
+        condition: String,
+        step: String,
+        body: Vec<LoweredLogicStatement>,
+    },
+    Raw {
+        source: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuntimeValue {
+    Number(f64),
+    Bool(bool),
+    Text(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimePackage {
+    pub manifest: RuntimeManifest,
+    pub rooms: Vec<RoomDefinition>,
+    pub objects: Vec<ObjectDefinition>,
+    pub scripts: ScriptIrFile,
+    #[serde(default, rename = "loweredLogic")]
+    pub lowered_logic: Option<LoweredLogicFile>,
+    pub resources: ResourceIndex,
+    pub analysis: AnalysisReport,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeStatus {
+    Idle,
+    Ready,
+    Running,
+    Error,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimeInstance {
+    pub runtime_id: usize,
+    pub instance_id: i32,
+    pub object_id: usize,
+    pub object_name: String,
+    pub x: i32,
+    pub y: i32,
+    pub previous_x: i32,
+    pub previous_y: i32,
+    pub hspeed: i32,
+    pub vspeed: i32,
+    pub width: i32,
+    pub height: i32,
+    pub origin_x: i32,
+    pub origin_y: i32,
+    pub alive: bool,
+    pub solid: bool,
+    pub hazard: bool,
+    pub checkpoint: bool,
+    pub player_candidate: bool,
+    pub vars: HashMap<String, RuntimeValue>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimeRoomState {
+    pub room_id: usize,
+    pub room_name: String,
+    pub width: u32,
+    pub height: u32,
+    pub speed: u32,
+    pub playable: bool,
+    pub transition_targets: Vec<usize>,
+    pub spawn_point: Option<(i32, i32)>,
+    pub instances: Vec<RuntimeInstance>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimePlayerSnapshot {
+    pub x: i32,
+    pub y: i32,
+    pub hspeed: i32,
+    pub vspeed: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimeSnapshot {
+    pub status: RuntimeStatus,
+    pub tick: u64,
+    pub room_id: Option<usize>,
+    pub room_name: Option<String>,
+    pub instance_count: usize,
+    pub player: Option<RuntimePlayerSnapshot>,
+    pub diagnostics: Vec<RuntimeDiagnostic>,
+}
+
+#[derive(Debug)]
+pub enum RuntimeCoreError {
+    NoRooms,
+    RoomMissing(usize),
+    Host(RuntimeHostError),
+}
+
+impl From<RuntimeHostError> for RuntimeCoreError {
+    fn from(value: RuntimeHostError) -> Self {
+        Self::Host(value)
+    }
+}
