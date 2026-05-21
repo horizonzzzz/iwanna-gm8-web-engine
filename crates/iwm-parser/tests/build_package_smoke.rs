@@ -308,6 +308,47 @@ fn lowered_logic_file_tokenizes_assignments_and_calls_from_raw_logic() {
     ));
 }
 
+#[test]
+fn lowered_logic_file_recognizes_control_flow_blocks() {
+    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicStatement};
+    use iwm_parser::models::{
+        RawCodeAction, RawLogicEventBinding, RawLogicFile,
+    };
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 12,
+            object_name: "obj_spike".to_string(),
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".to_string(),
+            collision_object_id: None,
+            block_id: "object:12:event:3:0".to_string(),
+            actions: vec![RawCodeAction {
+                action_id: 603,
+                lib_id: 1,
+                action_kind: 7,
+                execution_type: 2,
+                fn_name: "code".to_string(),
+                fn_code: "if place_meeting(x, y, obj_player) { game_restart(); }".to_string(),
+                args: vec![],
+            }],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    assert!(matches!(
+        lowered.entries[0].statements[0],
+        LoweredLogicStatement::Conditional { .. }
+    ));
+}
+
 // ============================================================================
 // Step 2: Tests for new contract fields (Tighten Runtime Execution Contract)
 // ============================================================================
