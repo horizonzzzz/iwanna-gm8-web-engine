@@ -60,8 +60,17 @@ On Windows, build the WASM target from a Visual Studio Developer Command Prompt 
 ```powershell
 cargo test
 npm --prefix runtime test
+npm --prefix runtime run test:browser
 npm --prefix runtime run build
 ```
+
+The browser smoke covers the shell-visible runtime telemetry path:
+
+- WASM boot status
+- current room label
+- current tick
+- player availability summary
+- diagnostic summary
 
 ### 2. Build and sync the WASM bridge
 

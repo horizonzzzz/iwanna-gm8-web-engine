@@ -7,6 +7,7 @@ import type { RuntimePackage } from '../types';
 import { WasmRuntimeSession } from '../runtime/wasmSession';
 import {
   describeWasmBridgeAvailability,
+  type WasmRuntimeBridgeSnapshot,
   type WasmRuntimeBridge,
   type WasmRuntimeInputState,
 } from '../runtime/wasmBridge';
@@ -31,6 +32,7 @@ type ShellElements = {
   pauseButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
   status: HTMLElement;
+  runtimeTelemetry: HTMLElement;
   diagnostics: HTMLElement;
   backendStatus: HTMLElement;
   metaRoot: HTMLElement;
@@ -129,6 +131,23 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
   const status = doc.createElement('p');
   status.className = 'status';
   status.textContent = 'Idle';
+  status.id = 'runtime-status';
+
+  const runtimeTelemetry = doc.createElement('section');
+  runtimeTelemetry.className = 'runtime-telemetry';
+  runtimeTelemetry.id = 'runtime-telemetry';
+
+  const runtimeRoom = doc.createElement('p');
+  runtimeRoom.id = 'runtime-room';
+
+  const runtimeTick = doc.createElement('p');
+  runtimeTick.id = 'runtime-tick';
+
+  const runtimePlayer = doc.createElement('p');
+  runtimePlayer.id = 'runtime-player';
+
+  const runtimeDiagnostics = doc.createElement('p');
+  runtimeDiagnostics.id = 'runtime-diagnostics';
 
   const diagnostics = doc.createElement('section');
   diagnostics.className = 'diagnostics';
@@ -140,7 +159,8 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
   const metaRoot = doc.createElement('section');
   metaRoot.className = 'meta';
 
-  sidebar.append(title, intro, packageField, button, pauseButton, resetButton, status, backendStatus, diagnostics, metaRoot);
+  runtimeTelemetry.append(runtimeRoom, runtimeTick, runtimePlayer, runtimeDiagnostics);
+  sidebar.append(title, intro, packageField, button, pauseButton, resetButton, status, backendStatus, runtimeTelemetry, diagnostics, metaRoot);
 
   const stage = doc.createElement('main');
   stage.className = 'stage';
@@ -168,7 +188,7 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
 
   return {
     shell,
-    elements: { input, button, select, pauseButton, resetButton, status, diagnostics, backendStatus, metaRoot, toolbar, inspectors, canvas }
+    elements: { input, button, select, pauseButton, resetButton, status, runtimeTelemetry, diagnostics, backendStatus, metaRoot, toolbar, inspectors, canvas }
   };
 }
 
@@ -198,6 +218,43 @@ function renderTextDiagnostics(doc: Document, root: HTMLElement, diagnostics: st
   pre.textContent = JSON.stringify(diagnostics, null, 2);
   section.append(heading, pre);
   root.append(section);
+}
+
+function formatRuntimePlayer(snapshot: WasmRuntimeBridgeSnapshot): string {
+  if (!snapshot.player) {
+    return 'Player: unavailable';
+  }
+
+  return `Player: x=${snapshot.player.x} y=${snapshot.player.y} hspeed=${snapshot.player.hspeed} vspeed=${snapshot.player.vspeed}`;
+}
+
+function renderRuntimeTelemetry(
+  doc: Document,
+  root: HTMLElement,
+  snapshot: WasmRuntimeBridgeSnapshot,
+  roomLabel: string
+): void {
+  root.replaceChildren();
+
+  const room = doc.createElement('p');
+  room.id = 'runtime-room';
+  room.textContent = `Room: ${roomLabel}`;
+
+  const tick = doc.createElement('p');
+  tick.id = 'runtime-tick';
+  tick.textContent = `Tick: ${snapshot.tick}`;
+
+  const player = doc.createElement('p');
+  player.id = 'runtime-player';
+  player.textContent = formatRuntimePlayer(snapshot);
+
+  const diagnostics = doc.createElement('p');
+  diagnostics.id = 'runtime-diagnostics';
+  diagnostics.textContent = snapshot.diagnostics.length > 0
+    ? `Diagnostics: ${snapshot.diagnostics.join(' | ')}`
+    : 'Diagnostics: none';
+
+  root.append(room, tick, player, diagnostics);
 }
 
 function renderRuntimeRoom(
@@ -288,11 +345,31 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       const frame = await activeBackend.bridge.frame();
       await resolved.renderWasmFrame(canvas, frame, loadedPackage.resources, input.value);
       renderTextDiagnostics(doc, diagnostics, snapshot.diagnostics);
+      renderRuntimeTelemetry(
+        doc,
+        elements.runtimeTelemetry,
+        snapshot,
+        snapshot.roomId != null
+          ? `${snapshot.roomId}: ${snapshot.roomName ?? 'room'}`
+          : 'none'
+      );
       status.textContent = `WASM runtime active: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`;
       return;
     }
 
     renderTextDiagnostics(doc, diagnostics, activeBackend.diagnostics);
+    renderRuntimeTelemetry(
+      doc,
+      elements.runtimeTelemetry,
+      {
+        tick: 0,
+        roomId: activeBackend.roomId,
+        roomName: activeBackend.roomId != null ? 'Static room viewer' : null,
+        diagnostics: activeBackend.diagnostics,
+        player: null
+      },
+      activeBackend.roomId != null ? String(activeBackend.roomId) : 'none'
+    );
     if (activeBackend.roomId != null) {
       await renderRuntimeRoom(input.value, canvas, activeBackend.roomId, loadedPackage, resolved.renderStaticRoom);
       const room = loadedPackage.rooms.find((candidate) => candidate.id === activeBackend.roomId);
@@ -364,6 +441,20 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       } else {
         select.value = '';
       }
+      renderRuntimeTelemetry(
+        doc,
+        elements.runtimeTelemetry,
+        {
+          tick: 0,
+          roomId: roomId,
+          roomName: roomId != null ? pkg.rooms.find((room) => room.id === roomId)?.name ?? null : null,
+          diagnostics: activeBackend.kind === 'viewer' ? activeBackend.diagnostics : [],
+          player: null
+        },
+        roomId != null
+          ? `${roomId}: ${pkg.rooms.find((room) => room.id === roomId)?.name ?? 'room'}`
+          : 'none'
+      );
       await draw();
     } catch (error) {
       loadedPackage = null;
@@ -375,6 +466,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       metaRoot.replaceChildren();
       inspectors.replaceChildren();
       diagnostics.replaceChildren();
+      elements.runtimeTelemetry.replaceChildren();
       resetRoomOptions(doc, select, 'Load a package first');
       clearCanvas(canvas);
       status.textContent = `Load failed: ${formatErrorMessage(error)}`;

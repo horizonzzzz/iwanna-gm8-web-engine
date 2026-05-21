@@ -394,13 +394,49 @@ describe('main runtime shell', () => {
     const renderWasmFrame = vi.fn(async () => undefined);
     const wasmBridge: WasmRuntimeBridge = {
       backend: 'opengmk-wasm',
-      boot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: ['boot ok'] })),
-      snapshot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: ['boot ok'] })),
+      boot: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: ['boot ok'],
+        player: { x: 12, y: 34, hspeed: 1, vspeed: 0 }
+      })),
+      snapshot: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: ['boot ok'],
+        player: { x: 12, y: 34, hspeed: 1, vspeed: 0 }
+      })),
       frame: vi.fn(async () => ({ tick: 1, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] })),
-      setInput: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [] })),
-      tick: vi.fn(async (frames = 1) => ({ tick: frames, roomId: 0, diagnostics: ['tick ok'] })),
-      reset: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: ['reset ok'] })),
-      selectRoom: vi.fn(async (roomId: number) => ({ tick: 0, roomId, diagnostics: ['select ok'] })),
+      setInput: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: ['input ok'],
+        player: { x: 13, y: 34, hspeed: 1, vspeed: 0 }
+      })),
+      tick: vi.fn(async (frames = 1) => ({
+        tick: frames,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: ['tick ok'],
+        player: { x: 13, y: 34, hspeed: 1, vspeed: 0 }
+      })),
+      reset: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: ['reset ok'],
+        player: { x: 12, y: 34, hspeed: 0, vspeed: 0 }
+      })),
+      selectRoom: vi.fn(async (roomId: number) => ({
+        tick: 0,
+        roomId,
+        roomName: roomId === 1 ? 'Room 2' : 'Room 1',
+        diagnostics: ['select ok'],
+        player: roomId === 1 ? null : { x: 12, y: 34, hspeed: 0, vspeed: 0 }
+      })),
       diagnostics: vi.fn(async () => ['diag ok'])
     };
     const loadWasmBridge = vi.fn(async () => wasmBridge);
@@ -426,6 +462,12 @@ describe('main runtime shell', () => {
     expect(renderWasmFrame).toHaveBeenCalled();
     expect(collectText(doc.body)).toContain('WASM bridge available');
     expect(collectText(doc.body)).toContain('WASM runtime active');
+    expect(collectText(doc.body)).toContain('Room 1');
+    expect(collectText(doc.body)).toContain('x=12');
+    expect(collectText(doc.body)).toContain('hspeed=1');
+    expect(doc.querySelector('#runtime-room')).not.toBeNull();
+    expect(doc.querySelector('#runtime-tick')).not.toBeNull();
+    expect(doc.querySelector('#runtime-player')).not.toBeNull();
     expect(pauseButton?.disabled).toBe(false);
     expect(resetButton?.disabled).toBe(false);
 

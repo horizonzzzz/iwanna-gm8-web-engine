@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "sync:wasm": "node ./scripts/sync-wasm.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.2",
     "@types/node": "^24.10.1",
     "typescript": "^5.5.4",
     "vite": "^5.4.8",
