@@ -20,6 +20,15 @@ Practical implication:
 - a fresh clone of this repository should fetch submodules before parser work
 - path dependencies on vendored code now resolve through tracked submodule locations
 
+## Current Repository Reality
+
+The project now uses vendored references for both parser and runtime guidance:
+
+- `gm8exe` remains the intended narrow parser dependency boundary
+- `gm8emulator` is the primary runtime-semantics reference for the WASM-first runtime path
+
+When runtime-semantics assumptions change, update the relevant runtime notes alongside code changes.
+
 ## Repositories
 
 ### `OpenGMK/`

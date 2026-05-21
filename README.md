@@ -44,6 +44,18 @@ See `docs/notes/runtime-wasm-gap-analysis.md` for the current checklist of what 
 See `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md` for the current runtime implementation direction.
 See `docs/notes/opengmk-host-coupling-audit.md` for the first OpenGMK host-boundary audit.
 
+## Documentation Notes
+
+Current-state documents should be read as the primary project guide:
+
+- `README.md`
+- `AGENTS.md`
+- `docs/notes/package-format-v1-runtime.md`
+- `docs/notes/runtime-wasm-gap-analysis.md`
+- `docs/notes/runtime-gold-sample.md`
+
+Older plan documents under `docs/superpowers/plans/` may remain for historical context, but some are now superseded and should say so near the top.
+
 ## Setup
 
 ```powershell

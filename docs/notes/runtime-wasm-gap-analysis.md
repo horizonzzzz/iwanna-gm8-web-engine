@@ -1,5 +1,9 @@
 # WASM Runtime Gap Analysis
 
+> **Current status note:** Keep this document synchronized with actual runtime-core, runtime-web, and shell behavior.
+>
+> If code changes reduce or introduce playable-runtime blockers, update this note in the same change.
+
 This is a living note. Update it whenever parser, runtime-core, runtime-web, or shell behavior changes what the browser can actually play.
 
 ## Current Baseline

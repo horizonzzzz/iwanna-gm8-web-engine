@@ -1,5 +1,7 @@
 # Sample Corpus Notes
 
+> **Maintenance note:** Update this file when the local sample workflow, expected paths, or sample-driven testing expectations change enough that current guidance becomes misleading.
+
 Current project-local sample root:
 
 - `C:\Users\59164\work\playground\iwanna-gm8-web-engine\samples\local\iwanna-examples`

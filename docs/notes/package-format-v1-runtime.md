@@ -1,5 +1,9 @@
 # Package Format V1 Runtime
 
+> **Current status note:** This is the active package-format note.
+>
+> The older V0 package note is obsolete and should not be used as the current contract.
+
 Current emitted runtime package directory contents:
 
 - `manifest.json`

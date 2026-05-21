@@ -1,5 +1,9 @@
 # Runtime Gold Sample
 
+> **Current status note:** This is an active runtime-priority document, not a historical note.
+>
+> When the primary gold sample, local package availability, or proven blocker list changes, update this file in the same change.
+
 This note keeps both the long-lived validation target and the current blocker audit for the WASM-first path.
 
 Important local-path note:

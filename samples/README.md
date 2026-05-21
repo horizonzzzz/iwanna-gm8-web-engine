@@ -28,6 +28,20 @@ These samples are used for:
 - compatibility triage
 - future runtime regression checks
 
+## Current Usage
+
+These samples are used for:
+
+- detector validation
+- parser/package smoke testing
+- runtime package generation
+- runtime regression checks
+
+Important:
+
+- the local sample directories may be absent in a fresh clone
+- generated runtime packages under `runtime/public/packages/` are not a substitute for the raw local sample corpus
+
 ## Important Notes
 
 - These files are local development assets, not canonical project source

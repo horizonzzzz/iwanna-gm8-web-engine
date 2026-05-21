@@ -1,5 +1,7 @@
 # OpenGMK Host Coupling Audit
 
+> **Maintenance note:** Update this file when the runtime host boundary changes enough that existing coupling guidance becomes misleading.
+
 This note records the first host-boundary audit for the WASM-first runtime plan.
 
 The goal of this pass is not to finish extraction. The goal is to identify which
