@@ -145,6 +145,12 @@ Current workspace crates include:
 - `crates/iwm-runtime-core/`
 - `crates/iwm-runtime-web/`
 
+Current runtime crate layout notes:
+
+- `crates/iwm-runtime-host/` separates host-boundary types and traits from default implementations such as clock, input, file, render, external, diagnostics, and headless host composition
+- `crates/iwm-runtime-web/` separates bridge-facing models, runtime-host wrapper logic, translation helpers, result storage, and exported WASM FFI entrypoints
+- `crates/iwm-runtime-core/` separates runtime types, top-level orchestration, room building, room transitions, movement, lowered logic execution, rendering, diagnostics, and crate-local test support
+
 Later planned areas include:
 
 - `backend/`
