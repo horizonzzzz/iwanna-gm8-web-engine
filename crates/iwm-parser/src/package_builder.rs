@@ -1,6 +1,8 @@
 use crate::gm8_adapter::read_gm8_assets;
 use crate::logic_export::export_rooms_and_logic;
-use crate::models::{AnalysisReport, CompatibilityLevel, LogicOp, RuntimeManifest};
+use crate::gml_lowering::lower_raw_logic_file;
+use crate::models::{AnalysisReport, CompatibilityLevel, LogicOp, RawLogicFile, RuntimeManifest};
+use crate::raw_logic_export::export_raw_logic;
 use crate::resource_export::export_resources;
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -22,6 +24,8 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
 
     let resource_index = export_resources(&assets, output_dir)?;
     let (rooms, objects, script_ir) = export_rooms_and_logic(&assets.rooms, &assets.objects);
+    let raw_logic: RawLogicFile = export_raw_logic(&assets);
+    let lowered_logic = lower_raw_logic_file(&raw_logic);
 
     // Generate actionable warnings
     let mut warnings = Vec::new();
@@ -107,6 +111,8 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     write_json(output_dir.join("rooms.json"), &rooms)?;
     write_json(output_dir.join("objects.json"), &objects)?;
     write_json(output_dir.join("scripts.ir.json"), &script_ir)?;
+    write_json(output_dir.join("logic.raw.json"), &raw_logic)?;
+    write_json(output_dir.join("logic.lowered.json"), &lowered_logic)?;
     write_json(output_dir.join("analysis.json"), &analysis)?;
     write_json(
         output_dir.join("resources").join("index.json"),

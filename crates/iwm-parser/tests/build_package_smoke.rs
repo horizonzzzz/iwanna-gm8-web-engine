@@ -35,11 +35,15 @@ fn runtime_package_uses_ir_and_resource_index_outputs() {
         "rooms.json",
         "objects.json",
         "scripts.ir.json",
+        "logic.raw.json",
+        "logic.lowered.json",
         "analysis.json",
         "resources/index.json",
     ];
 
     assert!(outputs.contains(&"scripts.ir.json"));
+    assert!(outputs.contains(&"logic.raw.json"));
+    assert!(outputs.contains(&"logic.lowered.json"));
     assert!(outputs.contains(&"resources/index.json"));
     assert!(!outputs.contains(&"scripts.json"));
 }
@@ -145,8 +149,163 @@ fn build_package_writes_runtime_outputs_for_single_exe_input() {
     assert!(out_dir.join("rooms.json").exists());
     assert!(out_dir.join("objects.json").exists());
     assert!(out_dir.join("scripts.ir.json").exists());
+    assert!(out_dir.join("logic.raw.json").exists());
+    assert!(out_dir.join("logic.lowered.json").exists());
     assert!(out_dir.join("analysis.json").exists());
     assert!(out_dir.join("resources").join("index.json").exists());
+}
+
+#[test]
+fn raw_logic_file_preserves_gml_ownership_and_source_text() {
+    use iwm_parser::models::{
+        RawCodeAction, RawLogicEventBinding, RawLogicFile, RawLogicOwner, RawLogicOwnerKind,
+        RawLogicScript, RawLogicTimelineMoment, RawLogicTrigger,
+    };
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![RawLogicOwner {
+            owner_kind: RawLogicOwnerKind::Room,
+            owner_id: 7,
+            owner_name: "room_07".to_string(),
+            event_type: None,
+            sub_event: None,
+            collision_object_id: None,
+            block_id: "room:7:create".to_string(),
+            gml_source: "global.boss_hp = 100;".to_string(),
+        }],
+        instance_creation_codes: vec![RawLogicOwner {
+            owner_kind: RawLogicOwnerKind::RoomInstance,
+            owner_id: 1001,
+            owner_name: "obj_spike".to_string(),
+            event_type: None,
+            sub_event: None,
+            collision_object_id: None,
+            block_id: "room:7:instance:1001:create".to_string(),
+            gml_source: "timer = -30;".to_string(),
+        }],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 12,
+            object_name: "obj_spike".to_string(),
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".to_string(),
+            collision_object_id: None,
+            block_id: "object:12:event:3:0".to_string(),
+            actions: vec![RawCodeAction {
+                action_id: 603,
+                lib_id: 1,
+                action_kind: 7,
+                execution_type: 2,
+                fn_name: "code".to_string(),
+                fn_code: "timer += 1; if timer > 60 { y -= 2; }".to_string(),
+                args: vec!["timer".to_string()],
+            }],
+        }],
+        scripts: vec![RawLogicScript {
+            script_id: 3,
+            script_name: "scr_bullet_pattern".to_string(),
+            gml_source: "instance_create(x, y, obj_bullet);".to_string(),
+        }],
+        triggers: vec![RawLogicTrigger {
+            trigger_id: 2,
+            trigger_name: "tr_player_near".to_string(),
+            constant_name: "tr_player_near".to_string(),
+            moment: "step".to_string(),
+            condition_gml: "distance_to_object(obj_player) < 32".to_string(),
+        }],
+        timelines: vec![RawLogicTimelineMoment {
+            timeline_id: 4,
+            timeline_name: "tml_intro".to_string(),
+            moment: 30,
+            actions: vec![RawCodeAction {
+                action_id: 603,
+                lib_id: 1,
+                action_kind: 7,
+                execution_type: 2,
+                fn_name: "code".to_string(),
+                fn_code: "alarm[0] = 60;".to_string(),
+                args: vec![],
+            }],
+        }],
+    };
+
+    let json = serde_json::to_value(&raw).unwrap();
+    assert_eq!(json["format"], "iwm-raw-logic-v1");
+    assert_eq!(json["room_creation_codes"][0]["gml_source"], "global.boss_hp = 100;");
+    assert_eq!(json["instance_creation_codes"][0]["gml_source"], "timer = -30;");
+    assert_eq!(json["object_events"][0]["actions"][0]["fn_code"], "timer += 1; if timer > 60 { y -= 2; }");
+    assert_eq!(json["scripts"][0]["gml_source"], "instance_create(x, y, obj_bullet);");
+    assert_eq!(json["triggers"][0]["condition_gml"], "distance_to_object(obj_player) < 32");
+    assert_eq!(json["timelines"][0]["actions"][0]["fn_code"], "alarm[0] = 60;");
+}
+
+#[test]
+fn lowered_logic_file_tokenizes_assignments_and_calls_from_raw_logic() {
+    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicStatement};
+    use iwm_parser::models::{
+        RawCodeAction, RawLogicEventBinding, RawLogicFile, RawLogicOwner, RawLogicOwnerKind,
+        RawLogicScript,
+    };
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![RawLogicOwner {
+            owner_kind: RawLogicOwnerKind::Room,
+            owner_id: 7,
+            owner_name: "room_07".to_string(),
+            event_type: None,
+            sub_event: None,
+            collision_object_id: None,
+            block_id: "room:7:create".to_string(),
+            gml_source: "global.score = 0; instance_create(x, y, obj_bullet);".to_string(),
+        }],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 12,
+            object_name: "obj_spike".to_string(),
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".to_string(),
+            collision_object_id: None,
+            block_id: "object:12:event:3:0".to_string(),
+            actions: vec![RawCodeAction {
+                action_id: 603,
+                lib_id: 1,
+                action_kind: 7,
+                execution_type: 2,
+                fn_name: "code".to_string(),
+                fn_code: "if place_meeting(x, y, obj_player) { game_restart(); }".to_string(),
+                args: vec![],
+            }],
+        }],
+        scripts: vec![RawLogicScript {
+            script_id: 3,
+            script_name: "scr_bullet_pattern".to_string(),
+            gml_source: "instance_create(x, y, obj_bullet);".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    assert_eq!(lowered.entries.len(), 3);
+    assert!(matches!(
+        lowered.entries[0].statements[0],
+        LoweredLogicStatement::Assignment { ref lhs, ref rhs } if lhs == "global.score" && rhs == "0"
+    ));
+    assert!(matches!(
+        lowered.entries[0].statements[1],
+        LoweredLogicStatement::FunctionCall { ref name, .. } if name == "instance_create"
+    ));
+    assert!(matches!(
+        lowered.entries[1].statements[0],
+        LoweredLogicStatement::Conditional { ref condition, .. } if condition.contains("place_meeting")
+    ));
+    assert!(matches!(
+        lowered.entries[2].statements[0],
+        LoweredLogicStatement::FunctionCall { ref name, .. } if name == "instance_create"
+    ));
 }
 
 // ============================================================================
