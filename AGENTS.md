@@ -23,6 +23,7 @@ Read these files before making structural decisions:
 - `docs/superpowers/plans/2026-05-19-gm8-parser-and-package-builder.md`
 - `samples/README.md`
 - `vendor/README.md`
+- `docs/notes/runtime-wasm-gap-analysis.md`
 
 If the repository state and the plan documents diverge, prefer the actual repository contents for what exists, and prefer the spec/plan documents for intended next steps.
 
@@ -149,6 +150,8 @@ For meaningful changes:
 - note any upstream API drift when changing vendored integration assumptions
 
 If a change invalidates an existing plan document, update the relevant plan or add a note explaining the divergence.
+
+If parser or runtime work changes what is actually required for a playable WASM runtime, update `docs/notes/runtime-wasm-gap-analysis.md` in the same change.
 
 ## Debugging Notes
 

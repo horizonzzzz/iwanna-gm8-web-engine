@@ -95,4 +95,5 @@ For `IWBT_Dife`, Phase 4 still needs to prove:
 
 - WASM-first runtime plan: `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md`
 - Package format: `docs/notes/package-format-v1-runtime.md`
+- WASM runtime gap analysis: `docs/notes/runtime-wasm-gap-analysis.md`
 - Design spec: `docs/superpowers/specs/2026-05-19-iwanna-gm8-web-engine-design.md`

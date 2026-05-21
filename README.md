@@ -40,6 +40,7 @@ The goal is not to emulate every Game Maker game. The first focus is a narrower 
 - Phase 4: OpenGMK WASM-first runtime bring-up (in progress)
 
 See `docs/notes/package-format-v1-runtime.md` for the current runtime package contract.
+See `docs/notes/runtime-wasm-gap-analysis.md` for the current checklist of what is still missing for a fully playable WASM runtime.
 See `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md` for the current runtime implementation direction.
 See `docs/notes/opengmk-host-coupling-audit.md` for the first OpenGMK host-boundary audit.
 
