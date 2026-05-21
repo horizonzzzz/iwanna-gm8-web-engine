@@ -60,6 +60,19 @@ describe('loadPackage', () => {
           format: 'iwm-script-ir-v1',
           blocks: []
         },
+        '/packages/sample/logic.raw.json': {
+          format: 'iwm-raw-logic-v1',
+          room_creation_codes: [],
+          instance_creation_codes: [],
+          object_events: [],
+          scripts: [],
+          triggers: [],
+          timelines: []
+        },
+        '/packages/sample/logic.lowered.json': {
+          format: 'iwm-lowered-logic-v1',
+          entries: []
+        },
         '/packages/sample/analysis.json': {
           dlls: [],
           included_files: [],
@@ -91,9 +104,24 @@ describe('loadPackage', () => {
     expect(result.rooms).toHaveLength(1);
     expect(result.objects[0]?.name).toBe('Player');
     expect(result.scripts.format).toBe('iwm-script-ir-v1');
+    expect((result as Record<string, unknown>).rawLogic).toEqual({
+      format: 'iwm-raw-logic-v1',
+      room_creation_codes: [],
+      instance_creation_codes: [],
+      object_events: [],
+      scripts: [],
+      triggers: [],
+      timelines: []
+    });
+    expect((result as Record<string, unknown>).loweredLogic).toEqual({
+      format: 'iwm-lowered-logic-v1',
+      entries: []
+    });
     expect(result.analysis.warnings).toEqual(['ok']);
     expect(result.resources.sprites).toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith('/packages/sample/manifest.json');
+    expect(fetchMock).toHaveBeenCalledWith('/packages/sample/logic.raw.json');
+    expect(fetchMock).toHaveBeenCalledWith('/packages/sample/logic.lowered.json');
     expect(fetchMock).toHaveBeenCalledWith('/packages/sample/resources/index.json');
   });
 });

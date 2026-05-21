@@ -222,7 +222,8 @@ impl RuntimeCore {
         self.status = RuntimeStatus::Running;
 
         if !left.pressed && !right.pressed && !jump.pressed && !restart.pressed {
-            self.push_diagnostic(
+            self.record_diagnostic(
+                host,
                 iwm_runtime_host::RuntimeDiagnosticLevel::Info,
                 "runtime-idle",
                 format!("tick {} advanced without player input", self.tick),
@@ -244,13 +245,14 @@ impl RuntimeCore {
         };
 
         if room.instances.is_empty() {
-            self.diagnostics.push(iwm_runtime_host::RuntimeDiagnostic {
-                level: iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
-                code: "runtime-empty-room".into(),
-                message: format!("room {} has no live instances", room.room_name),
-            });
+            self.record_diagnostic(
+                host,
+                iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                "runtime-empty-room",
+                format!("room {} has no live instances", room.room_name),
+            );
         } else {
-            self.step_player(left.pressed, right.pressed, jump.just_pressed)?;
+            self.step_player(host, left.pressed, right.pressed, jump.just_pressed)?;
         }
 
         if self.pending_room_reset || self.pending_room_transition.is_some() {
@@ -428,8 +430,9 @@ impl RuntimeCore {
         }
     }
 
-    fn step_player(
+    fn step_player<H: RuntimeHost>(
         &mut self,
+        host: &mut H,
         left_pressed: bool,
         right_pressed: bool,
         jump_just_pressed: bool,
@@ -486,7 +489,8 @@ impl RuntimeCore {
         move_instance_axis(player, &solids, Some(player.runtime_id), Axis::Vertical, player.vspeed);
 
         if collides_at(player, player.x, player.y, &hazards, Some(player.runtime_id)) {
-            self.push_diagnostic(
+            self.record_diagnostic(
+                host,
                 iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
                 "runtime-player-died",
                 format!("player hit a hazard in {}", room_name),
@@ -499,17 +503,20 @@ impl RuntimeCore {
         Ok(())
     }
 
-    fn push_diagnostic(
+    fn record_diagnostic<H: RuntimeHost>(
         &mut self,
+        host: &mut H,
         level: iwm_runtime_host::RuntimeDiagnosticLevel,
         code: impl Into<String>,
         message: impl Into<String>,
     ) {
-        self.diagnostics.push(iwm_runtime_host::RuntimeDiagnostic {
+        let diagnostic = iwm_runtime_host::RuntimeDiagnostic {
             level,
             code: code.into(),
             message: message.into(),
-        });
+        };
+        host.record(diagnostic.clone());
+        self.diagnostics.push(diagnostic);
     }
 
     fn build_render_frame(&self) -> Result<RuntimeRenderFrame, RuntimeCoreError> {
@@ -1114,6 +1121,21 @@ mod tests {
 
         assert!(core
             .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime-idle"
+                && matches!(diagnostic.level, RuntimeDiagnosticLevel::Info)));
+    }
+
+    #[test]
+    fn core_records_idle_diagnostics_in_the_host_sink() {
+        let mut core = RuntimeCore::load(sample_package()).unwrap();
+        let mut host = HeadlessHost::new("sandbox");
+
+        core.tick(&mut host).unwrap();
+
+        assert!(host
+            .diagnostics
+            .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime-idle"
                 && matches!(diagnostic.level, RuntimeDiagnosticLevel::Info)));

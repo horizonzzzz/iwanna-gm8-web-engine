@@ -80,6 +80,19 @@ const samplePackage: RuntimePackage = {
     format: 'iwm-script-ir-v1',
     blocks: [{ id: 'block-1', name: 'Step', kind: 'step', support: 'action-list', executable_action_count: 0, ops: [] }]
   },
+  rawLogic: {
+    format: 'iwm-raw-logic-v1',
+    room_creation_codes: [],
+    instance_creation_codes: [],
+    object_events: [],
+    scripts: [],
+    triggers: [],
+    timelines: []
+  },
+  loweredLogic: {
+    format: 'iwm-lowered-logic-v1',
+    entries: []
+  },
   resources: {
     sprites: [
       {

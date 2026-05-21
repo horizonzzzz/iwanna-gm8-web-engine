@@ -164,25 +164,26 @@ pub fn export_rooms_and_logic(
         })
         .collect();
 
-    // Collect room transition targets from object events
-    let mut room_transition_map: std::collections::HashMap<usize, Vec<usize>> =
+    // Collect room transition targets from object events by object id first.
+    let mut object_transition_map: std::collections::HashMap<usize, Vec<usize>> =
         std::collections::HashMap::new();
     for (object_id, object) in objects.iter().enumerate() {
         if let Some(obj) = object.as_ref() {
+            let mut targets = Vec::new();
             for sub_events in &obj.events {
                 for (_sub_event, actions) in sub_events {
                     for action in actions {
-                        if let Some(_target_room) = detect_room_goto_target(action) {
-                            // Note: we currently only track which objects can trigger transitions,
-                            // not the specific sub_events. For more precise tracking, we'd need
-                            // to also record sub_event in room_transition_map.
-                            room_transition_map
-                                .entry(_target_room)
-                                .or_default()
-                                .push(object_id);
+                        if let Some(target_room) = detect_room_goto_target(action) {
+                            targets.push(target_room);
                         }
                     }
                 }
+            }
+
+            if !targets.is_empty() {
+                targets.sort_unstable();
+                targets.dedup();
+                object_transition_map.insert(object_id, targets);
             }
         }
     }
@@ -241,20 +242,17 @@ pub fn export_rooms_and_logic(
         })
         .collect();
 
-    // Update room transition_targets based on discovered targets
+    // Update room transition_targets based on discovered targets for the objects present in each room.
     for room in &mut room_defs.iter_mut() {
-        // Find objects in this room that trigger transitions
-        if let Some(triggering_objects) = room_transition_map.get(&room.id) {
-            // For now, we can't easily trace which specific instances trigger transitions
-            // without deeper analysis, so we leave transition_targets as discoverable
-            // from the objects present in the room
-            room.transition_targets = room
-                .instances
-                .iter()
-                .filter(|i| triggering_objects.contains(&(i.object_id as usize)))
-                .map(|i| i.object_id as usize)
-                .collect();
-        }
+        let mut transition_targets = room
+            .instances
+            .iter()
+            .filter_map(|instance| object_transition_map.get(&(instance.object_id as usize)))
+            .flat_map(|targets| targets.iter().copied())
+            .collect::<Vec<_>>();
+        transition_targets.sort_unstable();
+        transition_targets.dedup();
+        room.transition_targets = transition_targets;
     }
 
     (
@@ -280,7 +278,7 @@ fn normalize_event_tag(event_type: usize, sub_event: u32) -> String {
             _ => format!("step:{}", sub_event),
         },
         4 => "collision".to_string(), // Collision target is dynamic
-        5 => format!("keyboard:0x{:02x}", sub_event as u8),
+        5 => format!("keyboard:{}", format_key_name(sub_event)),
         6 => match sub_event {
             0 => "mouse:left".to_string(),
             1 => "mouse:right".to_string(),
@@ -342,10 +340,19 @@ fn normalize_event_tag(event_type: usize, sub_event: u32) -> String {
             _ => format!("other:{}", sub_event),
         },
         8 => "draw".to_string(),
-        9 => format!("keypress:{}", (sub_event as u8) as char),
-        10 => format!("keyrelease:{}", (sub_event as u8) as char),
+        9 => format!("keypress:{}", format_key_name(sub_event)),
+        10 => format!("keyrelease:{}", format_key_name(sub_event)),
         11 => format!("trigger:{}", sub_event),
         _ => format!("event:{}-{}", event_type, sub_event),
+    }
+}
+
+fn format_key_name(sub_event: u32) -> String {
+    let key = sub_event as u8 as char;
+    if key.is_ascii_alphanumeric() {
+        key.to_ascii_lowercase().to_string()
+    } else {
+        format!("0x{:02x}", sub_event as u8)
     }
 }
 

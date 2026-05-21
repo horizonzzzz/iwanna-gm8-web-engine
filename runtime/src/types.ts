@@ -154,6 +154,76 @@ export type ScriptIrFile = {
   }>;
 };
 
+export type RuntimeRawCodeAction = {
+  action_id: number;
+  lib_id: number;
+  action_kind: number;
+  execution_type: number;
+  fn_name: string;
+  fn_code: string;
+  args: string[];
+};
+
+export type RuntimeRawLogicFile = {
+  format: string;
+  room_creation_codes: Array<{
+    owner_kind: string;
+    owner_id: number;
+    owner_name: string;
+    event_type: number | null;
+    sub_event: number | null;
+    collision_object_id: number | null;
+    block_id: string;
+    gml_source: string;
+  }>;
+  instance_creation_codes: Array<{
+    owner_kind: string;
+    owner_id: number;
+    owner_name: string;
+    event_type: number | null;
+    sub_event: number | null;
+    collision_object_id: number | null;
+    block_id: string;
+    gml_source: string;
+  }>;
+  object_events: Array<{
+    object_id: number;
+    object_name: string;
+    event_type: number;
+    sub_event: number;
+    event_tag: string;
+    collision_object_id: number | null;
+    block_id: string;
+    actions: RuntimeRawCodeAction[];
+  }>;
+  scripts: Array<{
+    script_id: number;
+    script_name: string;
+    gml_source: string;
+  }>;
+  triggers: Array<{
+    trigger_id: number;
+    trigger_name: string;
+    constant_name: string;
+    moment: string;
+    condition_gml: string;
+  }>;
+  timelines: Array<{
+    timeline_id: number;
+    timeline_name: string;
+    moment: number;
+    actions: RuntimeRawCodeAction[];
+  }>;
+};
+
+export type RuntimeLoweredLogicFile = {
+  format: string;
+  entries: Array<{
+    block_id: string;
+    statements: Array<Record<string, unknown>>;
+  }>;
+};
+
 export type RuntimeAnalysis = {
   dlls: string[];
   included_files: string[];
@@ -166,6 +236,8 @@ export type RuntimePackage = {
   rooms: RoomDefinition[];
   objects: ObjectDefinition[];
   scripts: ScriptIrFile;
+  rawLogic: RuntimeRawLogicFile;
+  loweredLogic: RuntimeLoweredLogicFile;
   resources: ResourceIndex;
   analysis: RuntimeAnalysis;
 };

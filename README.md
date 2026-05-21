@@ -78,6 +78,8 @@ The runtime package now includes both:
 - `logic.raw.json` for parser-owned raw GML preservation
 - `logic.lowered.json` for the current parser-owned lowered logic contract
 
+The browser shell now loads those files alongside `manifest.json`, `rooms.json`, `objects.json`, `scripts.ir.json`, `analysis.json`, and `resources/index.json`.
+
 ### 2. Build and sync the WASM bridge
 
 ```powershell

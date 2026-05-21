@@ -649,3 +649,139 @@ fn room_transition_block_ids_follow_naming_convention() {
     let instance_create = instance_creation_block_id(5, 1001);
     assert_eq!(instance_create, "room:5:instance:1001:create");
 }
+
+#[test]
+fn export_rooms_and_logic_assigns_transition_targets_to_the_source_room() {
+    use gm8exe::{
+        asset::{
+            code_action::CodeAction,
+            object::Object,
+            room::{Instance, Room},
+        },
+        AssetList,
+    };
+    use iwm_parser::logic_export::export_rooms_and_logic;
+
+    fn room_goto_action(target_room_id: &str) -> CodeAction {
+        let mut param_strings: [gm8exe::asset::PascalString; 8] = Default::default();
+        param_strings[0] = target_room_id.into();
+
+        CodeAction {
+            id: 603,
+            applies_to: -1,
+            is_condition: false,
+            invert_condition: false,
+            is_relative: false,
+            lib_id: 1,
+            action_kind: 7,
+            execution_type: 1,
+            can_be_relative: 0,
+            applies_to_something: false,
+            fn_name: "room_goto".into(),
+            fn_code: "".into(),
+            param_count: 1,
+            param_types: [0; 8],
+            param_strings,
+        }
+    }
+
+    let mut room0_events: Vec<Vec<(u32, Vec<CodeAction>)>> = (0..12).map(|_| Vec::new()).collect();
+    room0_events[3].push((0, vec![room_goto_action("1")]));
+
+    let objects: AssetList<Object> = vec![Some(Box::new(Object {
+        name: "obj_door".into(),
+        sprite_index: -1,
+        solid: false,
+        visible: true,
+        depth: 0,
+        persistent: false,
+        parent_index: -1,
+        mask_index: -1,
+        events: room0_events,
+    }))];
+
+    let rooms: AssetList<Room> = vec![
+        Some(Box::new(Room {
+            name: "rm_start".into(),
+            caption: "".into(),
+            width: 320,
+            height: 240,
+            speed: 30,
+            persistent: false,
+            bg_colour: 0.into(),
+            clear_screen: true,
+            clear_region: true,
+            creation_code: "".into(),
+            backgrounds: vec![],
+            views_enabled: false,
+            views: vec![],
+            instances: vec![Instance {
+                x: 64,
+                y: 96,
+                object: 0,
+                id: 1001,
+                creation_code: "".into(),
+                xscale: 1.0,
+                yscale: 1.0,
+                blend: 0,
+                angle: 0.0,
+            }],
+            tiles: vec![],
+            uses_810_features: false,
+            uses_811_features: false,
+        })),
+        Some(Box::new(Room {
+            name: "rm_next".into(),
+            caption: "".into(),
+            width: 320,
+            height: 240,
+            speed: 30,
+            persistent: false,
+            bg_colour: 0.into(),
+            clear_screen: true,
+            clear_region: true,
+            creation_code: "".into(),
+            backgrounds: vec![],
+            views_enabled: false,
+            views: vec![],
+            instances: vec![],
+            tiles: vec![],
+            uses_810_features: false,
+            uses_811_features: false,
+        })),
+    ];
+
+    let (room_defs, _, _) = export_rooms_and_logic(&rooms, &objects);
+
+    assert_eq!(room_defs[0].transition_targets, vec![1]);
+    assert!(room_defs[1].transition_targets.is_empty());
+}
+
+#[test]
+fn export_rooms_and_logic_uses_readable_keyboard_event_tags() {
+    use gm8exe::{
+        asset::{object::Object, room::Room, PascalString},
+        AssetList,
+    };
+    use iwm_parser::logic_export::export_rooms_and_logic;
+
+    let mut events: Vec<Vec<(u32, Vec<gm8exe::asset::CodeAction>)>> = (0..12).map(|_| Vec::new()).collect();
+    events[5].push((65, Vec::new()));
+
+    let objects: AssetList<Object> = vec![Some(Box::new(Object {
+        name: "obj_keyboard".into(),
+        sprite_index: -1,
+        solid: false,
+        visible: true,
+        depth: 0,
+        persistent: false,
+        parent_index: -1,
+        mask_index: -1,
+        events,
+    }))];
+    let rooms: AssetList<Room> = Vec::new();
+
+    let (_, object_defs, _) = export_rooms_and_logic(&rooms, &objects);
+
+    assert_eq!(object_defs[0].events[0].event_tag, "keyboard:a");
+}

@@ -134,6 +134,19 @@ describe('wasm bridge loader', () => {
         format: 'iwm-script-ir-v1',
         blocks: []
       },
+      rawLogic: {
+        format: 'iwm-raw-logic-v1',
+        room_creation_codes: [],
+        instance_creation_codes: [],
+        object_events: [],
+        scripts: [],
+        triggers: [],
+        timelines: []
+      },
+      loweredLogic: {
+        format: 'iwm-lowered-logic-v1',
+        entries: []
+      },
       resources: {
         sprites: [],
         backgrounds: [],

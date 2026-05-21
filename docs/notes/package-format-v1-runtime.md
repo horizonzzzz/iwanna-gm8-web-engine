@@ -52,6 +52,7 @@ Today the browser shell expects a package directory under `runtime/public/packag
 The default shell input is `/packages/sample`, which corresponds to `runtime/public/packages/sample/`.
 
 The current `iwm-runtime-web` bridge still boots from the normalized runtime payload; the raw and lowered logic files are parser-side artifacts used to preserve and prepare GM8 logic for later runtime consumption.
+The browser shell also loads `logic.raw.json` and `logic.lowered.json` today so diagnostics and future runtime-facing tooling can inspect parser-owned logic without reopening the original GM8 executable.
 
 ## Current Execution Status
 
