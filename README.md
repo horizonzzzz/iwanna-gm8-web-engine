@@ -219,7 +219,7 @@ The current project direction is centered on:
 - building a normalized project-owned package format
 - preparing for a browser runtime that can execute core gameplay through a WASM-hosted engine path
 
-The Phase 2 package-builder milestone emitted a structural V0 package consisting of:
+For historical context, the Phase 2 package-builder milestone emitted a structural V0 package consisting of:
 
 - `manifest.json`
 - `rooms.json`
