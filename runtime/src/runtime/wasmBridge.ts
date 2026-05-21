@@ -6,6 +6,12 @@ export type WasmRuntimeBridgeSnapshot = {
   roomId: number | null;
   roomName?: string | null;
   instanceCount?: number;
+  player?: {
+    x: number;
+    y: number;
+    hspeed: number;
+    vspeed: number;
+  } | null;
   diagnostics: string[];
 };
 

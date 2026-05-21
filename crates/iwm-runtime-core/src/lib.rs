@@ -63,12 +63,21 @@ pub struct RuntimeRoomState {
 }
 
 #[derive(Debug, Clone)]
+pub struct RuntimePlayerSnapshot {
+    pub x: i32,
+    pub y: i32,
+    pub hspeed: i32,
+    pub vspeed: i32,
+}
+
+#[derive(Debug, Clone)]
 pub struct RuntimeSnapshot {
     pub status: RuntimeStatus,
     pub tick: u64,
     pub room_id: Option<usize>,
     pub room_name: Option<String>,
     pub instance_count: usize,
+    pub player: Option<RuntimePlayerSnapshot>,
     pub diagnostics: Vec<iwm_runtime_host::RuntimeDiagnostic>,
 }
 
@@ -160,6 +169,17 @@ impl RuntimeCore {
                 .as_ref()
                 .map(|room| room.instances.len())
                 .unwrap_or(0),
+            player: self.current_room.as_ref().and_then(|room| {
+                room.instances
+                    .iter()
+                    .find(|instance| is_player_instance(instance))
+                    .map(|instance| RuntimePlayerSnapshot {
+                        x: instance.x,
+                        y: instance.y,
+                        hspeed: instance.hspeed,
+                        vspeed: instance.vspeed,
+                    })
+            }),
             diagnostics: self.diagnostics.clone(),
         }
     }

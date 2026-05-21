@@ -1,6 +1,6 @@
 use std::sync::{Mutex, OnceLock};
 
-use iwm_runtime_core::{RuntimeCore, RuntimePackage, RuntimeSnapshot, RuntimeStatus};
+use iwm_runtime_core::{RuntimeCore, RuntimePackage, RuntimePlayerSnapshot, RuntimeSnapshot, RuntimeStatus};
 use iwm_runtime_host::{
     ButtonState, HeadlessHost, RuntimeButton, RuntimeDiagnostic, RuntimeDrawCommand,
 };
@@ -26,12 +26,22 @@ pub struct WebInputState {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BridgePlayerSnapshot {
+    pub x: i32,
+    pub y: i32,
+    pub hspeed: i32,
+    pub vspeed: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BridgeSnapshot {
     pub status: String,
     pub tick: u64,
     pub room_id: Option<usize>,
     pub room_name: Option<String>,
     pub instance_count: usize,
+    pub player: Option<BridgePlayerSnapshot>,
     pub diagnostics: Vec<String>,
 }
 
@@ -236,7 +246,17 @@ fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
         room_id: snapshot.room_id,
         room_name: snapshot.room_name,
         instance_count: snapshot.instance_count,
+        player: snapshot.player.map(bridge_player_snapshot),
         diagnostics: format_diagnostics(&snapshot.diagnostics),
+    }
+}
+
+fn bridge_player_snapshot(snapshot: RuntimePlayerSnapshot) -> BridgePlayerSnapshot {
+    BridgePlayerSnapshot {
+        x: snapshot.x,
+        y: snapshot.y,
+        hspeed: snapshot.hspeed,
+        vspeed: snapshot.vspeed,
     }
 }
 
@@ -739,6 +759,34 @@ mod tests {
         assert_eq!(reset.tick, 0);
         assert_eq!(reset.room_id, Some(0));
         assert_eq!(reset.room_name.as_deref(), Some("room0"));
+    }
+
+    #[test]
+    fn web_runtime_host_snapshot_exposes_player_motion_and_reset_state() {
+        let mut host = WebRuntimeHost::new();
+        let boot = host.boot(sample_package()).unwrap();
+        assert_eq!(boot.player.as_ref().map(|player| (player.x, player.y)), Some((32, 64)));
+
+        host.set_input(WebInputState {
+            left: false,
+            right: true,
+            jump: false,
+            jump_pressed: false,
+            jump_released: false,
+            restart: false,
+        });
+
+        let after_tick = host.tick(1).unwrap();
+        assert_eq!(after_tick.tick, 1);
+        assert!(after_tick.player.as_ref().map(|player| player.x).unwrap() > 32);
+
+        let switched = host.select_room(1).unwrap();
+        assert_eq!(switched.room_id, Some(1));
+        assert_eq!(switched.player.as_ref().map(|player| (player.x, player.y)), Some((0, 0)));
+
+        let reset = host.reset().unwrap();
+        assert_eq!(reset.room_id, Some(0));
+        assert_eq!(reset.player.as_ref().map(|player| (player.x, player.y)), Some((32, 64)));
     }
 
     #[test]
