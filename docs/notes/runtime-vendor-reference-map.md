@@ -1,0 +1,29 @@
+# Runtime Vendor Reference Map
+
+This note records which vendored upstream module should guide which runtime concern during the WASM-first runtime phase.
+
+## Boundary Rules
+
+- OpenGMK `gm8emulator` is the primary reference for GM8 runner semantics during Phase 4.
+- That reference does not decide this project's package format, host-boundary shape, or licensing decisions.
+- OpenGMK `gm8exe` remains the only intended direct dependency boundary for parser code, isolated behind `crates/iwm-parser/src/gm8_adapter.rs`.
+- GM8Decompiler is for parser recovery behavior and odd executable comparisons only. Do not use it to define runtime semantics.
+
+## Runtime Concern Matrix
+
+| Concern | Vendor reference | Why it matters here | Use timing |
+| --- | --- | --- | --- |
+| Per-instance movement state, friction, gravity, speed application, and bounce/collision response | `vendor/OpenGMK/gm8emulator/src/game/movement.rs` | Phase 4 needs a vendor-guided baseline for player motion, gravity, and solid-contact behavior instead of re-inventing GM8-like rules in the WASM core | Now |
+| Event ownership and ordering for object, keyboard, mouse, trigger, alarm, and shutdown flows | `vendor/OpenGMK/gm8emulator/src/game/events.rs` | The runtime core needs a reliable reference for when events run, which instances receive them, and when pending room changes suppress further event execution | Now |
+| Semantic room restart and room-switch behavior | `vendor/OpenGMK/gm8emulator/src/game/transition.rs` | Room restart and room change are on the critical gameplay path, so this file matters immediately as a reference for scene-change behavior | Now |
+| Presentation-specific room transition effects | `vendor/OpenGMK/gm8emulator/src/game/transition.rs` | The same file also defines wipes, fades, slides, and user transition hooks, but those visual effects can wait until semantic room switching is stable | Later |
+| GameMaker-facing keyboard and mouse state model, including held/pressed/released queries and per-frame reset rules | `vendor/OpenGMK/gm8emulator/src/input.rs` | The browser shell and WASM bridge need to map web input into GM8-style button state transitions without drifting from expected `keyboard_*` and `mouse_*` behavior | Now |
+| Renderer abstraction, sprite draw entrypoints, view/projection setup, and frame presentation shape | `vendor/OpenGMK/gm8emulator/src/render.rs` | The project already has its own web drawing path, but this file defines what the runtime eventually expects a host renderer to provide and is the reference for draw-surface parity checks | Later |
+| Parser recovery orientation and weird executable comparison cases | `vendor/GM8Decompiler/README.org` | This README is only a high-level orientation source for how GM8Decompiler approaches executable-to-project recovery; use it to frame validation work on odd samples, not as a code-level implementation guide | Only for validation |
+
+## Practical Reading Order
+
+1. Use `movement.rs`, `events.rs`, and `input.rs` first for the current runtime-core semantics slice.
+2. Use `transition.rs` immediately for room restart and room-switch semantics; use the visual transition portions later once those semantics are stable.
+3. Use `render.rs` to audit host-surface expectations and draw-order gaps, not to reopen a parallel TypeScript gameplay runtime.
+4. Use GM8Decompiler only when parser output on unusual executables needs comparison or recovery-oriented sanity checks.
