@@ -37,6 +37,8 @@ GM8 sound functions such as `sound_play()` and `sound_loop()` still need a Web A
 
 GML is dynamic, so assignments must work against a variable store, not only hardcoded fields.
 
+Current runtime instances already carry a small hardcoded state set such as `x`, `y`, `hspeed`, and `vspeed`, but that is not a general GML variable system.
+
 Missing pieces include:
 
 - `global.var`
@@ -60,6 +62,8 @@ Missing pieces include:
 
 GM8 distinguishes held state from edge-triggered state.
 
+Current input handling already has a partial edge-triggered basis for `jump` and `restart` through the browser bridge and host button snapshots, but the full GM8 keyboard and mouse event model is still missing.
+
 Missing pieces include:
 
 - `just_pressed` and `just_released`
@@ -71,10 +75,13 @@ Missing pieces include:
 
 The object lifecycle is incomplete.
 
+Current rendering exists at the room/frame level, but GML event-driven lifecycle execution does not.
+
 Missing pieces include:
 
 - `instance_create()` -> `Create`
-- per-frame `Step` and `Draw`
+- per-frame `Step`
+- `Draw event` logic execution
 - collision event dispatch
 - `instance_destroy()` -> `Destroy`
 - `Clean Up`
@@ -88,6 +95,8 @@ These do not always block booting, but they block core IWanna fidelity and make 
 ### 7. Physics Precision
 
 Current movement uses hardcoded constants such as `RUN_SPEED` and `JUMP_SPEED`.
+
+The runtime already has a hardcoded player movement baseline and per-instance `hspeed` / `vspeed` fields, but not a general GM8-style object-driven physics model.
 
 Missing pieces include:
 
@@ -120,6 +129,8 @@ Missing pieces include:
 
 Parent/child object inheritance is not fully modeled.
 
+The parser already preserves `parent_index` in object definitions, but runtime inheritance semantics do not use that data yet.
+
 Missing pieces include:
 
 - `parent_index` inheritance chain
@@ -137,13 +148,18 @@ Missing pieces include:
 - `image_blend`
 - instance / sprite-level alpha handling
 
+### 12. Alarm
+
+Alarm logic is not yet implemented.
+
+This is not always a first-room blocker, but many fangame traps, delayed spikes, and boss patterns depend on it. Treat it as an important missing feature and promote it to necessary if the active gold sample depends on alarms on the first playable path.
+
 ## Can Be Deferred
 
 These are real GM8 features, but they do not need to block the first playable runtime slice.
 
 - particles
 - timelines
-- alarms
 - surface rendering
 - save / load
 - pixel-perfect collision masks
@@ -164,5 +180,4 @@ For IWanna-style games, the runtime is only meaningfully playable when it can do
 - play audio
 - support room transitions and deaths as real game events
 
-Current implementation already covers the browser shell, resource loading, bridge boot/tick/reset, and a hardcoded runtime baseline. The gap is the actual GM8 gameplay semantics in the middle.
-
+Current implementation already has a hardcoded baseline for player movement, AABB collision, reset, room switching, frame submission, and browser-hosted telemetry. The missing middle layer is the actual GM8 gameplay semantics: GML execution, variables, lifecycle dispatch, animation, and audio.
