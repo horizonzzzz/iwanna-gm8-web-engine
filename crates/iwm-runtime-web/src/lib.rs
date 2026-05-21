@@ -676,6 +676,7 @@ mod tests {
                     }],
                 }],
             },
+            lowered_logic: None,
             resources: ResourceIndex {
                 sprites: vec![SpriteResource {
                     id: 0,
@@ -956,6 +957,7 @@ mod tests {
             rooms,
             objects,
             scripts,
+            lowered_logic: None,
             resources,
             analysis,
         };

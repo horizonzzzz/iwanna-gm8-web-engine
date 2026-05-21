@@ -760,7 +760,7 @@ fn export_rooms_and_logic_assigns_transition_targets_to_the_source_room() {
 #[test]
 fn export_rooms_and_logic_uses_readable_keyboard_event_tags() {
     use gm8exe::{
-        asset::{object::Object, room::Room, PascalString},
+        asset::{object::Object, room::Room},
         AssetList,
     };
     use iwm_parser::logic_export::export_rooms_and_logic;

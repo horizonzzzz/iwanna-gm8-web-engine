@@ -6,7 +6,7 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 
 - The browser shell can load packages, boot the WASM bridge, tick, reset, select rooms, and show telemetry.
 - The parser now preserves raw logic in `logic.raw.json` and emits a lightweight lowered contract in `logic.lowered.json`.
-- The runtime core has a hardcoded movement/collision/transition baseline, but it does not execute GM8 game logic.
+- The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, but it still does not execute general GM8 gameplay logic.
 
 ## Necessary Missing
 
@@ -14,9 +14,9 @@ These are the gaps that block normal play. If any of these are absent, the game 
 
 ### 1. GML Script Execution
 
-The core game logic is still dead.
+The core game logic is still mostly dead.
 
-Current `tick()` behavior is hardcoded movement plus a few runtime diagnostics. Object logic from the room is not executed.
+Current `tick()` behavior is hardcoded movement plus a few runtime diagnostics, with only a very small lowered-logic slice dispatched for `step` events. Most object logic from the room is still not executed.
 
 Impact:
 

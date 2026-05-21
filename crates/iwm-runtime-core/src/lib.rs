@@ -9,11 +9,63 @@ use iwm_runtime_host::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoweredLogicFile {
+    pub format: String,
+    pub entries: Vec<LoweredLogicEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoweredLogicEntry {
+    pub block_id: String,
+    pub statements: Vec<LoweredLogicStatement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum LoweredLogicStatement {
+    Assignment { lhs: String, rhs: String },
+    FunctionCall { name: String, args: Vec<String> },
+    Conditional {
+        condition: String,
+        then_branch: Vec<LoweredLogicStatement>,
+        else_branch: Vec<LoweredLogicStatement>,
+    },
+    With {
+        target: String,
+        body: Vec<LoweredLogicStatement>,
+    },
+    Repeat {
+        count: String,
+        body: Vec<LoweredLogicStatement>,
+    },
+    While {
+        condition: String,
+        body: Vec<LoweredLogicStatement>,
+    },
+    For {
+        init: String,
+        condition: String,
+        step: String,
+        body: Vec<LoweredLogicStatement>,
+    },
+    Raw { source: String },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuntimeValue {
+    Number(f64),
+    Bool(bool),
+    Text(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimePackage {
     pub manifest: RuntimeManifest,
     pub rooms: Vec<RoomDefinition>,
     pub objects: Vec<ObjectDefinition>,
     pub scripts: ScriptIrFile,
+    #[serde(default, rename = "loweredLogic")]
+    pub lowered_logic: Option<LoweredLogicFile>,
     pub resources: ResourceIndex,
     pub analysis: AnalysisReport,
 }
@@ -47,6 +99,7 @@ pub struct RuntimeInstance {
     pub hazard: bool,
     pub checkpoint: bool,
     pub player_candidate: bool,
+    pub vars: HashMap<String, RuntimeValue>,
 }
 
 #[derive(Debug, Clone)]
@@ -98,12 +151,14 @@ impl From<RuntimeHostError> for RuntimeCoreError {
 pub struct RuntimeCore {
     package: RuntimePackage,
     room_index: HashMap<usize, usize>,
+    lowered_logic_index: HashMap<String, usize>,
     current_room: Option<RuntimeRoomState>,
     status: RuntimeStatus,
     tick: u64,
     diagnostics: Vec<iwm_runtime_host::RuntimeDiagnostic>,
     pending_room_transition: Option<usize>,
     pending_room_reset: bool,
+    globals: HashMap<String, RuntimeValue>,
 }
 
 const RUN_SPEED: i32 = 4;
@@ -123,16 +178,30 @@ impl RuntimeCore {
             .enumerate()
             .map(|(index, room)| (room.id, index))
             .collect::<HashMap<_, _>>();
+        let lowered_logic_index = package
+            .lowered_logic
+            .as_ref()
+            .map(|lowered_logic| {
+                lowered_logic
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .map(|(index, entry)| (entry.block_id.clone(), index))
+                    .collect::<HashMap<_, _>>()
+            })
+            .unwrap_or_default();
 
         let mut core = Self {
             package,
             room_index,
+            lowered_logic_index,
             current_room: None,
             status: RuntimeStatus::Ready,
             tick: 0,
             diagnostics: Vec::new(),
             pending_room_transition: None,
             pending_room_reset: false,
+            globals: HashMap::new(),
         };
 
         core.boot_default_room()?;
@@ -252,6 +321,11 @@ impl RuntimeCore {
                 format!("room {} has no live instances", room.room_name),
             );
         } else {
+            if self.execute_lowered_step_events(host)? {
+                self.apply_pending_room_change()?;
+                self.render(host)?;
+                return Ok(());
+            }
             self.step_player(host, left.pressed, right.pressed, jump.just_pressed)?;
         }
 
@@ -269,11 +343,12 @@ impl RuntimeCore {
         Ok(())
     }
 
-    fn build_room(&self, room_id: usize) -> Result<RuntimeRoomState, RuntimeCoreError> {
+    fn build_room(&mut self, room_id: usize) -> Result<RuntimeRoomState, RuntimeCoreError> {
         let room = self
             .room_index
             .get(&room_id)
             .and_then(|index| self.package.rooms.get(*index))
+            .cloned()
             .ok_or(RuntimeCoreError::RoomMissing(room_id))?;
 
         let spawn_point = room
@@ -310,6 +385,7 @@ impl RuntimeCore {
                     hazard: instance.is_hazard || object.is_hazard.unwrap_or(false),
                     checkpoint: instance.is_checkpoint || object.is_checkpoint.unwrap_or(false),
                     player_candidate: object.is_player,
+                    vars: HashMap::new(),
                 })
             })
             .collect::<Vec<_>>();
@@ -348,11 +424,12 @@ impl RuntimeCore {
                     hazard: player_object.is_hazard.unwrap_or(false),
                     checkpoint: player_object.is_checkpoint.unwrap_or(false),
                     player_candidate: true,
+                    vars: HashMap::new(),
                 });
             }
         }
 
-        Ok(RuntimeRoomState {
+        let mut room_state = RuntimeRoomState {
             room_id: room.id,
             room_name: room.name.clone(),
             width: room.width,
@@ -362,7 +439,9 @@ impl RuntimeCore {
             transition_targets: room.transition_targets.clone(),
             spawn_point,
             instances,
-        })
+        };
+        self.apply_create_logic(&mut room_state, &room);
+        Ok(room_state)
     }
 
     fn sprite_metrics(&self, object: &ObjectDefinition) -> (i32, i32, i32, i32) {
@@ -468,22 +547,48 @@ impl RuntimeCore {
             .get_mut(player_index)
             .ok_or(RuntimeCoreError::NoRooms)?;
 
+        let run_speed = player
+            .vars
+            .get("moveSpeed")
+            .and_then(as_number)
+            .or_else(|| player.vars.get("maxSpeed").and_then(as_number))
+            .unwrap_or(RUN_SPEED as f64)
+            .round() as i32;
+        let jump_speed = player
+            .vars
+            .get("jump")
+            .and_then(as_number)
+            .unwrap_or(JUMP_SPEED as f64)
+            .round() as i32;
+        let gravity = player
+            .vars
+            .get("gravity")
+            .and_then(as_number)
+            .unwrap_or(GRAVITY as f64)
+            .round() as i32;
+        let max_fall_speed = player
+            .vars
+            .get("maxFallSpeed")
+            .and_then(as_number)
+            .unwrap_or(MAX_FALL_SPEED as f64)
+            .round() as i32;
+
         player.previous_x = player.x;
         player.previous_y = player.y;
 
         player.hspeed = match (left_pressed, right_pressed) {
-            (true, false) => -RUN_SPEED,
-            (false, true) => RUN_SPEED,
+            (true, false) => -run_speed,
+            (false, true) => run_speed,
             _ => 0,
         };
 
         let standing_on_solid =
             collides_at(player, player.x, player.y + 1, &solids, Some(player.runtime_id));
         if jump_just_pressed && standing_on_solid {
-            player.vspeed = -JUMP_SPEED;
+            player.vspeed = -jump_speed;
         }
 
-        player.vspeed = (player.vspeed + GRAVITY).min(MAX_FALL_SPEED);
+        player.vspeed = (player.vspeed + gravity).min(max_fall_speed);
 
         move_instance_axis(player, &solids, Some(player.runtime_id), Axis::Horizontal, player.hspeed);
         move_instance_axis(player, &solids, Some(player.runtime_id), Axis::Vertical, player.vspeed);
@@ -517,6 +622,196 @@ impl RuntimeCore {
         };
         host.record(diagnostic.clone());
         self.diagnostics.push(diagnostic);
+    }
+
+    fn apply_create_logic(&mut self, room_state: &mut RuntimeRoomState, source_room: &RoomDefinition) {
+        if let Some(block_id) = source_room.creation_block_id.as_deref() {
+            self.apply_lowered_block_to_globals(block_id);
+        }
+
+        let create_event_blocks = self.object_event_blocks_by_tag("create");
+
+        for instance in &mut room_state.instances {
+            if let Some(source_instance) = source_room
+                .instances
+                .iter()
+                .find(|candidate| candidate.instance_id == instance.instance_id)
+            {
+                if let Some(block_id) = source_instance.creation_block_id.as_deref() {
+                    self.apply_lowered_block_to_instance(block_id, instance);
+                }
+            }
+
+            if let Some(block_ids) = create_event_blocks.get(&instance.object_id) {
+                for block_id in block_ids {
+                    self.apply_lowered_block_to_instance(block_id, instance);
+                }
+            }
+        }
+    }
+
+    fn execute_lowered_step_events<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+    ) -> Result<bool, RuntimeCoreError> {
+        let Some(room) = self.current_room.as_ref() else {
+            return Err(RuntimeCoreError::NoRooms);
+        };
+
+        let step_event_blocks = self.object_event_blocks_by_tag("step");
+        let dispatches = room
+            .instances
+            .iter()
+            .enumerate()
+            .filter(|(_, instance)| instance.alive)
+            .filter_map(|(index, instance)| {
+                let entries = step_event_blocks
+                    .get(&instance.object_id)
+                    .into_iter()
+                    .flat_map(|block_ids| block_ids.iter())
+                    .filter_map(|block_id| self.lowered_logic_entry(block_id).cloned())
+                    .collect::<Vec<_>>();
+
+                if entries.is_empty() {
+                    None
+                } else {
+                    Some((index, entries))
+                }
+            })
+            .collect::<Vec<_>>();
+
+        for (index, entries) in dispatches {
+            let Some(room) = self.current_room.as_mut() else {
+                return Err(RuntimeCoreError::NoRooms);
+            };
+            let Some(instance) = room.instances.get_mut(index) else {
+                continue;
+            };
+            if !instance.alive {
+                continue;
+            }
+
+            for entry in &entries {
+                for statement in &entry.statements {
+                    apply_step_statement(
+                        statement,
+                        instance,
+                        &mut self.globals,
+                        &mut self.pending_room_transition,
+                        &mut self.pending_room_reset,
+                        host,
+                        &mut self.diagnostics,
+                    );
+                    if self.pending_room_reset || self.pending_room_transition.is_some() {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    fn object_event_blocks_by_tag(&self, event_tag: &str) -> HashMap<usize, Vec<String>> {
+        self.package
+            .objects
+            .iter()
+            .map(|object| {
+                let block_ids = object
+                    .events
+                    .iter()
+                    .filter(|event| event.event_tag == event_tag)
+                    .map(|event| event.block_id.clone())
+                    .collect::<Vec<_>>();
+                (object.id, block_ids)
+            })
+            .collect::<HashMap<_, _>>()
+    }
+
+    fn apply_lowered_block_to_globals(&mut self, block_id: &str) {
+        let Some(entry) = self.lowered_logic_entry(block_id).cloned() else {
+            return;
+        };
+
+        for statement in &entry.statements {
+            self.apply_statement_to_globals(statement);
+        }
+    }
+
+    fn apply_lowered_block_to_instance(&mut self, block_id: &str, instance: &mut RuntimeInstance) {
+        let Some(entry) = self.lowered_logic_entry(block_id).cloned() else {
+            return;
+        };
+
+        for statement in &entry.statements {
+            self.apply_statement_to_instance(statement, instance);
+        }
+    }
+
+    fn lowered_logic_entry(&self, block_id: &str) -> Option<&LoweredLogicEntry> {
+        let index = self.lowered_logic_index.get(block_id)?;
+        self.package
+            .lowered_logic
+            .as_ref()
+            .and_then(|lowered_logic| lowered_logic.entries.get(*index))
+    }
+
+    fn apply_statement_to_globals(&mut self, statement: &LoweredLogicStatement) {
+        match statement {
+            LoweredLogicStatement::Assignment { lhs, rhs } => {
+                if let Some(value) = parse_runtime_value(rhs) {
+                    self.globals.insert(lhs.clone(), value);
+                }
+            }
+            LoweredLogicStatement::Conditional { then_branch, else_branch, .. } => {
+                for nested in then_branch {
+                    self.apply_statement_to_globals(nested);
+                }
+                for nested in else_branch {
+                    self.apply_statement_to_globals(nested);
+                }
+            }
+            LoweredLogicStatement::With { body, .. }
+            | LoweredLogicStatement::Repeat { body, .. }
+            | LoweredLogicStatement::While { body, .. }
+            | LoweredLogicStatement::For { body, .. } => {
+                for nested in body {
+                    self.apply_statement_to_globals(nested);
+                }
+            }
+            LoweredLogicStatement::FunctionCall { .. } | LoweredLogicStatement::Raw { .. } => {}
+        }
+    }
+
+    fn apply_statement_to_instance(
+        &mut self,
+        statement: &LoweredLogicStatement,
+        instance: &mut RuntimeInstance,
+    ) {
+        match statement {
+            LoweredLogicStatement::Assignment { lhs, rhs } => {
+                if let Some(value) = parse_runtime_value(rhs) {
+                    instance.vars.insert(lhs.clone(), value);
+                }
+            }
+            LoweredLogicStatement::Conditional { then_branch, else_branch, .. } => {
+                for nested in then_branch {
+                    self.apply_statement_to_instance(nested, instance);
+                }
+                for nested in else_branch {
+                    self.apply_statement_to_instance(nested, instance);
+                }
+            }
+            LoweredLogicStatement::With { body, .. }
+            | LoweredLogicStatement::Repeat { body, .. }
+            | LoweredLogicStatement::While { body, .. }
+            | LoweredLogicStatement::For { body, .. } => {
+                for nested in body {
+                    self.apply_statement_to_instance(nested, instance);
+                }
+            }
+            LoweredLogicStatement::FunctionCall { .. } | LoweredLogicStatement::Raw { .. } => {}
+        }
     }
 
     fn build_render_frame(&self) -> Result<RuntimeRenderFrame, RuntimeCoreError> {
@@ -714,6 +1009,103 @@ fn move_instance_axis(
 fn player_out_of_bounds(instance: &RuntimeInstance, room_width: u32, room_height: u32) -> bool {
     let (left, top, right, bottom) = bounds_at(instance, instance.x, instance.y);
     right < 0 || bottom < 0 || left > room_width as i32 || top > room_height as i32
+}
+
+fn parse_runtime_value(raw: &str) -> Option<RuntimeValue> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Ok(number) = trimmed.parse::<f64>() {
+        return Some(RuntimeValue::Number(number));
+    }
+
+    if trimmed.eq_ignore_ascii_case("true") {
+        return Some(RuntimeValue::Bool(true));
+    }
+
+    if trimmed.eq_ignore_ascii_case("false") {
+        return Some(RuntimeValue::Bool(false));
+    }
+
+    Some(RuntimeValue::Text(trimmed.trim_matches('"').to_string()))
+}
+
+fn as_number(value: &RuntimeValue) -> Option<f64> {
+    match value {
+        RuntimeValue::Number(number) => Some(*number),
+        RuntimeValue::Bool(flag) => Some(if *flag { 1.0 } else { 0.0 }),
+        RuntimeValue::Text(text) => text.parse().ok(),
+    }
+}
+
+fn parse_room_id(raw: &str) -> Option<usize> {
+    let value = parse_runtime_value(raw)?;
+    let number = as_number(&value)?;
+    if number.is_finite() && number >= 0.0 {
+        Some(number.round() as usize)
+    } else {
+        None
+    }
+}
+
+fn record_host_diagnostic<H: RuntimeHost>(
+    host: &mut H,
+    diagnostics: &mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
+    level: iwm_runtime_host::RuntimeDiagnosticLevel,
+    code: impl Into<String>,
+    message: impl Into<String>,
+) {
+    let diagnostic = iwm_runtime_host::RuntimeDiagnostic {
+        level,
+        code: code.into(),
+        message: message.into(),
+    };
+    host.record(diagnostic.clone());
+    diagnostics.push(diagnostic);
+}
+
+fn apply_step_statement<H: RuntimeHost>(
+    statement: &LoweredLogicStatement,
+    instance: &mut RuntimeInstance,
+    globals: &mut HashMap<String, RuntimeValue>,
+    pending_room_transition: &mut Option<usize>,
+    pending_room_reset: &mut bool,
+    host: &mut H,
+    diagnostics: &mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
+) {
+    match statement {
+        LoweredLogicStatement::Assignment { lhs, rhs } => {
+            if let Some(value) = parse_runtime_value(rhs) {
+                if lhs.starts_with("global.") {
+                    globals.insert(lhs.clone(), value);
+                } else {
+                    instance.vars.insert(lhs.clone(), value);
+                }
+            }
+        }
+        LoweredLogicStatement::FunctionCall { name, args } => match name.as_str() {
+            "room_goto" => {
+                if let Some(room_id) = args.first().and_then(|arg| parse_room_id(arg)) {
+                    *pending_room_transition = Some(room_id);
+                } else {
+                    record_host_diagnostic(
+                        host,
+                        diagnostics,
+                        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                        "runtime-step-room-goto-unresolved",
+                        format!("could not resolve room_goto target for {}", instance.object_name),
+                    );
+                }
+            }
+            "game_restart" => {
+                *pending_room_reset = true;
+            }
+            _ => {}
+        },
+        _ => {}
+    }
 }
 
 
@@ -948,6 +1340,7 @@ mod tests {
                     }],
                 }],
             },
+            lowered_logic: None,
             resources: ResourceIndex {
                 sprites: vec![SpriteResource {
                     id: 0,
@@ -1298,6 +1691,193 @@ mod tests {
             .diagnostics()
             .iter()
             .any(|diagnostic| diagnostic.code == "runtime-player-died"));
+        assert_eq!(core.snapshot().status, RuntimeStatus::Ready);
+    }
+
+    #[test]
+    fn core_applies_lowered_create_assignments_to_player_vars_and_movement() {
+        let mut package = sample_package();
+        package.lowered_logic = Some(LoweredLogicFile {
+            format: "iwm-lowered-logic-v1".into(),
+            entries: vec![LoweredLogicEntry {
+                block_id: "object:0:event:0:0".into(),
+                statements: vec![
+                    LoweredLogicStatement::Assignment {
+                        lhs: "moveSpeed".into(),
+                        rhs: "6".into(),
+                    },
+                    LoweredLogicStatement::Assignment {
+                        lhs: "jump".into(),
+                        rhs: "11".into(),
+                    },
+                    LoweredLogicStatement::Assignment {
+                        lhs: "gravity".into(),
+                        rhs: "2".into(),
+                    },
+                ],
+            }],
+        });
+
+        let mut core = RuntimeCore::load(package).unwrap();
+        let mut host = HeadlessHost::new("sandbox");
+        host.input.set_button_state(
+            RuntimeButton::Keyboard(0x27),
+            ButtonState {
+                pressed: true,
+                just_pressed: true,
+                just_released: false,
+            },
+        );
+        core.tick(&mut host).unwrap();
+
+        let room = core.current_room().unwrap();
+        let player = room.instances.iter().find(|instance| instance.player_candidate).unwrap();
+        assert_eq!(player.vars.get("moveSpeed"), Some(&RuntimeValue::Number(6.0)));
+        assert_eq!(player.vars.get("jump"), Some(&RuntimeValue::Number(11.0)));
+        assert_eq!(player.hspeed, 6);
+        assert!(player.vspeed >= 0);
+    }
+
+    #[test]
+    fn core_applies_lowered_room_creation_assignments_to_globals() {
+        let mut package = sample_package();
+        package.rooms[0].creation_block_id = Some("room:7:create".into());
+        package.lowered_logic = Some(LoweredLogicFile {
+            format: "iwm-lowered-logic-v1".into(),
+            entries: vec![LoweredLogicEntry {
+                block_id: "room:7:create".into(),
+                statements: vec![
+                    LoweredLogicStatement::Assignment {
+                        lhs: "global.difficulty".into(),
+                        rhs: "2".into(),
+                    },
+                    LoweredLogicStatement::Assignment {
+                        lhs: "global.practice".into(),
+                        rhs: "true".into(),
+                    },
+                ],
+            }],
+        });
+
+        let core = RuntimeCore::load(package).unwrap();
+
+        assert_eq!(
+            core.globals.get("global.difficulty"),
+            Some(&RuntimeValue::Number(2.0))
+        );
+        assert_eq!(
+            core.globals.get("global.practice"),
+            Some(&RuntimeValue::Bool(true))
+        );
+    }
+
+    #[test]
+    fn core_executes_lowered_step_room_goto_calls() {
+        let mut package = sample_package();
+        package.rooms[0].instances[0].creation_block_id = None;
+        package.objects[0].events.push(ObjectEventEntry {
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            block_id: "object:0:event:3:0".into(),
+            action_count: 0,
+        });
+        package.lowered_logic = Some(LoweredLogicFile {
+            format: "iwm-lowered-logic-v1".into(),
+            entries: vec![LoweredLogicEntry {
+                block_id: "object:0:event:3:0".into(),
+                statements: vec![LoweredLogicStatement::FunctionCall {
+                    name: "room_goto".into(),
+                    args: vec!["9".into()],
+                }],
+            }],
+        });
+
+        let mut core = RuntimeCore::load(package).unwrap();
+        let mut host = HeadlessHost::new("sandbox");
+
+        core.tick(&mut host).unwrap();
+
+        assert_eq!(core.snapshot().room_id, Some(9));
+    }
+
+    #[test]
+    fn core_applies_lowered_step_assignments_before_player_movement() {
+        let mut package = sample_package();
+        package.objects[0].events.push(ObjectEventEntry {
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            block_id: "object:0:event:3:0".into(),
+            action_count: 0,
+        });
+        package.lowered_logic = Some(LoweredLogicFile {
+            format: "iwm-lowered-logic-v1".into(),
+            entries: vec![LoweredLogicEntry {
+                block_id: "object:0:event:3:0".into(),
+                statements: vec![LoweredLogicStatement::Assignment {
+                    lhs: "moveSpeed".into(),
+                    rhs: "6".into(),
+                }],
+            }],
+        });
+
+        let mut core = RuntimeCore::load(package).unwrap();
+        let mut host = HeadlessHost::new("sandbox");
+        host.input.set_button_state(
+            RuntimeButton::Keyboard(0x27),
+            ButtonState {
+                pressed: true,
+                just_pressed: true,
+                just_released: false,
+            },
+        );
+
+        core.tick(&mut host).unwrap();
+
+        let room = core.current_room().unwrap();
+        let player = room.instances.iter().find(|instance| instance.player_candidate).unwrap();
+        assert_eq!(player.vars.get("moveSpeed"), Some(&RuntimeValue::Number(6.0)));
+        assert_eq!(player.hspeed, 6);
+    }
+
+    #[test]
+    fn core_executes_lowered_step_game_restart_calls() {
+        let mut package = sample_package();
+        package.objects[0].events.push(ObjectEventEntry {
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            block_id: "object:0:event:3:0".into(),
+            action_count: 0,
+        });
+        package.lowered_logic = Some(LoweredLogicFile {
+            format: "iwm-lowered-logic-v1".into(),
+            entries: vec![LoweredLogicEntry {
+                block_id: "object:0:event:3:0".into(),
+                statements: vec![LoweredLogicStatement::FunctionCall {
+                    name: "game_restart".into(),
+                    args: vec![],
+                }],
+            }],
+        });
+
+        let mut core = RuntimeCore::load(package).unwrap();
+        let mut host = HeadlessHost::new("sandbox");
+        host.input.set_button_state(
+            RuntimeButton::Keyboard(0x27),
+            ButtonState {
+                pressed: true,
+                just_pressed: true,
+                just_released: false,
+            },
+        );
+
+        core.tick(&mut host).unwrap();
+
+        let room = core.current_room().unwrap();
+        let player = room.instances.iter().find(|instance| instance.player_candidate).unwrap();
+        assert_eq!((player.x, player.y), (12, 24));
         assert_eq!(core.snapshot().status, RuntimeStatus::Ready);
     }
 }
