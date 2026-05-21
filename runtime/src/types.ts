@@ -76,6 +76,20 @@ export type RoomDefinition = {
     port_h: number;
     target: number;
   }>;
+  tiles: Array<{
+    tile_id: number;
+    source_bg: number;
+    x: number;
+    y: number;
+    tile_x: number;
+    tile_y: number;
+    width: number;
+    height: number;
+    depth: number;
+    xscale: number;
+    yscale: number;
+    blend: number;
+  }>;
   instances: Array<{
     instance_id: number;
     object_id: number;

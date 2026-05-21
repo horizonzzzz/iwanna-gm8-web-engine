@@ -45,6 +45,18 @@ const sampleFrame: WasmRuntimeFrame = {
       isForeground: false,
     },
     {
+      kind: 'drawTile',
+      backgroundId: 0,
+      x: 12,
+      y: 14,
+      tileX: 1,
+      tileY: 2,
+      width: 16,
+      height: 18,
+      xscale: 2,
+      yscale: 1.5,
+    },
+    {
       kind: 'drawSprite',
       spriteId: 0,
       frameIndex: 0,
@@ -109,11 +121,12 @@ describe('renderWasmFrame', () => {
     expect(clearRect).toHaveBeenCalledWith(0, 0, 320, 240);
     expect(fillRect).toHaveBeenNthCalledWith(1, 0, 0, 320, 240);
     expect(drawImage).toHaveBeenNthCalledWith(1, backgroundImage, 3, 4);
+    expect(drawImage).toHaveBeenNthCalledWith(2, backgroundImage, 1, 2, 16, 18, 12, 14, 32, 27);
     expect(save).toHaveBeenCalledTimes(1);
     expect(translate).toHaveBeenCalledWith(10, 20);
     expect(rotate).toHaveBeenCalledWith(Math.PI / 2);
     expect(scale).toHaveBeenCalledWith(2, 3);
-    expect(drawImage).toHaveBeenNthCalledWith(2, spriteImage, -5, -6);
+    expect(drawImage).toHaveBeenNthCalledWith(3, spriteImage, -5, -6);
     expect(fillRect).toHaveBeenNthCalledWith(2, 30, 40, 8, 9);
     expect(restore).toHaveBeenCalledTimes(1);
   });

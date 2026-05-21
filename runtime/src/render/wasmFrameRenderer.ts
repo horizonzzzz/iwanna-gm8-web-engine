@@ -48,6 +48,26 @@ function drawBackground(
   }
 }
 
+function drawTile(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  command: Extract<WasmRuntimeFrame['commands'][number], { kind: 'drawTile' }>
+): void {
+  const drawWidth = Math.max(1, Math.round(command.width * command.xscale));
+  const drawHeight = Math.max(1, Math.round(command.height * command.yscale));
+  context.drawImage(
+    image,
+    command.tileX,
+    command.tileY,
+    command.width,
+    command.height,
+    command.x,
+    command.y,
+    drawWidth,
+    drawHeight
+  );
+}
+
 export async function renderWasmFrame(
   canvas: HTMLCanvasElement,
   frame: WasmRuntimeFrame,
@@ -80,6 +100,16 @@ export async function renderWasmFrame(
 
         const image = await cache.getImage(path);
         drawBackground(context, frame, image, command);
+        break;
+      }
+      case 'drawTile': {
+        const path = backgroundPaths.get(command.backgroundId);
+        if (!path) {
+          continue;
+        }
+
+        const image = await cache.getImage(path);
+        drawTile(context, image, command);
         break;
       }
       case 'drawSprite': {

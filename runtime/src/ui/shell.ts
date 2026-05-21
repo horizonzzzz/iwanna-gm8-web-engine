@@ -4,6 +4,7 @@ import { renderStaticRoom } from '../render/staticRoomRenderer';
 import { renderWasmFrame } from '../render/wasmFrameRenderer';
 import { renderManifestSummary, renderObjectsSlice, renderRoomsSlice, renderScriptsSlice } from './inspectors';
 import type { RuntimePackage } from '../types';
+// TS runtime remains only as a fallback harness while the WASM path is brought up.
 import { GameRuntime } from '../runtime/gameRuntime';
 import { WasmRuntimeSession } from '../runtime/wasmSession';
 import {

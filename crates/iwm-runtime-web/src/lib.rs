@@ -48,6 +48,17 @@ pub enum BridgeDrawCommand {
         tile_vert: bool,
         is_foreground: bool,
     },
+    DrawTile {
+        background_id: usize,
+        x: i32,
+        y: i32,
+        tile_x: u32,
+        tile_y: u32,
+        width: u32,
+        height: u32,
+        xscale: f64,
+        yscale: f64,
+    },
     DrawSprite {
         sprite_id: usize,
         frame_index: usize,
@@ -250,6 +261,27 @@ fn bridge_draw_command(command: &RuntimeDrawCommand) -> BridgeDrawCommand {
             tile_horz: *tile_horz,
             tile_vert: *tile_vert,
             is_foreground: *is_foreground,
+        },
+        RuntimeDrawCommand::DrawTile {
+            background_id,
+            x,
+            y,
+            tile_x,
+            tile_y,
+            width,
+            height,
+            xscale,
+            yscale,
+        } => BridgeDrawCommand::DrawTile {
+            background_id: *background_id,
+            x: *x,
+            y: *y,
+            tile_x: *tile_x,
+            tile_y: *tile_y,
+            width: *width,
+            height: *height,
+            xscale: *xscale,
+            yscale: *yscale,
         },
         RuntimeDrawCommand::DrawSprite {
             sprite_id,
@@ -488,8 +520,8 @@ mod tests {
     use serde_json::json;
     use iwm_runtime_model::{
         AnalysisReport, BackgroundResource, CompatibilityLevel, LogicBlock, LogicOp, ObjectDefinition,
-        ObjectEventEntry, ResourceIndex, RoomBackgroundLayer, RoomDefinition, RoomInstancePlacement, RoomView,
-        RuntimeManifest, ScriptIrFile, SoundResource, SpriteResource,
+        ObjectEventEntry, ResourceIndex, RoomBackgroundLayer, RoomDefinition, RoomInstancePlacement,
+        RoomTilePlacement, RoomView, RuntimeManifest, ScriptIrFile, SoundResource, SpriteResource,
     };
 
     fn sample_package() -> RuntimePackage {
@@ -543,6 +575,20 @@ mod tests {
                     port_h: 240,
                     target: -1,
                 }],
+                tiles: vec![RoomTilePlacement {
+                    tile_id: 10,
+                    source_bg: 0,
+                    x: 16,
+                    y: 32,
+                    tile_x: 4,
+                    tile_y: 8,
+                    width: 16,
+                    height: 16,
+                    depth: 0,
+                    xscale: 1.0,
+                    yscale: 1.0,
+                    blend: 0x00ff_ffff,
+                }],
                 instances: vec![RoomInstancePlacement {
                     instance_id: 1,
                     object_id: 0,
@@ -570,6 +616,7 @@ mod tests {
                 backgrounds: vec![],
                 views_enabled: false,
                 views: vec![],
+                tiles: vec![],
                 instances: vec![],
                 creation_block_id: None,
                 playable: true,
@@ -578,7 +625,7 @@ mod tests {
             objects: vec![ObjectDefinition {
                 id: 0,
                 name: "obj_player".into(),
-                sprite_index: -1,
+                sprite_index: 0,
                 parent_index: -1,
                 depth: 0,
                 persistent: false,
@@ -615,9 +662,9 @@ mod tests {
                     name: "spr_player".into(),
                     origin_x: 0,
                     origin_y: 0,
-                    frame_paths: vec![],
-                    width: 0,
-                    height: 0,
+                    frame_paths: vec!["resources/sprites/0-0.png".into()],
+                    width: 16,
+                    height: 16,
                 }],
                 backgrounds: vec![BackgroundResource {
                     id: 0,
@@ -726,5 +773,95 @@ mod tests {
         assert_eq!(frame.tick, 1);
         assert_eq!(frame.room_id, Some(0));
         assert!(!frame.commands.is_empty());
+    }
+
+    #[test]
+    fn web_runtime_host_frame_snapshot_includes_tiles_and_fallback_player_output() {
+        let mut package = sample_package();
+        package.rooms[0].instances[0].object_id = 1;
+        package.rooms[0].instances[0].is_checkpoint = true;
+        package.objects.push(ObjectDefinition {
+            id: 1,
+            name: "checkpoint".into(),
+            sprite_index: -1,
+            parent_index: -1,
+            depth: 0,
+            persistent: false,
+            visible: false,
+            solid: false,
+            mask_index: -1,
+            is_hazard: Some(false),
+            is_checkpoint: Some(true),
+            is_player: false,
+            events: vec![],
+        });
+
+        let mut host = WebRuntimeHost::new();
+        host.boot(package).unwrap();
+        let frame = host.frame_snapshot().unwrap();
+
+        assert!(frame.commands.iter().any(|command| matches!(
+            command,
+            BridgeDrawCommand::DrawTile {
+                background_id: 0,
+                width: 16,
+                height: 16,
+                ..
+            }
+        )));
+        assert!(frame.commands.iter().any(|command| matches!(
+            command,
+            BridgeDrawCommand::DrawSprite { sprite_id: 0, .. }
+        )));
+    }
+
+    #[test]
+    fn real_mashikaku_package_emits_tile_commands_when_local_package_exists() {
+        let package_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("runtime")
+            .join("public")
+            .join("packages")
+            .join("mashikaku");
+
+        let rooms_path = package_root.join("rooms.json");
+        if !rooms_path.exists() {
+            return;
+        }
+
+        let manifest: RuntimeManifest =
+            serde_json::from_slice(&std::fs::read(package_root.join("manifest.json")).unwrap()).unwrap();
+        let rooms: Vec<RoomDefinition> =
+            serde_json::from_slice(&std::fs::read(&rooms_path).unwrap()).unwrap();
+        let objects: Vec<ObjectDefinition> =
+            serde_json::from_slice(&std::fs::read(package_root.join("objects.json")).unwrap()).unwrap();
+        let scripts: ScriptIrFile =
+            serde_json::from_slice(&std::fs::read(package_root.join("scripts.ir.json")).unwrap()).unwrap();
+        let analysis: AnalysisReport =
+            serde_json::from_slice(&std::fs::read(package_root.join("analysis.json")).unwrap()).unwrap();
+        let resources: ResourceIndex = serde_json::from_slice(
+            &std::fs::read(package_root.join("resources").join("index.json")).unwrap(),
+        )
+        .unwrap();
+
+        let package = RuntimePackage {
+            manifest,
+            rooms,
+            objects,
+            scripts,
+            resources,
+            analysis,
+        };
+
+        let mut host = WebRuntimeHost::new();
+        host.boot(package).unwrap();
+        host.select_room(87).unwrap();
+        let frame = host.frame_snapshot().unwrap();
+
+        assert!(frame.commands.iter().any(|command| matches!(
+            command,
+            BridgeDrawCommand::DrawTile { .. }
+        )));
     }
 }

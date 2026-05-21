@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { renderStaticRoom, resolveBackgroundDraws } from './staticRoomRenderer';
+import { renderStaticRoom, resolveBackgroundDraws, resolveTileDraws } from './staticRoomRenderer';
 import type { ObjectDefinition, RoomDefinition } from '../types';
 
 describe('resolveBackgroundDraws', () => {
@@ -39,6 +39,7 @@ describe('resolveBackgroundDraws', () => {
       ],
       views_enabled: false,
       views: [],
+      tiles: [],
       instances: [],
       creation_block_id: null,
       playable: true,
@@ -62,6 +63,57 @@ describe('resolveBackgroundDraws', () => {
 });
 
 describe('renderStaticRoom', () => {
+  it('returns visible room tiles with background image paths', () => {
+    const room: RoomDefinition = {
+      id: 1,
+      name: 'Room',
+      width: 320,
+      height: 240,
+      speed: 30,
+      persistent: false,
+      backgrounds: [],
+      views_enabled: false,
+      views: [],
+      tiles: [
+        {
+          tile_id: 4,
+          source_bg: 2,
+          x: 10,
+          y: 20,
+          tile_x: 3,
+          tile_y: 4,
+          width: 32,
+          height: 32,
+          depth: 100,
+          xscale: 1,
+          yscale: 1,
+          blend: 0xffffffff,
+        }
+      ],
+      instances: [],
+      creation_block_id: null,
+      playable: true,
+      transition_targets: []
+    };
+
+    const backgroundPaths = new Map([[2, '/pkg/resources/backgrounds/2.png']]);
+
+    expect(resolveTileDraws(room, backgroundPaths)).toEqual([
+      {
+        imagePath: '/pkg/resources/backgrounds/2.png',
+        x: 10,
+        y: 20,
+        tileX: 3,
+        tileY: 4,
+        width: 32,
+        height: 32,
+        depth: 100,
+        xscale: 1,
+        yscale: 1
+      }
+    ]);
+  });
+
   it('draws stretched and tiled backgrounds', async () => {
     const clearRect = vi.fn();
     const fillRect = vi.fn();
@@ -119,6 +171,7 @@ describe('renderStaticRoom', () => {
       ],
       views_enabled: false,
       views: [],
+      tiles: [],
       instances: [],
       creation_block_id: null,
       playable: true,
@@ -191,6 +244,7 @@ describe('renderStaticRoom', () => {
       backgrounds: [],
       views_enabled: false,
       views: [],
+      tiles: [],
       instances: [
         {
           instance_id: 1,
@@ -312,5 +366,76 @@ describe('renderStaticRoom', () => {
     expect(drawImage).toHaveBeenNthCalledWith(1, spriteImage, -5, -6);
     expect(restore).toHaveBeenCalledTimes(1);
     expect(fillRect).toHaveBeenNthCalledWith(2, 66, 76, 8, 8);
+  });
+
+  it('draws room tiles using background source rectangles', async () => {
+    const clearRect = vi.fn();
+    const fillRect = vi.fn();
+    const drawImage = vi.fn();
+    const context = {
+      fillStyle: '',
+      clearRect,
+      fillRect,
+      drawImage,
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      scale: vi.fn()
+    };
+
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context)
+    } as unknown as HTMLCanvasElement;
+
+    const room: RoomDefinition = {
+      id: 1,
+      name: 'Room',
+      width: 320,
+      height: 240,
+      speed: 30,
+      persistent: false,
+      backgrounds: [],
+      views_enabled: false,
+      views: [],
+      tiles: [
+        {
+          tile_id: 5,
+          source_bg: 1,
+          x: 16,
+          y: 24,
+          tile_x: 4,
+          tile_y: 8,
+          width: 32,
+          height: 32,
+          depth: 100,
+          xscale: 2,
+          yscale: 1.5,
+          blend: 0xffffffff,
+        }
+      ],
+      instances: [],
+      creation_block_id: null,
+      playable: true,
+      transition_targets: []
+    };
+
+    const image = { id: 'tile-sheet', width: 128, height: 128 } as unknown as HTMLImageElement;
+    const cache = {
+      getImage: vi.fn(async () => image)
+    };
+
+    await renderStaticRoom(
+      canvas,
+      room,
+      [],
+      new Map([[1, '/pkg/resources/backgrounds/1.png']]),
+      new Map(),
+      cache as never
+    );
+
+    expect(drawImage).toHaveBeenNthCalledWith(1, image, 4, 8, 32, 32, 16, 24, 64, 48);
   });
 });

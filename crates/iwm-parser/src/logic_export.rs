@@ -1,6 +1,6 @@
 use crate::models::{
     LogicBlock, LogicOp, ObjectDefinition, ObjectEventEntry, RoomBackgroundLayer, RoomDefinition,
-    RoomInstancePlacement, RoomView, ScriptIrFile,
+    RoomInstancePlacement, RoomTilePlacement, RoomView, ScriptIrFile,
 };
 use gm8exe::{
     asset::{CodeAction, Object, Room},
@@ -135,6 +135,24 @@ pub fn export_rooms_and_logic(
                         port_w: view.port_w,
                         port_h: view.port_h,
                         target: view.following.target,
+                    })
+                    .collect(),
+                tiles: room
+                    .tiles
+                    .iter()
+                    .map(|tile| RoomTilePlacement {
+                        tile_id: tile.id,
+                        source_bg: tile.source_bg,
+                        x: tile.x,
+                        y: tile.y,
+                        tile_x: tile.tile_x,
+                        tile_y: tile.tile_y,
+                        width: tile.width,
+                        height: tile.height,
+                        depth: tile.depth,
+                        xscale: tile.xscale,
+                        yscale: tile.yscale,
+                        blend: tile.blend,
                     })
                     .collect(),
                 instances,

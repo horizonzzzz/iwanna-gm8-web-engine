@@ -203,14 +203,14 @@ impl RuntimeCore {
         Ok(())
     }
 
-    fn build_room(&self, room_id: usize) -> Result<RuntimeRoomState, RuntimeCoreError> {
+fn build_room(&self, room_id: usize) -> Result<RuntimeRoomState, RuntimeCoreError> {
         let room = self
             .room_index
             .get(&room_id)
             .and_then(|index| self.package.rooms.get(*index))
             .ok_or(RuntimeCoreError::RoomMissing(room_id))?;
 
-        let instances = room
+        let mut instances = room
             .instances
             .iter()
             .enumerate()
@@ -231,6 +231,39 @@ impl RuntimeCore {
                 })
             })
             .collect::<Vec<_>>();
+
+        let has_player = instances.iter().any(|instance| instance.player_candidate && instance.alive);
+        if !has_player {
+            let preferred_player = self
+                .package
+                .objects
+                .iter()
+                .find(|object| object.is_player && is_preferred_player_name(&object.name))
+                .or_else(|| self.package.objects.iter().find(|object| object.is_player));
+
+            if let Some(player_object) = preferred_player {
+                let spawn = room
+                    .instances
+                    .iter()
+                    .find(|instance| instance.is_checkpoint)
+                    .or_else(|| room.instances.first());
+
+                let (x, y) = spawn.map(|instance| (instance.x, instance.y)).unwrap_or((0, 0));
+                instances.push(RuntimeInstance {
+                    runtime_id: instances.len(),
+                    instance_id: -1,
+                    object_id: player_object.id,
+                    object_name: player_object.name.clone(),
+                    x,
+                    y,
+                    alive: true,
+                    solid: player_object.solid,
+                    hazard: player_object.is_hazard.unwrap_or(false),
+                    checkpoint: player_object.is_checkpoint.unwrap_or(false),
+                    player_candidate: true,
+                });
+            }
+        }
 
         Ok(RuntimeRoomState {
             room_id: room.id,
@@ -275,6 +308,20 @@ impl RuntimeCore {
                     is_foreground: false,
                 }),
         );
+
+        commands.extend(source_room.tiles.iter().filter(|tile| tile.source_bg >= 0).map(|tile| {
+            RuntimeDrawCommand::DrawTile {
+                background_id: tile.source_bg as usize,
+                x: tile.x,
+                y: tile.y,
+                tile_x: tile.tile_x,
+                tile_y: tile.tile_y,
+                width: tile.width,
+                height: tile.height,
+                xscale: tile.xscale,
+                yscale: tile.yscale,
+            }
+        }));
 
         for instance in &room.instances {
             if let Some(object) = self.package.objects.get(instance.object_id) {
@@ -343,13 +390,20 @@ impl RuntimeCore {
     }
 }
 
+fn is_preferred_player_name(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "player" | "player2" | "playerface" | "obj_player" | "obj_player2" | "obj_playerface"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use iwm_runtime_model::{
         AnalysisReport, BackgroundResource, CompatibilityLevel, LogicBlock, LogicOp,
-        ObjectEventEntry, ResourceIndex, RoomBackgroundLayer, RoomInstancePlacement, RoomView,
-        RuntimeManifest, ScriptIrFile, SoundResource, SpriteResource,
+        ObjectEventEntry, ResourceIndex, RoomBackgroundLayer, RoomInstancePlacement,
+        RoomTilePlacement, RoomView, RuntimeManifest, ScriptIrFile, SoundResource, SpriteResource,
     };
     use iwm_runtime_host::{HeadlessHost, RuntimeDiagnosticLevel};
 
@@ -403,6 +457,20 @@ mod tests {
                     port_w: 320,
                     port_h: 240,
                     target: -1,
+                }],
+                tiles: vec![RoomTilePlacement {
+                    tile_id: 21,
+                    source_bg: 0,
+                    x: 64,
+                    y: 80,
+                    tile_x: 0,
+                    tile_y: 0,
+                    width: 32,
+                    height: 32,
+                    depth: 100,
+                    xscale: 1.0,
+                    yscale: 1.0,
+                    blend: 0x00ff_ffff,
                 }],
                 instances: vec![RoomInstancePlacement {
                     instance_id: 11,
@@ -562,6 +630,15 @@ mod tests {
         )));
         assert!(frame.commands.iter().any(|command| matches!(
             command,
+            RuntimeDrawCommand::DrawTile {
+                background_id: 0,
+                width: 32,
+                height: 32,
+                ..
+            }
+        )));
+        assert!(frame.commands.iter().any(|command| matches!(
+            command,
             RuntimeDrawCommand::DrawSprite { sprite_id: 0, .. }
         )));
         assert!(frame.commands.iter().any(|command| matches!(
@@ -577,6 +654,22 @@ mod tests {
 
         let error = RuntimeCore::load(package).unwrap_err();
         assert!(matches!(error, RuntimeCoreError::RoomMissing(99)));
+    }
+
+    #[test]
+    fn core_spawns_a_fallback_player_when_room_has_checkpoint_but_no_player_instance() {
+        let mut package = sample_package();
+        package.rooms[0].instances.retain(|instance| instance.object_id != 0);
+        package.rooms[0].instances[0].is_checkpoint = true;
+
+        let core = RuntimeCore::load(package).unwrap();
+        let room = core.current_room().unwrap();
+
+        assert!(room.instances.iter().any(|instance| instance.player_candidate));
+        assert!(room
+            .instances
+            .iter()
+            .any(|instance| instance.player_candidate && instance.instance_id == -1));
     }
 
     #[test]

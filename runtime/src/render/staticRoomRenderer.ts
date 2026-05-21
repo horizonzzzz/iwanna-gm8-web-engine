@@ -12,6 +12,19 @@ export type BackgroundDraw = {
   isForeground: boolean;
 };
 
+export type TileDraw = {
+  imagePath: string;
+  x: number;
+  y: number;
+  tileX: number;
+  tileY: number;
+  width: number;
+  height: number;
+  depth: number;
+  xscale: number;
+  yscale: number;
+};
+
 function getObjectMap(objects: ObjectDefinition[]): Map<number, ObjectDefinition> {
   return new Map(objects.map((object) => [object.id, object]));
 }
@@ -36,6 +49,32 @@ export function resolveBackgroundDraws(
               isForeground: layer.is_foreground
             }
           ]
+        : [];
+    });
+}
+
+export function resolveTileDraws(
+  room: RoomDefinition,
+  backgroundPaths: BackgroundPathMap
+): TileDraw[] {
+  return [...room.tiles]
+    .filter((tile) => tile.source_bg >= 0)
+    .sort((left, right) => left.depth - right.depth)
+    .flatMap((tile) => {
+      const imagePath = backgroundPaths.get(tile.source_bg);
+      return imagePath
+        ? [{
+            imagePath,
+            x: tile.x,
+            y: tile.y,
+            tileX: tile.tile_x,
+            tileY: tile.tile_y,
+            width: tile.width,
+            height: tile.height,
+            depth: tile.depth,
+            xscale: tile.xscale,
+            yscale: tile.yscale
+          }]
         : [];
     });
 }
@@ -100,6 +139,26 @@ function drawSpriteInstance(
   context.restore();
 }
 
+function drawTileInstance(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  tile: TileDraw
+): void {
+  const drawWidth = Math.max(1, Math.round(tile.width * tile.xscale));
+  const drawHeight = Math.max(1, Math.round(tile.height * tile.yscale));
+  context.drawImage(
+    image,
+    tile.tileX,
+    tile.tileY,
+    tile.width,
+    tile.height,
+    tile.x,
+    tile.y,
+    drawWidth,
+    drawHeight
+  );
+}
+
 export async function renderStaticRoom(
   canvas: HTMLCanvasElement,
   room: RoomDefinition,
@@ -120,10 +179,16 @@ export async function renderStaticRoom(
   context.fillRect(0, 0, room.width, room.height);
 
   const backgroundDraws = resolveBackgroundDraws(room, backgroundPaths);
+  const tileDraws = resolveTileDraws(room, backgroundPaths);
 
   for (const background of backgroundDraws.filter((draw) => !draw.isForeground)) {
     const image = await cache.getImage(background.imagePath);
     drawBackgroundLayer(context, room, background, image);
+  }
+
+  for (const tile of tileDraws) {
+    const image = await cache.getImage(tile.imagePath);
+    drawTileInstance(context, image, tile);
   }
 
   const objectMap = getObjectMap(objects);

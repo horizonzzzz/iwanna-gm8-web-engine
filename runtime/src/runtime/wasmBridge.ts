@@ -26,6 +26,7 @@ export type WasmRuntimeFrame = {
   commands: Array<
     | { kind: 'clear'; colour: [number, number, number, number] }
     | { kind: 'drawBackground'; backgroundId: number; x: number; y: number; stretch: boolean; tileHorz: boolean; tileVert: boolean; isForeground: boolean }
+    | { kind: 'drawTile'; backgroundId: number; x: number; y: number; tileX: number; tileY: number; width: number; height: number; xscale: number; yscale: number }
     | { kind: 'drawSprite'; spriteId: number; frameIndex: number; x: number; y: number; originX: number; originY: number; xscale: number; yscale: number; angleDegrees: number }
     | { kind: 'fillRect'; x: number; y: number; width: number; height: number; colour: [number, number, number, number] }
     | { kind: 'present' }

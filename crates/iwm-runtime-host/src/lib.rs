@@ -44,6 +44,17 @@ pub enum RuntimeDrawCommand {
         tile_vert: bool,
         is_foreground: bool,
     },
+    DrawTile {
+        background_id: usize,
+        x: i32,
+        y: i32,
+        tile_x: u32,
+        tile_y: u32,
+        width: u32,
+        height: u32,
+        xscale: f64,
+        yscale: f64,
+    },
     DrawSprite {
         sprite_id: usize,
         frame_index: usize,

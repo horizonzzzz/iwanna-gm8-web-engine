@@ -74,6 +74,7 @@ pub struct RoomDefinition {
     pub backgrounds: Vec<RoomBackgroundLayer>,
     pub views_enabled: bool,
     pub views: Vec<RoomView>,
+    pub tiles: Vec<RoomTilePlacement>,
     pub instances: Vec<RoomInstancePlacement>,
     pub creation_block_id: Option<String>,
     pub playable: bool,
@@ -106,6 +107,22 @@ pub struct RoomView {
     pub port_w: u32,
     pub port_h: u32,
     pub target: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoomTilePlacement {
+    pub tile_id: i32,
+    pub source_bg: i32,
+    pub x: i32,
+    pub y: i32,
+    pub tile_x: u32,
+    pub tile_y: u32,
+    pub width: u32,
+    pub height: u32,
+    pub depth: i32,
+    pub xscale: f64,
+    pub yscale: f64,
+    pub blend: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

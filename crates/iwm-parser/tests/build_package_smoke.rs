@@ -247,6 +247,7 @@ fn room_definition_includes_playability_metadata() {
         backgrounds: vec![],
         views_enabled: false,
         views: vec![],
+        tiles: vec![],
         instances: vec![],
         creation_block_id: None,
         playable: true,
@@ -256,6 +257,31 @@ fn room_definition_includes_playability_metadata() {
     let json = serde_json::to_value(&room).unwrap();
     assert_eq!(json["playable"], true);
     assert_eq!(json["transition_targets"], serde_json::json!([1, 3]));
+}
+
+#[test]
+fn room_tile_placement_includes_runtime_fields() {
+    use iwm_parser::models::RoomTilePlacement;
+
+    let tile = RoomTilePlacement {
+        tile_id: 42,
+        source_bg: 7,
+        x: 128,
+        y: 256,
+        tile_x: 2,
+        tile_y: 3,
+        width: 32,
+        height: 32,
+        depth: 100,
+        xscale: 1.5,
+        yscale: 2.0,
+        blend: 0xff00ff,
+    };
+
+    let json = serde_json::to_value(&tile).unwrap();
+    assert_eq!(json["tile_id"], 42);
+    assert_eq!(json["source_bg"], 7);
+    assert_eq!(json["width"], 32);
 }
 
 #[test]
