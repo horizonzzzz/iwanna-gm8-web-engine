@@ -2,70 +2,97 @@
 
 ## Project Overview
 
-This repository is an early-stage MVP for a browser-playable IWanna engine targeting mainstream legacy GM8-style fangames.
+This repository is an active MVP for a browser-playable IWanna engine targeting mainstream legacy GM8-style fangames.
 
-The intended pipeline is:
+The active pipeline is:
 
 1. detect whether an uploaded game package is likely a targetable GM8 fangame
-2. parse targetable packages on the backend
+2. parse targetable packages on the backend/tooling side
 3. normalize them into a project-owned package format
-4. run that package in a browser runtime
+4. run that package through a browser-facing WASM-first runtime path
 
-The repository is currently documentation-first. Core implementation crates and tooling are planned, but most code has not been created yet.
+The repository is no longer documentation-first. It now contains:
+
+- a Rust workspace
+- detector, parser, CLI, and runtime crates
+- a browser runtime shell under `runtime/`
+- tests covering detector, parser, runtime core, runtime host, runtime web bridge, and frontend shell behavior
 
 ## Source Of Truth
 
-Read these files before making structural decisions:
+Read these files before making structural or workflow decisions:
 
 - `README.md`
 - `docs/superpowers/specs/2026-05-19-iwanna-gm8-web-engine-design.md`
-- `docs/superpowers/plans/2026-05-19-gm8-detector-foundation.md`
-- `docs/superpowers/plans/2026-05-19-gm8-parser-and-package-builder.md`
+- `docs/notes/package-format-v1-runtime.md`
+- `docs/notes/runtime-wasm-gap-analysis.md`
+- `docs/notes/runtime-gold-sample.md`
+- `docs/notes/opengmk-host-coupling-audit.md`
 - `samples/README.md`
 - `vendor/README.md`
-- `docs/notes/runtime-wasm-gap-analysis.md`
 
-If the repository state and the plan documents diverge, prefer the actual repository contents for what exists, and prefer the spec/plan documents for intended next steps.
+Use plan documents in `docs/superpowers/plans/` carefully:
+
+- some plans remain current enough to mine for execution details
+- some plans are historical or superseded and should say so near the top
+- if a plan conflicts with `README.md`, current notes, or actual repository contents, prefer the current repository state and current-note documents
 
 ## Repository Layout
 
 - `docs/`
-  Design specs, implementation plans, and project notes
-- `samples/local/iwanna-examples/`
-  Local development sample corpus grouped by compatibility risk
-- `vendor/`
-  Upstream reference repositories used for study and narrow parser integration
-
-Planned future directories:
-
+  Design specs, implementation plans, status notes, and project guidance
 - `crates/iwm-detector/`
+  GM8-target detection and package inventory logic
 - `crates/iwm-parser/`
+  GM8 parsing, package building, resource export, and logic extraction/lowering
 - `crates/iwm-cli/`
+  Developer CLI for detection and package building
+- `crates/iwm-runtime-model/`
+  Shared runtime package schema
+- `crates/iwm-runtime-host/`
+  Runtime host-boundary types, traits, and headless/default host helpers
+- `crates/iwm-runtime-core/`
+  Deterministic runtime-core behavior and lowered-logic execution slice
+- `crates/iwm-runtime-web/`
+  Browser/WASM bridge surface and JSON/FFI bridge helpers
 - `runtime/`
-- `backend/`
+  Browser shell, diagnostics UI, package loading, and rendering glue
+- `samples/local/iwanna-examples/`
+  Local development sample corpus when populated
+- `vendor/`
+  Upstream reference submodules used for parser/runtime study
 
-Do not assume those directories already exist.
+Planned later area:
+
+- `backend/`
 
 ## Development Workflow
 
-Current expected development order:
+Current expected workflow:
 
-1. execute the detector foundation plan
-2. execute the GM8 parser and package builder plan
-3. once the parser has a stable raw/lowered logic contract, continue parser and browser runtime work in parallel
-4. keep browser runtime work aligned to the parser-owned package contract rather than bypassing it
-
-Avoid skipping ahead to runtime implementation before detector and parser outputs exist, but do not wait for parser perfection before starting runtime work against a stable contract.
+1. keep detector and parser outputs stable enough to generate runtime-facing packages
+2. keep runtime work aligned to the parser-owned package contract instead of bypassing it
+3. treat the browser shell as a shell/diagnostics harness around the WASM-first runtime path
+4. update current notes whenever runtime/package/workflow reality changes
 
 ## Setup Commands
 
-There is currently no bootstrapped Cargo workspace in the repository root yet. The following commands are intended future commands from the implementation plans, not guaranteed working commands in the current state:
+Current expected setup commands:
 
+- `git submodule update --init --recursive`
 - `cargo test`
-- `cargo run -p iwm-cli -- detect --input C:\path\to\game`
-- `cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\out\sample`
+- `npm --prefix runtime install`
+- `npm --prefix runtime test`
 
-If you are the first agent implementing code here, create the workspace exactly from the implementation plans rather than inventing a different layout.
+WASM bridge workflow commands:
+
+- `cargo build -p iwm-runtime-web --target wasm32-unknown-unknown`
+- `npm --prefix runtime run sync:wasm`
+
+Package generation commands:
+
+- `cargo run -p iwm-cli -- detect --input C:\path\to\game`
+- `cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample`
 
 ## Sample Corpus Instructions
 
@@ -99,6 +126,7 @@ Use them for:
 - studying `gm8exe`
 - validating parsing assumptions
 - checking edge cases in GM8 executable handling
+- auditing runtime semantics and host-boundary assumptions for the WASM-first path
 
 Do not:
 
@@ -121,22 +149,23 @@ Before expanding from local experimentation to broader distribution, re-check th
 
 ## Testing Instructions
 
-At this stage, testing is expected to be layered:
+Current testing layers:
 
-1. unit tests for detector and parser modules
-2. local smoke tests against `samples/local/iwanna-examples/`
-3. regression checks against `gm8-core`
-4. negative checks against `non-target`
+1. targeted crate tests for detector, parser, runtime host, runtime core, or runtime web
+2. workspace-wide Rust verification with `cargo test`
+3. frontend shell verification with `npm --prefix runtime test`
+4. browser smoke verification with `npm --prefix runtime run test:browser` when local prerequisites are satisfied
+5. local sample smoke checks against `samples/local/iwanna-examples/` when relevant assets exist
 
-When code exists, always run the narrowest relevant test first, then the broader suite.
+When changing code, run the narrowest relevant test first, then the broader suite.
 
 ## Code Style
 
-Follow these project rules once code is added:
+Follow these project rules:
 
-- Rust for detector/parser foundation unless requirements change explicitly
+- Rust remains the default language for detector/parser/runtime foundation unless requirements change explicitly
 - keep modules small and responsibility-focused
-- isolate upstream integration behind adapters
+- isolate upstream integration behind adapters or narrow host-boundary layers
 - prefer structured JSON outputs over ad hoc text output
 - do not bury engine heuristics inside CLI code
 - do not mix detector concerns with runtime concerns
@@ -153,14 +182,34 @@ If a change invalidates an existing plan document, update the relevant plan or a
 
 If parser or runtime work changes what is actually required for a playable WASM runtime, update `docs/notes/runtime-wasm-gap-analysis.md` in the same change.
 
+## Documentation Maintenance Rules
+
+Documentation is part of the implementation, not follow-up cleanup.
+
+When repository reality changes in a meaningful way, update the relevant docs in the same change. This applies to:
+
+- project phase changes
+- architecture direction changes
+- package-format or runtime-contract changes
+- setup or verification command changes
+- important crate/layout changes
+- changes to current runtime blockers or gold-sample expectations
+
+Required behavior:
+
+- if an older document is no longer current, mark it clearly as `historical` or `superseded`, or remove it if it no longer provides useful context
+- treat `README.md`, `AGENTS.md`, and `docs/notes/runtime-wasm-gap-analysis.md` as high-priority always-current docs
+- for parser, runtime, or package-contract changes, check whether `README.md` and the relevant `docs/notes/*` files also need updates
+
 ## Debugging Notes
 
 Common likely failure modes for this project:
 
 - false engine classification due to weak string heuristics
 - GPL-sensitive dependency decisions made too casually
-- path assumptions breaking because samples moved from the desktop into the repo
-- trying to implement runtime behavior before stable package outputs exist
+- path assumptions breaking because local samples or generated packages are missing
+- parser/runtime contract drift between emitted package data and runtime consumption
+- trying to debug detection, parser, normalization, and runtime behavior all at once
 
 When debugging, first determine which layer is actually failing:
 
