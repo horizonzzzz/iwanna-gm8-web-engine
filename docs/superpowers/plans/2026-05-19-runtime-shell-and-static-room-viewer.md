@@ -1,5 +1,11 @@
 # Runtime Shell And Static Room Viewer Implementation Plan
 
+> **Status note:** Historical runtime plan.
+>
+> This document reflects the earlier static-room-viewer stage.
+> The repository has already moved beyond this phase into a WASM-first runtime direction.
+> Use current runtime notes and newer runtime plans for active work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the Phase 2 structural V0 package with a minimal runtime-facing package and add a local browser harness that can inspect package data and render static rooms without executing gameplay yet.

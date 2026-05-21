@@ -1,5 +1,10 @@
 # GM8 Detector Foundation Implementation Plan
 
+> **Status note:** Historical implementation plan.
+>
+> The detector foundation described here has already been implemented in the repository.
+> Keep this document for historical context and implementation provenance, not as the primary current task list.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a Rust workspace to the existing docs-first repository and build a detector that classifies uploaded IWanna packages as `gm8-likely`, `gms-likely`, `unknown`, or `blocked`.

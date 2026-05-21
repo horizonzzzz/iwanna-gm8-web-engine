@@ -1,5 +1,9 @@
 # WASM Browser Input And Render Loop Implementation Plan
 
+> **Status note:** Historical implementation plan.
+>
+> This document captures an intermediate runtime step and should be read as project history unless its tasks still match current repository reality.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `iwm-runtime-web` usable as a real browser runtime path by wiring browser keyboard input into the WASM host and exposing a browser-consumable frame surface that the frontend shell can draw on a canvas.

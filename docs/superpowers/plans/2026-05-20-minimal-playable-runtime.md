@@ -1,15 +1,10 @@
 # Minimal Playable Runtime Implementation Plan
 
-> **Status note:** This document reflects the previous TS-first gameplay-runtime direction. It is now superseded in strategic direction by `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md`.
+> **Status note:** Superseded runtime-direction plan.
 >
-> This plan may still contain useful shell/UI/diagnostics tasks, but gameplay-engine work should no longer use this document as the primary implementation route.
->
-> Current repository reality as of 2026-05-20:
->
-> - `iwm-runtime-web` now exists and exposes a frontend-loadable WASM bridge
-> - the browser shell can probe and drive that bridge
-> - this document is retained for historical context and selective shell-task mining only
-> - if this document conflicts with README or the WASM-first plan, follow the actual repository state and `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md`
+> This document reflects the previous TS-first gameplay-runtime direction.
+> It may still contain useful shell, diagnostics, or runtime-slice ideas, but it is no longer the primary implementation route.
+> If this document conflicts with `README.md`, current runtime notes, or newer WASM-first runtime plans, follow the current repository state.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

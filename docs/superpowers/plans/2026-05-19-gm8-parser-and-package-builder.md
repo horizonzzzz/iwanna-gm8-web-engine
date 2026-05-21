@@ -1,5 +1,10 @@
 # GM8 Parser And Package Builder Implementation Plan
 
+> **Status note:** Historical implementation plan.
+>
+> The parser/package-builder foundation described here has already been implemented and extended beyond this document.
+> Use current repository contents and current package/runtime notes as the primary source of truth.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Integrate a GM8 parser adapter and build the first V0 normalized package output containing manifest, room summaries, object summaries, script summaries, and analysis data for likely GM8 games.
