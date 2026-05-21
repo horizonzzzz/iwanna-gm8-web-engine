@@ -4,8 +4,6 @@ import { renderStaticRoom } from '../render/staticRoomRenderer';
 import { renderWasmFrame } from '../render/wasmFrameRenderer';
 import { renderManifestSummary, renderObjectsSlice, renderRoomsSlice, renderScriptsSlice } from './inspectors';
 import type { RuntimePackage } from '../types';
-// TS runtime remains only as a fallback harness while the WASM path is brought up.
-import { GameRuntime } from '../runtime/gameRuntime';
 import { WasmRuntimeSession } from '../runtime/wasmSession';
 import {
   describeWasmBridgeAvailability,
@@ -41,6 +39,18 @@ type ShellElements = {
   canvas: HTMLCanvasElement;
 };
 
+type ShellBackend =
+  | {
+      kind: 'viewer';
+      roomId: number | null;
+      diagnostics: string[];
+    }
+  | {
+      kind: 'wasm';
+      bridge: WasmRuntimeBridge;
+      session: WasmRuntimeSession;
+    };
+
 function resetRoomOptions(doc: Document, select: HTMLSelectElement, message: string): void {
   select.innerHTML = '';
   const option = doc.createElement('option');
@@ -73,6 +83,15 @@ function clearCanvas(canvas: HTMLCanvasElement): void {
 
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function parseRoomId(value: string): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const roomId = Number(value);
+  return Number.isFinite(roomId) ? roomId : null;
 }
 
 function createShell(doc: Document): { shell: HTMLElement; elements: ShellElements } {
@@ -116,7 +135,7 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
 
   const backendStatus = doc.createElement('p');
   backendStatus.className = 'hint';
-  backendStatus.textContent = 'Execution path: transitional TypeScript runtime. No WASM bridge configured yet.';
+  backendStatus.textContent = 'Execution path: static room viewer until a WASM bridge is configured.';
 
   const metaRoot = doc.createElement('section');
   metaRoot.className = 'meta';
@@ -169,19 +188,7 @@ function renderInspectors(doc: Document, metaRoot: HTMLElement, inspectors: HTML
   inspectors.replaceChildren(renderRoomsSlice(doc, pkg.rooms), renderObjectsSlice(doc, pkg.objects), renderScriptsSlice(doc, pkg.scripts));
 }
 
-function renderDiagnostics(doc: Document, root: HTMLElement, diagnostics: ReturnType<GameRuntime['getDiagnostics']>): void {
-  root.replaceChildren();
-  const section = doc.createElement('section');
-  section.className = 'inspector';
-  const heading = doc.createElement('h3');
-  heading.textContent = 'Diagnostics';
-  const pre = doc.createElement('pre');
-  pre.textContent = JSON.stringify(diagnostics.slice(-12), null, 2);
-  section.append(heading, pre);
-  root.append(section);
-}
-
-function renderWasmDiagnostics(doc: Document, root: HTMLElement, diagnostics: string[]): void {
+function renderTextDiagnostics(doc: Document, root: HTMLElement, diagnostics: string[]): void {
   root.replaceChildren();
   const section = doc.createElement('section');
   section.className = 'inspector';
@@ -245,11 +252,12 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
   root.append(shell);
 
   const { input, button, select, pauseButton, resetButton, status, diagnostics, backendStatus, metaRoot, inspectors, canvas } = elements;
-  const runtime = new GameRuntime();
   let loadedPackage: RuntimePackage | null = null;
-  let wasmBridge: WasmRuntimeBridge | null = null;
-  let wasmSession: WasmRuntimeSession | null = null;
-  let activeBackend: 'ts' | 'wasm' = 'ts';
+  let activeBackend: ShellBackend = {
+    kind: 'viewer',
+    roomId: null,
+    diagnostics: ['Static room viewer idle. Load a package to inspect resources.']
+  };
   const keyboardState: Pick<WasmRuntimeInputState, 'left' | 'right' | 'jump' | 'restart'> = {
     left: false,
     right: false,
@@ -275,25 +283,31 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     if (!loadedPackage) {
       return;
     }
-    if (activeBackend === 'wasm' && wasmBridge) {
-      const snapshot = await wasmBridge.snapshot();
-      const frame = await wasmBridge.frame();
+    if (activeBackend.kind === 'wasm') {
+      const snapshot = await activeBackend.bridge.snapshot();
+      const frame = await activeBackend.bridge.frame();
       await resolved.renderWasmFrame(canvas, frame, loadedPackage.resources, input.value);
-      renderWasmDiagnostics(doc, diagnostics, snapshot.diagnostics);
+      renderTextDiagnostics(doc, diagnostics, snapshot.diagnostics);
       status.textContent = `WASM runtime active: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`;
       return;
     }
 
-    const snapshot = runtime.snapshot;
-    renderDiagnostics(doc, diagnostics, snapshot.diagnostics);
-    if (snapshot.roomId != null) {
-      await renderRuntimeRoom(input.value, canvas, snapshot.roomId, loadedPackage, resolved.renderStaticRoom);
-      status.textContent = `${snapshot.status}: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`;
+    renderTextDiagnostics(doc, diagnostics, activeBackend.diagnostics);
+    if (activeBackend.roomId != null) {
+      await renderRuntimeRoom(input.value, canvas, activeBackend.roomId, loadedPackage, resolved.renderStaticRoom);
+      const room = loadedPackage.rooms.find((candidate) => candidate.id === activeBackend.roomId);
+      status.textContent = room ? `Static room viewer: ${room.name}` : 'Static room viewer';
+      return;
     }
+
+    clearCanvas(canvas);
+    status.textContent = 'Package loaded, but no room is available to preview.';
   };
 
-  const updatePausedButton = (): void => {
-    pauseButton.textContent = runtime.snapshot.paused ? 'Resume' : 'Pause';
+  const updateExecutionControls = (): void => {
+    const runtimeActive = loadedPackage != null && activeBackend.kind === 'wasm';
+    pauseButton.disabled = !runtimeActive;
+    resetButton.disabled = !runtimeActive;
   };
 
   button.addEventListener('click', async () => {
@@ -302,55 +316,69 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     select.disabled = true;
 
     try {
-      let wasmBridgeError: unknown = null;
-      wasmBridge = null;
-      wasmSession = null;
-      if (resolved.loadWasmBridge) {
-        try {
-          wasmBridge = await resolved.loadWasmBridge();
-        } catch (error) {
-          wasmBridgeError = error;
-        }
-      }
-      backendStatus.textContent = `Execution path: ${describeWasmBridgeAvailability(wasmBridge, wasmBridgeError)}`;
-
       const pkg = await resolved.loadPackage(input.value);
       loadedPackage = pkg;
       renderInspectors(doc, metaRoot, inspectors, pkg);
       setRoomOptions(doc, select, pkg);
-      let roomId: number | null | undefined;
-      if (wasmBridge) {
-        const snapshot = await wasmBridge.boot(pkg);
-        wasmSession = new WasmRuntimeSession(wasmBridge);
-        activeBackend = 'wasm';
-        roomId = snapshot.roomId;
-        status.textContent = `WASM runtime active: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`;
-      } else {
-        activeBackend = 'ts';
-        runtime.load(pkg);
-        runtime.pause();
-        updatePausedButton();
-        roomId = runtime.snapshot.roomId ?? pkg.manifest.default_room_id ?? pkg.rooms[0]?.id;
+
+      const defaultRoomId = pkg.manifest.default_room_id ?? pkg.rooms[0]?.id ?? null;
+      let nextBackend: ShellBackend = {
+        kind: 'viewer',
+        roomId: defaultRoomId,
+        diagnostics: ['Static room viewer active. Gameplay execution requires the WASM bridge.']
+      };
+      let roomId = defaultRoomId;
+      let wasmBridgeError: unknown = null;
+
+      if (resolved.loadWasmBridge) {
+        try {
+          const wasmBridge = await resolved.loadWasmBridge();
+          const snapshot = await wasmBridge.boot(pkg);
+          nextBackend = {
+            kind: 'wasm',
+            bridge: wasmBridge,
+            session: new WasmRuntimeSession(wasmBridge)
+          };
+          roomId = snapshot.roomId ?? roomId;
+        } catch (error) {
+          wasmBridgeError = error;
+          nextBackend = {
+            kind: 'viewer',
+            roomId: defaultRoomId,
+            diagnostics: [
+              `WASM runtime unavailable: ${formatErrorMessage(error)}`,
+              'Static room viewer active. Gameplay execution requires the WASM bridge.'
+            ]
+          };
+        }
       }
+
+      activeBackend = nextBackend;
+      backendStatus.textContent = `Execution path: ${describeWasmBridgeAvailability(
+        activeBackend.kind === 'wasm' ? activeBackend.bridge : null,
+        wasmBridgeError
+      )}`;
+      updateExecutionControls();
       if (roomId != null) {
         select.value = String(roomId);
+      } else {
+        select.value = '';
       }
       await draw();
-      if (activeBackend === 'ts') {
-        status.textContent =
-          runtime.snapshot.roomId != null ? `Loaded ${pkg.manifest.source_name}` : 'Package loaded';
-      }
     } catch (error) {
       loadedPackage = null;
-      activeBackend = 'ts';
-      wasmSession = null;
+      activeBackend = {
+        kind: 'viewer',
+        roomId: null,
+        diagnostics: ['Static room viewer idle. Load a package to inspect resources.']
+      };
       metaRoot.replaceChildren();
       inspectors.replaceChildren();
       diagnostics.replaceChildren();
-      backendStatus.textContent = 'Execution path: transitional TypeScript runtime. WASM bridge probe did not complete.';
       resetRoomOptions(doc, select, 'Load a package first');
       clearCanvas(canvas);
       status.textContent = `Load failed: ${formatErrorMessage(error)}`;
+      updateExecutionControls();
     } finally {
       button.disabled = false;
       if (loadedPackage && loadedPackage.rooms.length > 0) {
@@ -360,36 +388,21 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
   });
 
   pauseButton.addEventListener('click', async () => {
-    if (!loadedPackage) {
+    if (!loadedPackage || activeBackend.kind !== 'wasm') {
       return;
     }
-    if (activeBackend === 'wasm' && wasmBridge && wasmSession) {
-      wasmSession.setInputState(keyboardState);
-      await wasmSession.stepOnce();
-      await draw();
-      return;
-    }
-    if (runtime.snapshot.paused) {
-      runtime.resume();
-      runtime.tick();
-    } else {
-      runtime.pause();
-    }
-    updatePausedButton();
+
+    activeBackend.session.setInputState(keyboardState);
+    await activeBackend.session.stepOnce();
     await draw();
   });
 
   resetButton.addEventListener('click', async () => {
-    if (!loadedPackage) {
+    if (!loadedPackage || activeBackend.kind !== 'wasm') {
       return;
     }
-    if (activeBackend === 'wasm' && wasmBridge) {
-      await wasmBridge.reset();
-      await draw();
-      return;
-    }
-    runtime.reset();
-    runtime.tick();
+
+    await activeBackend.bridge.reset();
     await draw();
   });
 
@@ -398,13 +411,18 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       return;
     }
     const roomId = Number(select.value);
-    if (activeBackend === 'wasm' && wasmBridge) {
-      await wasmBridge.selectRoom(roomId);
+    if (activeBackend.kind === 'wasm') {
+      await activeBackend.bridge.selectRoom(roomId);
       await draw();
       return;
     }
-    runtime.queueRoomTransition({ roomId });
-    runtime.tick();
+
+    activeBackend = {
+      ...activeBackend,
+      roomId: Number.isFinite(roomId) ? roomId : parseRoomId(select.value)
+    };
     await draw();
   });
+
+  updateExecutionControls();
 }

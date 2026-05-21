@@ -275,7 +275,7 @@ The browser runtime path should only need to understand the normalized internal 
 - minimal runtime debug overlays and diagnostics
 
 The runtime should not be tightly coupled to raw GM8 executable structure.
-The current TypeScript runtime remains useful as a fallback harness and inspection tool, but it should not be treated as the final gameplay engine direction.
+The frontend shell remains useful as an inspection tool, but gameplay execution now belongs to the WASM runtime path, with static room viewing as the non-WASM fallback.
 
 ## Internal Package Format
 

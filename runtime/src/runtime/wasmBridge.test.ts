@@ -42,7 +42,8 @@ describe('wasm bridge loader', () => {
     expect(describeWasmBridgeAvailability(null, new Error('module fetch failed'))).toContain(
       'module fetch failed'
     );
-    expect(describeWasmBridgeAvailability(null, null)).toContain('No WASM bridge configured');
+    expect(describeWasmBridgeAvailability(null, new Error('module fetch failed'))).toContain('static room viewer');
+    expect(describeWasmBridgeAvailability(null, null)).toContain('static room viewer');
   });
 
   it('wraps a low-level wasm exports object into the runtime bridge contract', async () => {

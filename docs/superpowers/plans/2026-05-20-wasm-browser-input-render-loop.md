@@ -1177,6 +1177,7 @@ git commit -m "docs: align wasm browser runtime usage"
 
 ## Recommended Execution Notes
 
+- Implementation note (2026-05-21): the later runtime cleanup removed the TS gameplay fallback path. The shell now falls back to a static room viewer when the WASM bridge is unavailable.
 - Execute this plan in order. Task 1 and Task 2 define the stable bridge contract; Task 3 and Task 4 should not be started before those interfaces settle.
 - Do not widen scope into audio, mouse, externals, or deeper OpenGMK extraction while this slice is in progress.
 - Keep the TS runtime path intact as fallback and comparison harness. This plan upgrades the WASM path to first-class browser bring-up, but it does not remove the fallback.

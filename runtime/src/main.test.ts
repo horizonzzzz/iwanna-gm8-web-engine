@@ -346,8 +346,11 @@ describe('main runtime shell', () => {
     expect(collectText(doc.body)).toContain('gm8');
     expect(collectText(doc.body)).toContain('partial');
     expect(collectText(doc.body)).toContain('No WASM bridge configured');
+    expect(collectText(doc.body)).toContain('static room viewer');
     expect(renderStaticRoom).toHaveBeenCalledTimes(1);
     expect(doc.querySelectorAll('pre').length).toBeGreaterThanOrEqual(3);
+    expect(pauseButton?.disabled).toBe(true);
+    expect(resetButton?.disabled).toBe(true);
 
     if (!select) {
       throw new Error('missing room select');
@@ -359,14 +362,6 @@ describe('main runtime shell', () => {
 
     expect(renderStaticRoom).toHaveBeenCalledTimes(2);
     expect(collectText(doc.body)).toContain('Room 2');
-
-    pauseButton?.click();
-    await flushAsyncWork();
-    expect(pauseButton?.textContent).toContain('Pause');
-
-    resetButton?.click();
-    await flushAsyncWork();
-    expect(renderStaticRoom).toHaveBeenCalledTimes(4);
   });
 
   it('reports load failures without leaving stale room controls enabled', async () => {
@@ -431,6 +426,8 @@ describe('main runtime shell', () => {
     expect(renderWasmFrame).toHaveBeenCalled();
     expect(collectText(doc.body)).toContain('WASM bridge available');
     expect(collectText(doc.body)).toContain('WASM runtime active');
+    expect(pauseButton?.disabled).toBe(false);
+    expect(resetButton?.disabled).toBe(false);
 
     doc.dispatchKeyboardEvent('keydown', 'ArrowLeft');
     pauseButton?.click();
@@ -454,5 +451,46 @@ describe('main runtime shell', () => {
     await flushAsyncWork();
 
     expect(wasmBridge.reset).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the static room viewer when the wasm runtime cannot boot', async () => {
+    const loadPackage = vi.fn(async () => samplePackage);
+    const renderStaticRoom = vi.fn(async () => undefined);
+    const loadWasmBridge = vi.fn(async () => {
+      throw new Error('bridge boot failed');
+    });
+
+    const root = doc.createElement('div');
+    root.attributes.set('id', 'app');
+    doc.body.append(root);
+
+    createRuntimeShell(root as unknown as HTMLElement, { loadPackage, renderStaticRoom, loadWasmBridge });
+
+    const buttons = doc.querySelectorAll<FakeElement>('button');
+    const button = buttons[0];
+    const pauseButton = buttons[1];
+    const resetButton = buttons[2];
+    const select = doc.querySelector<FakeElement>('select[name="roomSelect"]');
+
+    button?.click();
+    await flushAsyncWork();
+
+    expect(loadPackage).toHaveBeenCalledWith('/packages/sample');
+    expect(loadWasmBridge).toHaveBeenCalledTimes(1);
+    expect(renderStaticRoom).toHaveBeenCalledTimes(1);
+    expect(collectText(doc.body)).toContain('bridge boot failed');
+    expect(collectText(doc.body)).toContain('static room viewer');
+    expect(pauseButton?.disabled).toBe(true);
+    expect(resetButton?.disabled).toBe(true);
+
+    if (!select) {
+      throw new Error('missing room select');
+    }
+
+    select.value = '1';
+    select.dispatchEvent(new FakeEvent('change'));
+    await flushAsyncWork();
+
+    expect(renderStaticRoom).toHaveBeenCalledTimes(2);
   });
 });

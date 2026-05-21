@@ -197,9 +197,9 @@ That V0 output has been superseded by the current runtime-facing Phase 3 package
 Important runtime direction note:
 
 - the current package and frontend shell remain useful
-- the current TypeScript gameplay runtime should be treated as transitional tooling, not the final compatibility engine
+- the removed TypeScript gameplay runtime should be treated as transitional tooling that no longer participates in the active browser execution path
 - future runtime-fidelity work should accumulate in the WASM-hosted engine path, not in a parallel TS gameplay reimplementation
-- the current shell can still fall back to the transitional TS runtime when the WASM bridge is missing or unsynced
+- when the WASM bridge is missing, unsynced, or fails to boot, the current shell falls back to a static room viewer instead of a gameplay runtime
 
 Out of scope for the MVP:
 

@@ -212,12 +212,12 @@ export function describeWasmBridgeAvailability(bridge: WasmRuntimeBridge | null,
   }
 
   if (error instanceof Error) {
-    return `WASM bridge unavailable: ${error.message}`;
+    return `WASM bridge unavailable: ${error.message}. Shell is using the static room viewer.`;
   }
 
   if (error != null) {
-    return `WASM bridge unavailable: ${String(error)}`;
+    return `WASM bridge unavailable: ${String(error)}. Shell is using the static room viewer.`;
   }
 
-  return 'No WASM bridge configured; shell is using the transitional TS runtime.';
+  return 'No WASM bridge configured; shell is using the static room viewer.';
 }
