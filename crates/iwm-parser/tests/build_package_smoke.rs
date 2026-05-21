@@ -349,6 +349,46 @@ fn lowered_logic_file_recognizes_control_flow_blocks() {
     ));
 }
 
+#[test]
+fn lowered_logic_file_recognizes_common_loop_blocks() {
+    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicStatement};
+    use iwm_parser::models::{RawCodeAction, RawLogicEventBinding, RawLogicFile};
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 12,
+            object_name: "obj_spike".to_string(),
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".to_string(),
+            collision_object_id: None,
+            block_id: "object:12:event:3:0".to_string(),
+            actions: vec![RawCodeAction {
+                action_id: 603,
+                lib_id: 1,
+                action_kind: 7,
+                execution_type: 2,
+                fn_name: "code".to_string(),
+                fn_code: "with (obj_player) { x += hspeed; } repeat (3) { y -= 2; } while (y < 100) { y += 1; } for (i = 0; i < 3; i += 1) { alarm[0] = 60; }".to_string(),
+                args: vec![],
+            }],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+    assert!(matches!(statements[0], LoweredLogicStatement::With { .. }));
+    assert!(matches!(statements[1], LoweredLogicStatement::Repeat { .. }));
+    assert!(matches!(statements[2], LoweredLogicStatement::While { .. }));
+    assert!(matches!(statements[3], LoweredLogicStatement::For { .. }));
+}
+
 // ============================================================================
 // Step 2: Tests for new contract fields (Tighten Runtime Execution Contract)
 // ============================================================================

@@ -72,6 +72,11 @@ The browser smoke covers the shell-visible runtime telemetry path:
 - player availability summary
 - diagnostic summary
 
+The runtime package now includes both:
+
+- `logic.raw.json` for parser-owned raw GML preservation
+- `logic.lowered.json` for the current parser-owned lowered logic contract
+
 ### 2. Build and sync the WASM bridge
 
 ```powershell

@@ -51,9 +51,10 @@ Current expected development order:
 
 1. execute the detector foundation plan
 2. execute the GM8 parser and package builder plan
-3. only then start browser runtime work
+3. once the parser has a stable raw/lowered logic contract, continue parser and browser runtime work in parallel
+4. keep browser runtime work aligned to the parser-owned package contract rather than bypassing it
 
-Avoid skipping ahead to runtime implementation before detector and parser outputs exist.
+Avoid skipping ahead to runtime implementation before detector and parser outputs exist, but do not wait for parser perfection before starting runtime work against a stable contract.
 
 ## Setup Commands
 

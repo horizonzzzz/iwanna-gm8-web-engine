@@ -6,6 +6,8 @@ Current emitted runtime package directory contents:
 - `rooms.json`
 - `objects.json`
 - `scripts.ir.json`
+- `logic.raw.json`
+- `logic.lowered.json`
 - `analysis.json`
 - `resources/index.json`
 - `resources/sprites/...`
@@ -30,6 +32,8 @@ Included in this phase:
 - normalized room instance placements with runtime categorization hints
 - normalized object event table with event tags for dispatch
 - logic envelope in `scripts.ir.json` with executable/source-only distinction
+- raw parser-owned GML preservation in `logic.raw.json`
+- lightweight parser-owned lowered logic in `logic.lowered.json`
 - runtime categorization: hazard, checkpoint, player-controlled hints
 
 ## Current Shell Integration
@@ -40,12 +44,14 @@ Today the browser shell expects a package directory under `runtime/public/packag
 - `rooms.json`
 - `objects.json`
 - `scripts.ir.json`
+- `logic.raw.json`
+- `logic.lowered.json`
 - `analysis.json`
 - `resources/index.json`
 
 The default shell input is `/packages/sample`, which corresponds to `runtime/public/packages/sample/`.
 
-The current `iwm-runtime-web` bridge boots from the same normalized JSON payload after the frontend aggregates these files.
+The current `iwm-runtime-web` bridge still boots from the normalized runtime payload; the raw and lowered logic files are parser-side artifacts used to preserve and prepare GM8 logic for later runtime consumption.
 
 ## Current Execution Status
 
@@ -74,6 +80,12 @@ The following `action-list` script blocks can be executed by the browser runtime
 `LogicBlock.executable_action_count` indicates how many actions can run without GML lowering.
 
 This is currently useful for diagnostics and shell validation, but it is not the intended long-term execution architecture now that the project has adopted a WASM-first runtime strategy.
+
+### Parser-Owns Raw And Lowered Logic
+
+- `logic.raw.json` preserves the original GML source text and ownership metadata for room, instance, object event, script, trigger, and timeline logic
+- `logic.lowered.json` holds the parser-owned lightweight lowering of common control-flow and call/assignment shapes
+- runtime should treat these files as the bridge between `gm8exe` extraction and executable runtime semantics, not as a separate public API for end users
 
 ### Current WASM Bridge Status
 
