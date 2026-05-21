@@ -232,7 +232,9 @@ fn build_room(&self, room_id: usize) -> Result<RuntimeRoomState, RuntimeCoreErro
             })
             .collect::<Vec<_>>();
 
-        let has_player = instances.iter().any(|instance| instance.player_candidate && instance.alive);
+        let has_player = instances
+            .iter()
+            .any(|instance| instance.player_candidate && instance.alive && is_preferred_player_name(&instance.object_name));
         if !has_player {
             let preferred_player = self
                 .package
@@ -670,6 +672,49 @@ mod tests {
             .instances
             .iter()
             .any(|instance| instance.player_candidate && instance.instance_id == -1));
+    }
+
+    #[test]
+    fn core_ignores_player_start_markers_when_deciding_whether_a_room_has_a_player() {
+        let mut package = sample_package();
+        package.rooms[0].instances.retain(|instance| instance.object_id != 0);
+        package.rooms[0].instances[0].is_checkpoint = true;
+        package.rooms[0].instances.push(RoomInstancePlacement {
+            instance_id: 99,
+            object_id: 2,
+            x: 24,
+            y: 24,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: false,
+            is_hazard: false,
+            is_checkpoint: true,
+        });
+        package.objects.push(ObjectDefinition {
+            id: 2,
+            name: "playerStart".into(),
+            sprite_index: -1,
+            parent_index: -1,
+            depth: -10,
+            persistent: false,
+            visible: false,
+            solid: false,
+            mask_index: -1,
+            is_hazard: Some(false),
+            is_checkpoint: Some(true),
+            is_player: true,
+            events: vec![],
+        });
+
+        let core = RuntimeCore::load(package).unwrap();
+        let room = core.current_room().unwrap();
+
+        assert!(room.instances.iter().any(|instance| {
+            instance.instance_id == -1 && instance.object_id == 0 && instance.player_candidate
+        }));
     }
 
     #[test]
