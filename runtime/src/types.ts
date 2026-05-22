@@ -220,9 +220,106 @@ export type RuntimeLoweredLogicFile = {
   format: string;
   entries: Array<{
     block_id: string;
-    statements: Array<Record<string, unknown>>;
+    statements: RuntimeLoweredLogicStatement[];
   }>;
 };
+
+export type RuntimeLoweredLogicExpr =
+  {
+    kind: 'identifier';
+    value: string;
+  }
+  | {
+    kind: 'literal-number';
+    value: number;
+  }
+  | {
+    kind: 'literal-bool';
+    value: boolean;
+  }
+  | {
+    kind: 'literal-text';
+    value: string;
+  }
+  | {
+    kind: 'call';
+    value: {
+      name: string;
+      args: RuntimeLoweredLogicExpr[];
+    };
+  }
+  | {
+    kind: 'member-access';
+    value: {
+      target: RuntimeLoweredLogicExpr;
+      member: string;
+    };
+  }
+  | {
+    kind: 'index-access';
+    value: {
+      target: RuntimeLoweredLogicExpr;
+      index: RuntimeLoweredLogicExpr;
+    };
+  }
+  | {
+    kind: 'binary-expr';
+    value: {
+      op: string;
+      left: RuntimeLoweredLogicExpr;
+      right: RuntimeLoweredLogicExpr;
+    };
+  }
+  | {
+    kind: 'raw';
+    value: {
+      source: string;
+    };
+  };
+
+export type RuntimeLoweredLogicStatement =
+  | {
+    kind: 'assignment';
+    target: RuntimeLoweredLogicExpr;
+    value: RuntimeLoweredLogicExpr;
+  }
+  | {
+    kind: 'function-call';
+    name: string;
+    args: RuntimeLoweredLogicExpr[];
+  }
+  | {
+    kind: 'conditional';
+    condition: RuntimeLoweredLogicExpr;
+    then_branch: RuntimeLoweredLogicStatement[];
+    else_branch: RuntimeLoweredLogicStatement[];
+  }
+  | {
+    kind: 'with';
+    target: RuntimeLoweredLogicExpr;
+    body: RuntimeLoweredLogicStatement[];
+  }
+  | {
+    kind: 'repeat';
+    count: RuntimeLoweredLogicExpr;
+    body: RuntimeLoweredLogicStatement[];
+  }
+  | {
+    kind: 'while';
+    condition: RuntimeLoweredLogicExpr;
+    body: RuntimeLoweredLogicStatement[];
+  }
+  | {
+    kind: 'for';
+    init: RuntimeLoweredLogicExpr;
+    condition: RuntimeLoweredLogicExpr;
+    step: RuntimeLoweredLogicExpr;
+    body: RuntimeLoweredLogicStatement[];
+  }
+  | {
+    kind: 'raw';
+    source: string;
+  };
 
 export type RuntimeAnalysis = {
   dlls: string[];

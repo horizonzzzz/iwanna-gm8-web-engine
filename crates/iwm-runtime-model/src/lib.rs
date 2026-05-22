@@ -212,3 +212,83 @@ pub struct AnalysisReport {
     pub warnings: Vec<String>,
     pub unsupported_features: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoweredLogicFile {
+    pub format: String,
+    pub entries: Vec<LoweredLogicEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoweredLogicEntry {
+    pub block_id: String,
+    pub statements: Vec<LoweredLogicStatement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", content = "value", rename_all = "kebab-case")]
+pub enum LoweredLogicExpr {
+    Identifier(String),
+    LiteralNumber(f64),
+    LiteralBool(bool),
+    LiteralText(String),
+    Call {
+        name: String,
+        args: Vec<LoweredLogicExpr>,
+    },
+    MemberAccess {
+        target: Box<LoweredLogicExpr>,
+        member: String,
+    },
+    IndexAccess {
+        target: Box<LoweredLogicExpr>,
+        index: Box<LoweredLogicExpr>,
+    },
+    BinaryExpr {
+        op: String,
+        left: Box<LoweredLogicExpr>,
+        right: Box<LoweredLogicExpr>,
+    },
+    Raw {
+        source: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum LoweredLogicStatement {
+    Assignment {
+        target: LoweredLogicExpr,
+        value: LoweredLogicExpr,
+    },
+    FunctionCall {
+        name: String,
+        args: Vec<LoweredLogicExpr>,
+    },
+    Conditional {
+        condition: LoweredLogicExpr,
+        then_branch: Vec<LoweredLogicStatement>,
+        else_branch: Vec<LoweredLogicStatement>,
+    },
+    With {
+        target: LoweredLogicExpr,
+        body: Vec<LoweredLogicStatement>,
+    },
+    Repeat {
+        count: LoweredLogicExpr,
+        body: Vec<LoweredLogicStatement>,
+    },
+    While {
+        condition: LoweredLogicExpr,
+        body: Vec<LoweredLogicStatement>,
+    },
+    For {
+        init: LoweredLogicExpr,
+        condition: LoweredLogicExpr,
+        step: LoweredLogicExpr,
+        body: Vec<LoweredLogicStatement>,
+    },
+    Raw {
+        source: String,
+    },
+}

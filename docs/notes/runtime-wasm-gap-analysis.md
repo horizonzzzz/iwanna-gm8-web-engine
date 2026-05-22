@@ -9,8 +9,9 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 ## Current Baseline
 
 - The browser shell can load packages, boot the WASM bridge, tick, reset, select rooms, and show telemetry.
-- The parser now preserves raw logic in `logic.raw.json` and emits a lightweight lowered contract in `logic.lowered.json`.
+- The parser now preserves raw logic in `logic.raw.json` and emits a structured lowered contract in `logic.lowered.json` for the current IWanna-critical subset.
 - The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, but it still does not execute general GM8 gameplay logic.
+- The browser-facing host path now treats one-shot controls such as jump/restart as host-boundary input edges; the next runtime blocker is deeper host extraction and headless bring-up, not expanding shell-side gameplay rules.
 
 ## Route Decision
 
@@ -65,7 +66,7 @@ Missing pieces include:
 - array access such as `array[0] = value`
 - property access on objects and instances
 
-This gap is partly runtime-side and partly parser-side. If the parser only emits raw strings for member and index access, the runtime cannot recover the intended lookup chain reliably.
+This gap is partly runtime-side and partly parser-side. The parser now carries structured member/index/binary nodes on the critical path, but runtime execution still does not consume the full dynamic variable model.
 
 ### 4. Sprite Animation
 
@@ -208,7 +209,7 @@ Current implementation already has a hardcoded baseline for player movement, AAB
 
 The current route sets the next implementation order as:
 
-1. parser contract upgrade for expressions, calls, and variable/member/index access on the IWanna-critical path
+1. keep the shared lowered parser contract stable except where gold-sample evidence requires targeted expansion
 2. headless OpenGMK-derived runtime extraction behind narrow host traits
 3. browser WASM host integration for that runtime core
 4. audio, animation, and broader lifecycle coverage after the runtime can execute trustworthy semantics

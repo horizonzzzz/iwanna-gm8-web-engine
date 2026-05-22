@@ -9,8 +9,8 @@ This note keeps both the long-lived validation target and the current blocker au
 Important local-path note:
 
 - these sample paths are local development paths, not tracked sample binaries
-- `runtime/public/packages/sample/` is not present in this repo state
-- `IWBT_Dife` therefore remains the intended gold sample, but only as a placeholder until a local `sample/` package is built
+- `runtime/public/packages/sample/` is present in this repo state
+- that package currently maps to `I wanna be the Dife.exe`, so the repo-local browser smoke path can now use the intended gold sample package directly
 
 ## Primary Gold Sample
 
@@ -22,62 +22,34 @@ Why it still matters:
 - it is the sample that should decide whether parser/package/runtime gaps are actually on the critical gameplay path
 - it should stay ahead of secondary samples when priorities conflict
 
-## Comparison Samples Available In This Repo
+## Repo-Local Runtime Package
 
-- `runtime/public/packages/kamilia/`
-- `runtime/public/packages/mashikaku/`
+- `runtime/public/packages/sample/`
 
-These repo-local packages are useful for smoke checks while `runtime/public/packages/sample/` is still missing.
+This repo-local package is now the primary browser smoke target because it is the checked local package artifact present in the current repo state.
 
 ## Blockers By Layer
 
-- Parser missing data: `runtime/public/packages/sample/analysis.json` and `runtime/public/packages/sample/scripts.ir.json` do not exist yet, so the gold sample cannot be audited from a real package artifact.
+- Parser missing data: no package-artifact absence currently blocks the gold-sample smoke path; `sample/manifest.json`, `analysis.json`, `scripts.ir.json`, and the exported resources are present.
 - Runtime-core semantic gap: the remaining meaningful gaps are the ones that still block movement, collision, death/reset, or room transition after the WASM runtime has already booted and drawn a room.
-- Wasm/web host gap: no host-only blocker is currently proven from the checked local packages; both `kamilia` and `mashikaku` boot through the WASM bridge.
-- Shell-only issue: the browser shell cannot smoke-test `/packages/sample` because the package directory is absent in the current repo state.
+- Wasm/web host gap: no host-only blocker is currently proven on the checked `sample` browser smoke path; the shell boots `/packages/sample` through the WASM bridge, reports telemetry for `rInit`, and can switch to `rStage01`.
+- Shell-only issue: none currently proven on the repo-local `sample` path; the remaining browser-smoke risk is telemetry drift if the shell selectors or sample room IDs change.
 
 ## Sample Audit
 
 ### IWBT_Dife
 
-- Package path: `runtime/public/packages/sample/` (missing)
-- Boot room: unavailable until `sample/` exists
-- Frame draws: not verified
-- Player appears: not verified
-- Movement works: not verified
-- First blocking warning or missing behavior: package artifacts are absent; keep this sample as the primary placeholder until `sample/` is generated
-
-Critical-path `runtime-missing-source-lowering:*` warnings:
-
-- not classifiable yet because the package artifact is missing
-
-### Kamilia
-
-- Package path: `runtime/public/packages/kamilia/`
-- Boot room: `0 / startRoom`
-- Frame draws: verified at shell level; the WASM runtime booted `startRoom` and requested room sprite resources including `sprites/2-0.png`
-- Player appears: not separately proven from current browser evidence
-- Movement works: not yet verified; the current smoke only proves tick advancement
-- First blocking warning or missing behavior: no boot blocker is currently proven, but the first unresolved boot-path warning is `runtime-missing-source-lowering:room:0:create`
-
-Critical-path `runtime-missing-source-lowering:*` warnings:
-
-- proven boot-path warning: `room:0:create`
-- early-path warning that is still unverified as a blocker: `room:1:create`
-
-### Mashikaku
-
-- Package path: `runtime/public/packages/mashikaku/`
+- Package path: `runtime/public/packages/sample/`
 - Boot room: `2 / rInit`
-- Frame draws: verified on the current playable smoke path; the WASM runtime boots `rInit`, and `room:87 / rStage01` draws with real background and sprite requests
-- Player appears: verified on `room:87 / rStage01` on the current smoke path
-- Movement works: not yet verified as a dedicated browser assertion
-- First blocking warning or missing behavior: no boot blocker is proven from current artifacts; the first remaining missing behavior is movement/room-transition fidelity, not room loading
+- Frame draws: verified at shell level; the WASM runtime boots and presents frame telemetry through the browser shell
+- Player appears: verified on the current shell path in `rInit`, and also after switching to `147 / rStage01`
+- Movement works: not yet verified as a dedicated browser assertion; current smoke proves boot, room switch, and visible player telemetry
+- First blocking warning or missing behavior: no boot blocker is currently proven from the repo-local package; the first unresolved runtime gaps are still deeper gameplay semantics behind the successful boot path
 
 Critical-path `runtime-missing-source-lowering:*` warnings:
 
-- no warning is currently proven critical on the checked boot path or the verified `room:87` smoke path
-- do not escalate `room:87:instance:138622:create`, `138623:create`, `138624:create`, or `138909:create` as critical yet, because `room:87` already draws and shows the player through the WASM path
+- no warning is currently proven critical on the checked `rInit` boot path or the verified `rStage01` room-switch smoke path
+- do not escalate broad `runtime-missing-source-lowering:*` lists from `analysis.json` as critical until one is tied to spawn, movement, death/reset, or room transition failure on the actual gold-sample path
 
 ## Current Validation Behaviors To Prove
 
@@ -93,7 +65,7 @@ For `IWBT_Dife`, Phase 4 still needs to prove:
 ## Notes
 
 - `runtime-missing-source-lowering:*` warnings are not uniformly urgent; only warnings proven to sit on the first-room, spawn, movement, death/reset, or transition path should drive immediate runtime work.
-- For the current repo state, `kamilia` and `mashikaku` are smoke references, not replacements for the intended `IWBT_Dife` gold sample.
+- For the current repo state, `sample/` is the active repo-local smoke package and also the intended `IWBT_Dife` gold-sample package.
 
 ## References
 

@@ -38,7 +38,7 @@ Included in this phase:
 - normalized object event table with event tags for dispatch
 - logic envelope in `scripts.ir.json` with executable/source-only distinction
 - raw parser-owned GML preservation in `logic.raw.json`
-- lightweight parser-owned lowered logic in `logic.lowered.json`
+- structured parser-owned lowered logic in `logic.lowered.json` for the current IWanna-critical subset
 - runtime categorization: hazard, checkpoint, player-controlled hints
 
 ## Current Shell Integration
@@ -90,9 +90,9 @@ This is currently useful for diagnostics and shell validation, but it is not the
 ### Parser-Owns Raw And Lowered Logic
 
 - `logic.raw.json` preserves the original GML source text and ownership metadata for room, instance, object event, script, trigger, and timeline logic
-- `logic.lowered.json` holds the parser-owned lightweight lowering of common control-flow and call/assignment shapes
+- `logic.lowered.json` holds the parser-owned lowered contract for current critical-path expressions and statements such as calls, assignments, member access, index access, binary expressions, and common control-flow heads
 - runtime should treat these files as the bridge between `gm8exe` extraction and executable runtime semantics, not as a separate public API for end users
-- current repository direction assumes that `logic.lowered.json` must become more structurally correct over time; shallow string-carried calls are useful for diagnostics, but they are not the intended steady-state execution contract
+- current repository direction assumes that `logic.lowered.json` must keep moving toward a structurally correct runtime-facing contract; any remaining raw fallback is transitional diagnostics, not the intended steady-state execution contract
 - for the active Phase 4 route, parser work should converge on real callable structure for the IWanna-critical subset even if full general GML support remains out of scope
 
 ### Current WASM Bridge Status

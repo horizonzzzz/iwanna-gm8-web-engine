@@ -1,83 +1,8 @@
+use iwm_runtime_model::{
+    LoweredLogicEntry, LoweredLogicExpr, LoweredLogicFile, LoweredLogicStatement,
+};
+
 use crate::models::RawLogicFile;
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoweredLogicFile {
-    pub format: String,
-    pub entries: Vec<LoweredLogicEntry>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoweredLogicEntry {
-    pub block_id: String,
-    pub statements: Vec<LoweredLogicStatement>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "kind", content = "value", rename_all = "kebab-case")]
-pub enum LoweredLogicExpr {
-    Identifier(String),
-    LiteralNumber(f64),
-    LiteralBool(bool),
-    LiteralText(String),
-    Call {
-        name: String,
-        args: Vec<LoweredLogicExpr>,
-    },
-    MemberAccess {
-        target: Box<LoweredLogicExpr>,
-        member: String,
-    },
-    IndexAccess {
-        target: Box<LoweredLogicExpr>,
-        index: Box<LoweredLogicExpr>,
-    },
-    BinaryExpr {
-        op: String,
-        left: Box<LoweredLogicExpr>,
-        right: Box<LoweredLogicExpr>,
-    },
-    Raw {
-        source: String,
-    },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum LoweredLogicStatement {
-    Assignment {
-        target: LoweredLogicExpr,
-        value: LoweredLogicExpr,
-    },
-    FunctionCall {
-        name: String,
-        args: Vec<LoweredLogicExpr>,
-    },
-    Conditional {
-        condition: LoweredLogicExpr,
-        then_branch: Vec<LoweredLogicStatement>,
-        else_branch: Vec<LoweredLogicStatement>,
-    },
-    With {
-        target: String,
-        body: Vec<LoweredLogicStatement>,
-    },
-    Repeat {
-        count: String,
-        body: Vec<LoweredLogicStatement>,
-    },
-    While {
-        condition: String,
-        body: Vec<LoweredLogicStatement>,
-    },
-    For {
-        init: String,
-        condition: String,
-        step: String,
-        body: Vec<LoweredLogicStatement>,
-    },
-    Raw { source: String },
-}
 
 pub fn lower_raw_logic_file(raw: &RawLogicFile) -> LoweredLogicFile {
     let mut entries = Vec::new();
@@ -151,33 +76,101 @@ fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
         return None;
     }
 
+    if stmt.ends_with("++") && !stmt.ends_with("+++") {
+        let target = stmt[..stmt.len() - 2].trim();
+        if !target.is_empty() {
+            return Some(LoweredLogicStatement::Assignment {
+                target: lower_expr(target),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "+".to_string(),
+                    left: Box::new(lower_expr(target)),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                },
+            });
+        }
+    }
+
+    if stmt.ends_with("--") && !stmt.ends_with("---") {
+        let target = stmt[..stmt.len() - 2].trim();
+        if !target.is_empty() {
+            return Some(LoweredLogicStatement::Assignment {
+                target: lower_expr(target),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "-".to_string(),
+                    left: Box::new(lower_expr(target)),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                },
+            });
+        }
+    }
+
+    if let Some(target) = stmt.strip_prefix("++").map(str::trim) {
+        if !target.is_empty() {
+            return Some(LoweredLogicStatement::Assignment {
+                target: lower_expr(target),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "+".to_string(),
+                    left: Box::new(lower_expr(target)),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                },
+            });
+        }
+    }
+
+    if stmt.starts_with("--") && !stmt.starts_with("---") {
+        let target = stmt[2..].trim();
+        if !target.is_empty() {
+            return Some(LoweredLogicStatement::Assignment {
+                target: lower_expr(target),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "-".to_string(),
+                    left: Box::new(lower_expr(target)),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                },
+            });
+        }
+    }
+
     if stmt.starts_with("if ") || stmt.starts_with("if(") {
         return lower_if_statement(stmt);
     }
 
     if stmt.starts_with("with ") || stmt.starts_with("with(") {
         return lower_block_statement(stmt, "with").map(|(head, body)| LoweredLogicStatement::With {
-            target: head,
+            target: lower_expr(&head),
             body: lower_source(&body),
         });
     }
 
     if stmt.starts_with("repeat ") || stmt.starts_with("repeat(") {
         return lower_block_statement(stmt, "repeat").map(|(head, body)| LoweredLogicStatement::Repeat {
-            count: head,
+            count: lower_expr(&head),
             body: lower_source(&body),
         });
     }
 
     if stmt.starts_with("while ") || stmt.starts_with("while(") {
         return lower_block_statement(stmt, "while").map(|(head, body)| LoweredLogicStatement::While {
-            condition: head,
+            condition: lower_expr(&head),
             body: lower_source(&body),
         });
     }
 
     if stmt.starts_with("for ") || stmt.starts_with("for(") {
         return lower_for_statement(stmt);
+    }
+
+    for (compound_op, binary_op) in [("+=", "+"), ("-=", "-"), ("*=", "*"), ("/=", "/")] {
+        if let Some((lhs, rhs)) = split_top_level_operator(stmt, compound_op) {
+            return Some(LoweredLogicStatement::Assignment {
+                target: lower_expr(&lhs),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: binary_op.to_string(),
+                    left: Box::new(lower_expr(&lhs)),
+                    right: Box::new(lower_expr(&rhs)),
+                },
+            });
+        }
     }
 
     if let Some((lhs, rhs)) = stmt.split_once('=') {
@@ -375,9 +368,9 @@ fn lower_for_statement(stmt: &str) -> Option<LoweredLogicStatement> {
     let condition = parts.remove(0);
     let step = parts.remove(0);
     Some(LoweredLogicStatement::For {
-        init,
-        condition,
-        step,
+        init: lower_expr(&init),
+        condition: lower_expr(&condition),
+        step: lower_expr(&step),
         body: lower_source(&body),
     })
 }

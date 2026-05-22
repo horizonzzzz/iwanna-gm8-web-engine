@@ -1,5 +1,5 @@
 use iwm_runtime_core::{RuntimeCore, RuntimePackage};
-use iwm_runtime_host::{ButtonState, HeadlessHost, RuntimeButton};
+use iwm_runtime_host::{ButtonState, HeadlessHost, RuntimeButton, RuntimeInputHost};
 
 use crate::{
     BridgeFrameSnapshot, BridgeSnapshot, WebInputState,
@@ -42,6 +42,8 @@ impl WebRuntimeHost {
     }
 
     pub fn set_input(&mut self, input: WebInputState) {
+        let previous_restart = self.host.button_state(RuntimeButton::Keyboard(0x52)).pressed;
+
         self.host.input.replace_button_states([
             (
                 RuntimeButton::Keyboard(0x25),
@@ -71,8 +73,8 @@ impl WebRuntimeHost {
                 RuntimeButton::Keyboard(0x52),
                 ButtonState {
                     pressed: input.restart,
-                    just_pressed: input.restart,
-                    just_released: false,
+                    just_pressed: input.restart && !previous_restart,
+                    just_released: !input.restart && previous_restart,
                 },
             ),
         ]);

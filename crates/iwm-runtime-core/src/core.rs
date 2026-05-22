@@ -142,7 +142,7 @@ impl RuntimeCore {
             );
         }
 
-        if restart.just_pressed || restart.pressed {
+        if restart.just_pressed {
             self.pending_room_reset = true;
             self.apply_pending_room_change()?;
             self.render(host)?;

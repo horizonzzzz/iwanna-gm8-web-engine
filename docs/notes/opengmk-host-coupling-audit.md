@@ -14,6 +14,7 @@ Current repository route decision:
 - OpenGMK `gm8emulator` is now the intended runtime-semantics mainline for Phase 4
 - project-owned parser work remains responsible for extracting and structuring runtime input
 - the repository should prefer host-boundary extraction plus headless bring-up over further TS gameplay-runtime growth
+- windowing, audio, externals, and recording remain host concerns rather than runtime-core semantics
 
 ## Source Anchors
 
@@ -154,6 +155,7 @@ The first host layer should stay narrow:
 - `RuntimeInputHost`
   - normalized button state queries
   - mouse position when needed
+  - host adapters should translate held browser/desktop input into one-shot edge snapshots before runtime-core consumes them
 - `RuntimeRenderHost`
   - headless/null frame submission first
   - no browser texture API commitment yet
@@ -197,6 +199,7 @@ The next concrete implementation steps after this note are:
 
 - keep the host traits intentionally small
 - build a headless harness around those traits
+- keep one-shot input-edge translation in the host adapter instead of rebuilding gameplay semantics in shell glue
 - identify the smallest slice of `Game::launch` that can be separated without
   bringing `ramen` window ownership along
 - only then start a browser/WASM adapter

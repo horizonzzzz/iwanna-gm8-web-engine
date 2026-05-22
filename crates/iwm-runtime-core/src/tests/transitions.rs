@@ -100,3 +100,55 @@ fn core_transitions_to_target_room_when_requested() {
     core.tick(&mut host).unwrap();
     assert_eq!(core.snapshot().room_id, Some(9));
 }
+
+#[test]
+fn core_only_restarts_on_restart_press_edge() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+
+    host.input.replace_button_states([(
+        RuntimeButton::Keyboard(0x52),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    )]);
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!((player.x, player.y), (12, 24));
+
+    host.input.replace_button_states([
+        (
+            RuntimeButton::Keyboard(0x27),
+            ButtonState {
+                pressed: true,
+                just_pressed: false,
+                just_released: false,
+            },
+        ),
+        (
+            RuntimeButton::Keyboard(0x52),
+            ButtonState {
+                pressed: true,
+                just_pressed: false,
+                just_released: false,
+            },
+        ),
+    ]);
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert!(player.x > 12);
+}

@@ -129,6 +129,37 @@ fn web_runtime_host_accepts_input_and_returns_render_frame_json() {
 }
 
 #[test]
+fn web_runtime_host_treats_restart_as_a_one_shot_press_edge() {
+    let mut host = WebRuntimeHost::new();
+    host.boot(sample_package()).unwrap();
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: false,
+        jump_pressed: false,
+        jump_released: false,
+        restart: true,
+    });
+    let reset = host.tick(1).unwrap();
+    assert_eq!(
+        reset.player.as_ref().map(|player| (player.x, player.y)),
+        Some((32, 64))
+    );
+
+    host.set_input(WebInputState {
+        left: false,
+        right: true,
+        jump: false,
+        jump_pressed: false,
+        jump_released: false,
+        restart: true,
+    });
+    let after_hold = host.tick(1).unwrap();
+    assert!(after_hold.player.as_ref().map(|player| player.x).unwrap() > 32);
+}
+
+#[test]
 fn web_runtime_host_frame_snapshot_includes_tiles_and_fallback_player_output() {
     let mut package = sample_package();
     package.rooms[0].instances[0].object_id = 1;

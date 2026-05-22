@@ -242,7 +242,8 @@ fn raw_logic_file_preserves_gml_ownership_and_source_text() {
 
 #[test]
 fn lowered_logic_file_tokenizes_assignments_and_calls_from_raw_logic() {
-    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicExpr, LoweredLogicStatement};
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
     use iwm_parser::models::{
         RawCodeAction, RawLogicEventBinding, RawLogicFile, RawLogicOwner, RawLogicOwnerKind,
         RawLogicScript,
@@ -315,7 +316,8 @@ fn lowered_logic_file_tokenizes_assignments_and_calls_from_raw_logic() {
 
 #[test]
 fn lowered_logic_file_recognizes_control_flow_blocks() {
-    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicStatement};
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::LoweredLogicStatement;
     use iwm_parser::models::{
         RawCodeAction, RawLogicEventBinding, RawLogicFile,
     };
@@ -356,7 +358,8 @@ fn lowered_logic_file_recognizes_control_flow_blocks() {
 
 #[test]
 fn lowered_logic_file_recognizes_common_loop_blocks() {
-    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicStatement};
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::LoweredLogicStatement;
     use iwm_parser::models::{RawCodeAction, RawLogicEventBinding, RawLogicFile};
 
     let raw = RawLogicFile {
@@ -396,7 +399,8 @@ fn lowered_logic_file_recognizes_common_loop_blocks() {
 
 #[test]
 fn lowered_logic_file_preserves_nested_function_call_arguments() {
-    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicExpr, LoweredLogicStatement};
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
     use iwm_parser::models::{RawLogicFile, RawLogicScript};
 
     let raw = RawLogicFile {
@@ -441,7 +445,8 @@ fn lowered_logic_file_preserves_nested_function_call_arguments() {
 
 #[test]
 fn lowered_logic_file_does_not_treat_comparisons_as_assignments() {
-    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicExpr, LoweredLogicStatement};
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
     use iwm_parser::models::{RawLogicEventBinding, RawLogicFile, RawCodeAction};
 
     let raw = RawLogicFile {
@@ -491,7 +496,8 @@ fn lowered_logic_file_does_not_treat_comparisons_as_assignments() {
 
 #[test]
 fn lowered_logic_file_emits_structured_member_index_and_binary_expressions() {
-    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicExpr, LoweredLogicStatement};
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
     use iwm_parser::models::{RawLogicFile, RawLogicScript};
 
     let raw = RawLogicFile {
@@ -549,6 +555,112 @@ fn lowered_logic_file_emits_structured_member_index_and_binary_expressions() {
             assert!(matches!(args[2], LoweredLogicExpr::Identifier(ref name) if name == "player2"));
         }
         other => panic!("expected structured function call, got {other:?}"),
+    }
+}
+
+#[test]
+fn lowered_logic_file_handles_compound_assignments() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
+    use iwm_parser::models::RawLogicFile;
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![iwm_parser::models::RawLogicScript {
+            script_id: 11,
+            script_name: "scr_compound".to_string(),
+            gml_source: "x += 1; timer -= 2; score *= 3;".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+
+    match &statements[0] {
+        LoweredLogicStatement::Assignment { target, value } => {
+            assert!(matches!(target, LoweredLogicExpr::Identifier(name) if name == "x"));
+            assert!(matches!(
+                value,
+                LoweredLogicExpr::BinaryExpr { op, left, right }
+                    if op == "+"
+                    && matches!(left.as_ref(), LoweredLogicExpr::Identifier(name) if name == "x")
+                    && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 1.0).abs() < f64::EPSILON)
+            ));
+        }
+        other => panic!("expected compound assignment for x += 1, got {other:?}"),
+    }
+
+    match &statements[1] {
+        LoweredLogicStatement::Assignment { target, value } => {
+            assert!(matches!(target, LoweredLogicExpr::Identifier(name) if name == "timer"));
+            assert!(matches!(
+                value,
+                LoweredLogicExpr::BinaryExpr { op, left, right }
+                    if op == "-"
+                    && matches!(left.as_ref(), LoweredLogicExpr::Identifier(name) if name == "timer")
+                    && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 2.0).abs() < f64::EPSILON)
+            ));
+        }
+        other => panic!("expected compound assignment for timer -= 2, got {other:?}"),
+    }
+
+    match &statements[2] {
+        LoweredLogicStatement::Assignment { target, value } => {
+            assert!(matches!(target, LoweredLogicExpr::Identifier(name) if name == "score"));
+            assert!(matches!(
+                value,
+                LoweredLogicExpr::BinaryExpr { op, left, right }
+                    if op == "*"
+                    && matches!(left.as_ref(), LoweredLogicExpr::Identifier(name) if name == "score")
+                    && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 3.0).abs() < f64::EPSILON)
+            ));
+        }
+        other => panic!("expected compound assignment for score *= 3, got {other:?}"),
+    }
+}
+
+#[test]
+fn lowered_logic_file_handles_increment_and_decrement() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
+    use iwm_parser::models::RawLogicFile;
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![iwm_parser::models::RawLogicScript {
+            script_id: 12,
+            script_name: "scr_incdec".to_string(),
+            gml_source: "i++; ++j; k--; --m;".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+
+    for (index, (name, op)) in [("i", "+"), ("j", "+"), ("k", "-"), ("m", "-")].into_iter().enumerate() {
+        match &statements[index] {
+            LoweredLogicStatement::Assignment { target, value } => {
+                assert!(matches!(target, LoweredLogicExpr::Identifier(ident) if ident == name));
+                assert!(matches!(
+                    value,
+                    LoweredLogicExpr::BinaryExpr { op: value_op, left, right }
+                        if value_op == op
+                        && matches!(left.as_ref(), LoweredLogicExpr::Identifier(ident) if ident == name)
+                        && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 1.0).abs() < f64::EPSILON)
+                ));
+            }
+            other => panic!("expected increment/decrement assignment for {name}, got {other:?}"),
+        }
     }
 }
 

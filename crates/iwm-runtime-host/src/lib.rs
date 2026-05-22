@@ -3,6 +3,10 @@
 //! This crate intentionally stays small. It defines the narrow host traits and
 //! headless helpers needed for the first OpenGMK feasibility spike without
 //! mirroring the full `gm8emulator` surface area.
+//!
+//! These traits and no-op/headless helpers are the only public runtime-host
+//! surface that `iwm-runtime-core`, `iwm-runtime-web`, and future
+//! OpenGMK-derived extraction work should depend on.
 
 mod audio;
 mod clock;
