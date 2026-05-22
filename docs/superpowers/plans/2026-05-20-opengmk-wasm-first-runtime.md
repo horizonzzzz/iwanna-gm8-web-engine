@@ -10,15 +10,22 @@
 
 **Goal:** Replace the previous TS-first gameplay-runtime direction with a WASM-first runtime path centered on adapting OpenGMK's `gm8emulator` into a browser-hosted execution core, while retaining the existing `runtime/` frontend as a shell, diagnostics surface, and package/debug harness.
 
+> **Route decision update (2026-05-22):**
+>
+> - runtime mainline remains the OpenGMK-derived WASM path
+> - parser mainline now explicitly includes replacing shallow GML token splitting with a real structured parser-owned contract for the IWanna-critical subset
+> - the repository should no longer spend major effort extending a parallel TS gameplay runtime
+
 **Architecture:** Keep Rust as the backend/parser language. Stop investing in the project-owned TypeScript gameplay runtime as the long-term execution engine. Instead:
 
 1. keep `iwm-parser` producing runtime-oriented package outputs and diagnostics
-2. extract a host-agnostic execution core from OpenGMK `gm8emulator`
-3. define host traits for render, input, audio, file/environment, and externals
-4. implement a web host around a WASM-compiled runtime core
-5. reuse the current `runtime/` app as the browser shell around the WASM core
+2. upgrade parser-owned GML lowering toward real structured call/expression output for the IWanna-critical path
+3. extract a host-agnostic execution core from OpenGMK `gm8emulator`
+4. define host traits for render, input, audio, file/environment, and externals
+5. implement a web host around a WASM-compiled runtime core
+6. reuse the current `runtime/` app as the browser shell around the WASM core
 
-**Important constraint note:** This plan is technically aligned with the desired end state, but it is subject to the existing OpenGMK license warning. `gm8emulator` is `GPL-2.0-only`; this is not a side note. Before productization or wider distribution, verify the legal acceptability of shipping a browser runtime derived from or linked against OpenGMK code.
+**Important constraint note:** This plan is technically aligned with the desired end state, but it is subject to the existing OpenGMK license warning. `gm8emulator` is `GPL-2.0-only`; this is not a side note. The current repository direction assumes a GPL-2.0-compatible runtime path unless the architecture changes. Before productization or wider distribution, license validation for shipping a browser runtime derived from or linked against OpenGMK code is a required gate, not an optional follow-up.
 
 **Important scope note:** The first milestone is not “full browser playability.” The first milestone is a feasibility spike proving that OpenGMK runtime logic can be separated from desktop host concerns and driven from a browser-compatible host boundary. Do not start by trying to port every subsystem at once.
 
@@ -43,6 +50,7 @@ That means:
 - the current TS runtime already shows structural progress but not semantic parity
 - continuing the TS gameplay path would duplicate work that must later be replaced by the WASM runtime
 - OpenGMK already contains much deeper GM8 semantic knowledge than the project-owned TS runtime
+- the remaining parser/runtime break is now understood as a contract problem, not only a host problem; without structured parser output, the runtime cannot execute semantics cleanly even when the host path exists
 
 ### What remains useful from the current frontend
 
@@ -91,7 +99,7 @@ Before starting this phase:
 - current parser output should still build and load in the frontend shell
 - the OpenGMK submodule under `vendor/OpenGMK/` must be initialized
 - the current repo should treat `gm8emulator` as a study and controlled-integration source, not an opaque black box
-- the team must accept that browser runtime work is now blocked primarily on host-boundary extraction, not on more TS gameplay patching
+- the team must accept that browser runtime work is now blocked by both host-boundary extraction and parser-contract quality, not by more TS gameplay patching
 
 ---
 
@@ -113,6 +121,24 @@ This milestone does **not** require:
 - DLL support
 - menu/UI parity
 - a fully interactive sample
+
+This milestone also does **not** justify keeping shallow parser lowering as the long-term plan. The spike should enumerate where host extraction is blocked by parser contract weakness versus genuine runner coupling.
+
+---
+
+## Parser Enabling Track
+
+The runtime route depends on a parser-side upgrade.
+
+Immediate parser goals:
+
+- stop treating `gml_lowering.rs` string splitting as a viable long-term execution contract
+- preserve structured function-call shape for the IWanna-critical subset
+- preserve variable/member/index access structure needed for instance/global lookup
+- keep unsupported syntax explicit instead of flattening it into misleading pseudo-structure
+- in the next development cycle, make member access, index access, and binary expressions part of the minimum structured subset that reaches runtime consumers
+
+The first target is not "all GML". The first target is "enough structured semantics that the runtime can distinguish `instance_create(x, y - 4, player2)` from an opaque string blob".
 
 ### Success Criteria
 

@@ -5,6 +5,8 @@
 > This document reflects the previous TS-first gameplay-runtime direction.
 > It may still contain useful shell, diagnostics, or runtime-slice ideas, but it is no longer the primary implementation route.
 > If this document conflicts with `README.md`, current runtime notes, or newer WASM-first runtime plans, follow the current repository state.
+> As of 2026-05-22, repository direction is explicitly "runtime track B + parser track C":
+> OpenGMK-derived WASM runtime on the execution side, and project-owned structured parser/lowering upgrades on the contract side.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

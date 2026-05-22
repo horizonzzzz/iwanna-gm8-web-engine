@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use iwm_runtime_host::RuntimeHost;
 use iwm_runtime_model::RoomDefinition;
 
-use crate::helpers::{parse_room_id, parse_runtime_value, record_host_diagnostic};
+use crate::helpers::{as_number, parse_room_id, parse_runtime_value, record_host_diagnostic};
 use crate::{
-    LoweredLogicEntry, LoweredLogicStatement, RuntimeCore, RuntimeCoreError, RuntimeInstance,
-    RuntimeRoomState, RuntimeValue,
+    LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeCoreError,
+    RuntimeInstance, RuntimeRoomState, RuntimeValue,
 };
 
 impl RuntimeCore {
@@ -148,9 +148,11 @@ impl RuntimeCore {
 
     fn apply_statement_to_globals(&mut self, statement: &LoweredLogicStatement) {
         match statement {
-            LoweredLogicStatement::Assignment { lhs, rhs } => {
-                if let Some(value) = parse_runtime_value(rhs) {
-                    self.globals.insert(lhs.clone(), value);
+            LoweredLogicStatement::Assignment { target, value } => {
+                if let Some(key) = assignable_key(target, None) {
+                    if let Some(value) = evaluate_expr(value, None, &self.globals) {
+                        self.globals.insert(key, value);
+                    }
                 }
             }
             LoweredLogicStatement::Conditional {
@@ -183,9 +185,15 @@ impl RuntimeCore {
         instance: &mut RuntimeInstance,
     ) {
         match statement {
-            LoweredLogicStatement::Assignment { lhs, rhs } => {
-                if let Some(value) = parse_runtime_value(rhs) {
-                    instance.vars.insert(lhs.clone(), value);
+            LoweredLogicStatement::Assignment { target, value } => {
+                if let Some(key) = assignable_key(target, Some(instance)) {
+                    if let Some(value) = evaluate_expr(value, Some(instance), &self.globals) {
+                        if key.starts_with("global.") {
+                            self.globals.insert(key, value);
+                        } else {
+                            instance.vars.insert(key, value);
+                        }
+                    }
                 }
             }
             LoweredLogicStatement::Conditional {
@@ -223,18 +231,24 @@ fn apply_step_statement<H: RuntimeHost>(
     diagnostics: &mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
 ) {
     match statement {
-        LoweredLogicStatement::Assignment { lhs, rhs } => {
-            if let Some(value) = parse_runtime_value(rhs) {
-                if lhs.starts_with("global.") {
-                    globals.insert(lhs.clone(), value);
-                } else {
-                    instance.vars.insert(lhs.clone(), value);
+        LoweredLogicStatement::Assignment { target, value } => {
+            if let Some(key) = assignable_key(target, Some(instance)) {
+                if let Some(value) = evaluate_expr(value, Some(instance), globals) {
+                    if key.starts_with("global.") {
+                        globals.insert(key, value);
+                    } else {
+                        instance.vars.insert(key, value);
+                    }
                 }
             }
         }
         LoweredLogicStatement::FunctionCall { name, args } => match name.as_str() {
             "room_goto" => {
-                if let Some(room_id) = args.first().and_then(|arg| parse_room_id(arg)) {
+                if let Some(room_id) = args
+                    .first()
+                    .and_then(|arg| evaluate_expr(arg, Some(instance), globals))
+                    .and_then(|value| runtime_value_to_room_id(&value))
+                {
                     *pending_room_transition = Some(room_id);
                 } else {
                     record_host_diagnostic(
@@ -255,5 +269,128 @@ fn apply_step_statement<H: RuntimeHost>(
             _ => {}
         },
         _ => {}
+    }
+}
+
+fn assignable_key(expr: &LoweredLogicExpr, instance: Option<&RuntimeInstance>) -> Option<String> {
+    match expr {
+        LoweredLogicExpr::Identifier(name) => Some(name.clone()),
+        LoweredLogicExpr::MemberAccess { target, member } => {
+            let base = assignable_key(target, instance)?;
+            Some(format!("{base}.{member}"))
+        }
+        LoweredLogicExpr::IndexAccess { target, index } => {
+            let base = assignable_key(target, instance)?;
+            let suffix = expr_key_fragment(index, instance)?;
+            Some(format!("{base}[{suffix}]"))
+        }
+        _ => None,
+    }
+}
+
+fn expr_key_fragment(expr: &LoweredLogicExpr, instance: Option<&RuntimeInstance>) -> Option<String> {
+    match expr {
+        LoweredLogicExpr::Identifier(name) => Some(name.clone()),
+        LoweredLogicExpr::LiteralNumber(number) => Some(if number.fract() == 0.0 {
+            format!("{}", *number as i64)
+        } else {
+            number.to_string()
+        }),
+        LoweredLogicExpr::LiteralBool(flag) => Some(flag.to_string()),
+        LoweredLogicExpr::LiteralText(text) => Some(text.clone()),
+        _ => evaluate_expr(expr, instance, &HashMap::new()).map(|value| match value {
+            RuntimeValue::Number(number) if number.fract() == 0.0 => format!("{}", number as i64),
+            RuntimeValue::Number(number) => number.to_string(),
+            RuntimeValue::Bool(flag) => flag.to_string(),
+            RuntimeValue::Text(text) => text,
+        }),
+    }
+}
+
+fn evaluate_expr(
+    expr: &LoweredLogicExpr,
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+) -> Option<RuntimeValue> {
+    match expr {
+        LoweredLogicExpr::Identifier(name) => {
+            if let Some(instance) = instance {
+                if let Some(value) = instance.vars.get(name) {
+                    return Some(value.clone());
+                }
+                match name.as_str() {
+                    "x" => return Some(RuntimeValue::Number(instance.x as f64)),
+                    "y" => return Some(RuntimeValue::Number(instance.y as f64)),
+                    "hspeed" => return Some(RuntimeValue::Number(instance.hspeed as f64)),
+                    "vspeed" => return Some(RuntimeValue::Number(instance.vspeed as f64)),
+                    _ => {}
+                }
+            }
+
+            globals
+                .get(name)
+                .cloned()
+                .or_else(|| parse_runtime_value(name))
+        }
+        LoweredLogicExpr::LiteralNumber(number) => Some(RuntimeValue::Number(*number)),
+        LoweredLogicExpr::LiteralBool(flag) => Some(RuntimeValue::Bool(*flag)),
+        LoweredLogicExpr::LiteralText(text) => Some(RuntimeValue::Text(text.clone())),
+        LoweredLogicExpr::Call { name, args } => match name.as_str() {
+            "room_goto" => args
+                .first()
+                .and_then(|arg| evaluate_expr(arg, instance, globals)),
+            _ => None,
+        },
+        LoweredLogicExpr::MemberAccess { target, member } => {
+            let base = assignable_key(target, instance)?;
+            let key = format!("{base}.{member}");
+            globals.get(&key).cloned().or_else(|| {
+                instance.and_then(|instance| instance.vars.get(&key).cloned())
+            })
+        }
+        LoweredLogicExpr::IndexAccess { target, index } => {
+            let base = assignable_key(target, instance)?;
+            let suffix = expr_key_fragment(index, instance)?;
+            let key = format!("{base}[{suffix}]");
+            globals.get(&key).cloned().or_else(|| {
+                instance.and_then(|instance| instance.vars.get(&key).cloned())
+            })
+        }
+        LoweredLogicExpr::BinaryExpr { op, left, right } => {
+            let left = evaluate_expr(left, instance, globals)?;
+            let right = evaluate_expr(right, instance, globals)?;
+            eval_binary_expr(op, &left, &right)
+        }
+        LoweredLogicExpr::Raw { source } => parse_runtime_value(source),
+    }
+}
+
+fn eval_binary_expr(op: &str, left: &RuntimeValue, right: &RuntimeValue) -> Option<RuntimeValue> {
+    match op {
+        "+" => Some(RuntimeValue::Number(as_number(left)? + as_number(right)?)),
+        "-" => Some(RuntimeValue::Number(as_number(left)? - as_number(right)?)),
+        "*" => Some(RuntimeValue::Number(as_number(left)? * as_number(right)?)),
+        "/" => Some(RuntimeValue::Number(as_number(left)? / as_number(right)?)),
+        "==" => Some(RuntimeValue::Bool(left == right)),
+        "!=" => Some(RuntimeValue::Bool(left != right)),
+        ">=" => Some(RuntimeValue::Bool(as_number(left)? >= as_number(right)?)),
+        "<=" => Some(RuntimeValue::Bool(as_number(left)? <= as_number(right)?)),
+        ">" => Some(RuntimeValue::Bool(as_number(left)? > as_number(right)?)),
+        "<" => Some(RuntimeValue::Bool(as_number(left)? < as_number(right)?)),
+        _ => None,
+    }
+}
+
+fn runtime_value_to_room_id(value: &RuntimeValue) -> Option<usize> {
+    match value {
+        RuntimeValue::Number(number) => {
+            if number.is_finite() && *number >= 0.0 {
+                Some(number.round() as usize)
+            } else {
+                None
+            }
+        }
+        RuntimeValue::Bool(flag) => Some(if *flag { 1 } else { 0 }),
+        RuntimeValue::Text(text) => parse_room_id(text),
     }
 }

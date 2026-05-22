@@ -8,6 +8,14 @@ Phase 4 has switched to a WASM-first runtime strategy.
 
 The current `runtime/` app remains the browser shell, package inspector, and diagnostics harness, but the long-term gameplay execution path is no longer the project-owned TypeScript runtime. Runtime fidelity work now targets adapting OpenGMK `gm8emulator` into a browser-hosted WASM execution core.
 
+Phase 4 route decision is now explicit:
+
+- runtime mainline: adapt or extract an OpenGMK-derived execution core behind project-owned host boundaries, then run it through the browser-facing WASM path
+- parser mainline: replace the current shallow GML lowering path with a real parser-owned expression/statement model that can preserve callable structure, variable references, and array/member access for the runtime contract
+- deprecated direction: do not keep expanding the old TS-side gameplay runtime as if it were the long-term engine
+
+This project is open source and now assumes a GPL-2.0-compatible direction for the runtime path unless a later architecture change explicitly removes that dependency. OpenGMK usage is already part of the repository's architecture decision surface, so license validation is a release-blocking requirement rather than a follow-up legal nicety. That does **not** authorize casual code copying from `vendor/OpenGMK/`; it means the repository now treats OpenGMK coupling and licensing as an explicit architectural dependency to manage, not a reason to continue investing in a semantically weak fallback runtime.
+
 Current implemented Phase 4 slices:
 
 - `crates/iwm-runtime-model/` holds the shared runtime package schema
@@ -43,6 +51,7 @@ See `docs/notes/package-format-v1-runtime.md` for the current runtime package co
 See `docs/notes/runtime-wasm-gap-analysis.md` for the current checklist of what is still missing for a fully playable WASM runtime.
 See `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md` for the current runtime implementation direction.
 See `docs/notes/opengmk-host-coupling-audit.md` for the first OpenGMK host-boundary audit.
+See `docs/superpowers/plans/2026-05-21-parser-and-runtime-next-steps.md` for the current parser-side enabling work for that runtime direction.
 
 ## Documentation Notes
 
@@ -233,8 +242,41 @@ Important runtime direction note:
 
 - the current package and frontend shell remain useful
 - the removed TypeScript gameplay runtime should be treated as transitional tooling that no longer participates in the active browser execution path
-- future runtime-fidelity work should accumulate in the WASM-hosted engine path, not in a parallel TS gameplay reimplementation
+- future runtime-fidelity work should accumulate in the OpenGMK-derived WASM-hosted engine path, not in a parallel TS gameplay reimplementation
+- parser work should now focus on turning raw GML and shallow lowered snippets into a real runtime-facing contract rather than emitting strings that only the old TS runtime could heuristically inspect
 - when the WASM bridge is missing, unsynced, or fails to boot, the current shell falls back to a static room viewer instead of a gameplay runtime
+
+## Phase 4 Priorities
+
+The next development direction is intentionally split into two coupled tracks.
+
+### Runtime track
+
+- extract or wrap OpenGMK `gm8emulator` semantics behind narrow host traits
+- prove headless/null-host boot before deeper browser rendering work
+- keep browser work focused on WASM host integration, diagnostics, and controls
+
+### Parser track
+
+- stop treating shallow token splitting as a viable long-term GML lowering strategy
+- move toward a parser-owned AST or similarly structured representation for expressions and calls
+- only commit to the IWanna-critical function and event subset first, but preserve real call structure so runtime code can execute semantics instead of guessing from raw strings
+- parser type-upgrade minimum for the next development cycle: extend the lowered-logic contract so runtime no longer depends on raw-string fallback for member access, index access, and binary expressions on the critical path
+
+### Near-Term Execution Order
+
+The next development cycle should execute in this order:
+
+1. parser contract upgrade: add structured lowered nodes for member access, index access, and binary expressions, and thread them through shared runtime types
+2. runtime-core consumption: teach the headless/WASM runtime path to consume that structured subset instead of relying on raw strings for critical function-call semantics
+3. OpenGMK host extraction: continue narrowing desktop coupling once the parser/runtime contract can carry real semantics
+4. browser host follow-through: keep the shell and WASM bridge aligned with the upgraded runtime contract
+
+### Practical decision rule
+
+- if a task improves shell UX or telemetry without affecting engine semantics, it can stay in `runtime/`
+- if a task tries to reimplement more GM8 gameplay behavior in TS, it is usually the wrong direction now
+- if a task clarifies parser-owned runtime data or reduces OpenGMK host coupling, it is aligned with the current plan
 
 Out of scope for the MVP:
 

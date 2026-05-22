@@ -25,6 +25,7 @@ Important direction note:
 - this package remains the current browser-shell input format
 - the current TypeScript runtime consumption path is transitional
 - the current WASM bridge also boots from this normalized JSON package today
+- the current parser-side lowering is not considered semantically sufficient for long-term gameplay execution
 - if the WASM-hosted runtime later requires a richer execution input, this format may evolve again
 - until then, these outputs remain useful for package inspection, diagnostics, and shell bring-up
 
@@ -91,6 +92,8 @@ This is currently useful for diagnostics and shell validation, but it is not the
 - `logic.raw.json` preserves the original GML source text and ownership metadata for room, instance, object event, script, trigger, and timeline logic
 - `logic.lowered.json` holds the parser-owned lightweight lowering of common control-flow and call/assignment shapes
 - runtime should treat these files as the bridge between `gm8exe` extraction and executable runtime semantics, not as a separate public API for end users
+- current repository direction assumes that `logic.lowered.json` must become more structurally correct over time; shallow string-carried calls are useful for diagnostics, but they are not the intended steady-state execution contract
+- for the active Phase 4 route, parser work should converge on real callable structure for the IWanna-critical subset even if full general GML support remains out of scope
 
 ### Current WASM Bridge Status
 
@@ -126,12 +129,26 @@ The current browser-hosted runtime flow is:
 ### Still Deferred / Unsupported
 
 - `source-only` script blocks that require GML lowering
-- Advanced GML functions not yet in the supported action subset
+- Advanced GML functions not yet in the supported subset
 - Particle systems, surfaces, and advanced drawing
 - Menu systems and save/load functionality
 - DLL semantics and external function calls
 - Complex collision masks and advanced physics
 - high-fidelity continuous browser host timing and play-loop controls
+
+## Route Decision Implication
+
+This package note now reflects the selected development route:
+
+- runtime semantics should accumulate in the OpenGMK-derived WASM path
+- parser semantics should accumulate in project-owned extraction and lowering code
+- the package should keep serving as the seam between those two tracks
+
+That means:
+
+- do not keep adding package fields whose only purpose is to support a project-owned TS gameplay engine
+- prefer fields that help a headless/WASM runtime execute real semantics or explain why it cannot
+- preserve `logic.raw.json` and `logic.lowered.json` as diagnostic and transition artifacts until a stronger parser-owned execution contract is proven
 
 ### Analysis Warnings
 

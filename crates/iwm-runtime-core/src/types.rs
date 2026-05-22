@@ -19,19 +19,48 @@ pub struct LoweredLogicEntry {
     pub statements: Vec<LoweredLogicStatement>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", content = "value", rename_all = "kebab-case")]
+pub enum LoweredLogicExpr {
+    Identifier(String),
+    LiteralNumber(f64),
+    LiteralBool(bool),
+    LiteralText(String),
+    Call {
+        name: String,
+        args: Vec<LoweredLogicExpr>,
+    },
+    MemberAccess {
+        target: Box<LoweredLogicExpr>,
+        member: String,
+    },
+    IndexAccess {
+        target: Box<LoweredLogicExpr>,
+        index: Box<LoweredLogicExpr>,
+    },
+    BinaryExpr {
+        op: String,
+        left: Box<LoweredLogicExpr>,
+        right: Box<LoweredLogicExpr>,
+    },
+    Raw {
+        source: String,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum LoweredLogicStatement {
     Assignment {
-        lhs: String,
-        rhs: String,
+        target: LoweredLogicExpr,
+        value: LoweredLogicExpr,
     },
     FunctionCall {
         name: String,
-        args: Vec<String>,
+        args: Vec<LoweredLogicExpr>,
     },
     Conditional {
-        condition: String,
+        condition: LoweredLogicExpr,
         then_branch: Vec<LoweredLogicStatement>,
         else_branch: Vec<LoweredLogicStatement>,
     },

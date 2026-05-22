@@ -13,7 +13,7 @@ mod tests;
 
 pub use core::RuntimeCore;
 pub use types::{
-    LoweredLogicEntry, LoweredLogicFile, LoweredLogicStatement, RuntimeCoreError, RuntimeInstance,
-    RuntimePackage, RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot, RuntimeStatus,
-    RuntimeValue,
+    LoweredLogicEntry, LoweredLogicExpr, LoweredLogicFile, LoweredLogicStatement,
+    RuntimeCoreError, RuntimeInstance, RuntimePackage, RuntimePlayerSnapshot, RuntimeRoomState,
+    RuntimeSnapshot, RuntimeStatus, RuntimeValue,
 };

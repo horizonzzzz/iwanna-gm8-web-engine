@@ -242,7 +242,7 @@ fn raw_logic_file_preserves_gml_ownership_and_source_text() {
 
 #[test]
 fn lowered_logic_file_tokenizes_assignments_and_calls_from_raw_logic() {
-    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicStatement};
+    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicExpr, LoweredLogicStatement};
     use iwm_parser::models::{
         RawCodeAction, RawLogicEventBinding, RawLogicFile, RawLogicOwner, RawLogicOwnerKind,
         RawLogicScript,
@@ -292,7 +292,11 @@ fn lowered_logic_file_tokenizes_assignments_and_calls_from_raw_logic() {
     assert_eq!(lowered.entries.len(), 3);
     assert!(matches!(
         lowered.entries[0].statements[0],
-        LoweredLogicStatement::Assignment { ref lhs, ref rhs } if lhs == "global.score" && rhs == "0"
+        LoweredLogicStatement::Assignment { ref target, ref value }
+            if matches!(target, LoweredLogicExpr::MemberAccess { target, member }
+                if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "global")
+                && member == "score")
+            && matches!(value, LoweredLogicExpr::LiteralNumber(number) if (*number - 0.0).abs() < f64::EPSILON)
     ));
     assert!(matches!(
         lowered.entries[0].statements[1],
@@ -300,7 +304,8 @@ fn lowered_logic_file_tokenizes_assignments_and_calls_from_raw_logic() {
     ));
     assert!(matches!(
         lowered.entries[1].statements[0],
-        LoweredLogicStatement::Conditional { ref condition, .. } if condition.contains("place_meeting")
+        LoweredLogicStatement::Conditional { ref condition, .. }
+            if matches!(condition, LoweredLogicExpr::Call { name, .. } if name == "place_meeting")
     ));
     assert!(matches!(
         lowered.entries[2].statements[0],
@@ -387,6 +392,164 @@ fn lowered_logic_file_recognizes_common_loop_blocks() {
     assert!(matches!(statements[1], LoweredLogicStatement::Repeat { .. }));
     assert!(matches!(statements[2], LoweredLogicStatement::While { .. }));
     assert!(matches!(statements[3], LoweredLogicStatement::For { .. }));
+}
+
+#[test]
+fn lowered_logic_file_preserves_nested_function_call_arguments() {
+    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicExpr, LoweredLogicStatement};
+    use iwm_parser::models::{RawLogicFile, RawLogicScript};
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 7,
+            script_name: "scr_spawn".to_string(),
+            gml_source: "instance_create(x, y - 4, choose(obj_player2, obj_player3));".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+
+    match &lowered.entries[0].statements[0] {
+        LoweredLogicStatement::FunctionCall { name, args } => {
+            assert_eq!(name, "instance_create");
+            assert!(matches!(args[0], LoweredLogicExpr::Identifier(ref ident) if ident == "x"));
+            assert!(matches!(
+                args[1],
+                LoweredLogicExpr::BinaryExpr { ref op, ref left, ref right }
+                    if op == "-"
+                    && matches!(left.as_ref(), LoweredLogicExpr::Identifier(name) if name == "y")
+                    && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 4.0).abs() < f64::EPSILON)
+            ));
+            assert!(matches!(
+                args[2],
+                LoweredLogicExpr::Call { ref name, ref args }
+                    if name == "choose"
+                    && args.len() == 2
+                    && matches!(args[0], LoweredLogicExpr::Identifier(ref ident) if ident == "obj_player2")
+                    && matches!(args[1], LoweredLogicExpr::Identifier(ref ident) if ident == "obj_player3")
+            ));
+        }
+        other => panic!("expected function call, got {other:?}"),
+    }
+}
+
+#[test]
+fn lowered_logic_file_does_not_treat_comparisons_as_assignments() {
+    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicExpr, LoweredLogicStatement};
+    use iwm_parser::models::{RawLogicEventBinding, RawLogicFile, RawCodeAction};
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 12,
+            object_name: "obj_logic".to_string(),
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".to_string(),
+            collision_object_id: None,
+            block_id: "object:12:event:3:0".to_string(),
+            actions: vec![RawCodeAction {
+                action_id: 603,
+                lib_id: 1,
+                action_kind: 7,
+                execution_type: 2,
+                fn_name: "code".to_string(),
+                fn_code: "if a == b { game_restart(); } x = y >= z;".to_string(),
+                args: vec![],
+            }],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+
+    assert!(matches!(statements[0], LoweredLogicStatement::Conditional { .. }));
+    assert!(matches!(
+        statements[1],
+        LoweredLogicStatement::Assignment { ref target, ref value }
+            if matches!(target, LoweredLogicExpr::Identifier(name) if name == "x")
+            && matches!(
+                value,
+                LoweredLogicExpr::BinaryExpr { ref op, ref left, ref right }
+                    if op == ">="
+                    && matches!(left.as_ref(), LoweredLogicExpr::Identifier(name) if name == "y")
+                    && matches!(right.as_ref(), LoweredLogicExpr::Identifier(name) if name == "z")
+            )
+    ));
+}
+
+#[test]
+fn lowered_logic_file_emits_structured_member_index_and_binary_expressions() {
+    use iwm_parser::gml_lowering::{lower_raw_logic_file, LoweredLogicExpr, LoweredLogicStatement};
+    use iwm_parser::models::{RawLogicFile, RawLogicScript};
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 9,
+            script_name: "scr_logic".to_string(),
+            gml_source: "global.grav = arr[0] + 2; instance_create(x, y - 4, player2);".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+
+    match &statements[0] {
+        LoweredLogicStatement::Assignment { target, value } => {
+            assert!(matches!(
+                target,
+                LoweredLogicExpr::MemberAccess { target, member }
+                    if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "global")
+                    && member == "grav"
+            ));
+            assert!(matches!(
+                value,
+                LoweredLogicExpr::BinaryExpr { op, left, right }
+                    if op == "+"
+                    && matches!(
+                        left.as_ref(),
+                        LoweredLogicExpr::IndexAccess { target, index }
+                            if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "arr")
+                            && matches!(index.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 0.0).abs() < f64::EPSILON)
+                    )
+                    && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 2.0).abs() < f64::EPSILON)
+            ));
+        }
+        other => panic!("expected structured assignment, got {other:?}"),
+    }
+
+    match &statements[1] {
+        LoweredLogicStatement::FunctionCall { name, args } => {
+            assert_eq!(name, "instance_create");
+            assert!(matches!(args[0], LoweredLogicExpr::Identifier(ref name) if name == "x"));
+            assert!(matches!(
+                args[1],
+                LoweredLogicExpr::BinaryExpr { ref op, ref left, ref right }
+                    if op == "-"
+                    && matches!(left.as_ref(), LoweredLogicExpr::Identifier(name) if name == "y")
+                    && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 4.0).abs() < f64::EPSILON)
+            ));
+            assert!(matches!(args[2], LoweredLogicExpr::Identifier(ref name) if name == "player2"));
+        }
+        other => panic!("expected structured function call, got {other:?}"),
+    }
 }
 
 // ============================================================================

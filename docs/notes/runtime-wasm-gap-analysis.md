@@ -12,6 +12,18 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - The parser now preserves raw logic in `logic.raw.json` and emits a lightweight lowered contract in `logic.lowered.json`.
 - The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, but it still does not execute general GM8 gameplay logic.
 
+## Route Decision
+
+The repository now treats the runtime and parser problems as two coupled tracks, with one mainline decision:
+
+- runtime mainline: move toward an OpenGMK-derived execution core through narrow project-owned host boundaries
+- parser mainline: replace shallow token splitting with a real parser-owned structure for the IWanna-critical subset
+
+This note therefore tracks both kinds of blocker:
+
+- runtime-semantic blockers that require deeper runner behavior
+- parser-contract blockers that prevent runtime code from receiving executable structure in the first place
+
 ## Necessary Missing
 
 These are the gaps that block normal play. If any of these are absent, the game is not really playable.
@@ -21,6 +33,8 @@ These are the gaps that block normal play. If any of these are absent, the game 
 The core game logic is still mostly dead.
 
 Current `tick()` behavior is hardcoded movement plus a few runtime diagnostics, with only a very small lowered-logic slice dispatched for `step` events. Most object logic from the room is still not executed.
+
+The blocker is no longer interpreted as "add more heuristics to the TS runtime". The real blocker is that the runtime path still lacks a trustworthy executable contract for common GML calls, expressions, event dispatch, and variable lookup.
 
 Impact:
 
@@ -50,6 +64,8 @@ Missing pieces include:
 - `var tmp` locals
 - array access such as `array[0] = value`
 - property access on objects and instances
+
+This gap is partly runtime-side and partly parser-side. If the parser only emits raw strings for member and index access, the runtime cannot recover the intended lookup chain reliably.
 
 ### 4. Sprite Animation
 
@@ -91,6 +107,8 @@ Missing pieces include:
 - `Clean Up`
 - room creation code execution
 - instance creation code execution
+
+For current planning purposes, `keyboard`, `collision`, and `alarm` handling should be treated as part of the first IWanna-critical lifecycle slice rather than as optional polish.
 
 ## Important Missing
 
@@ -185,3 +203,12 @@ For IWanna-style games, the runtime is only meaningfully playable when it can do
 - support room transitions and deaths as real game events
 
 Current implementation already has a hardcoded baseline for player movement, AABB collision, reset, room switching, frame submission, and browser-hosted telemetry. The missing middle layer is the actual GM8 gameplay semantics: GML execution, variables, lifecycle dispatch, animation, and audio.
+
+## Immediate Priority Order
+
+The current route sets the next implementation order as:
+
+1. parser contract upgrade for expressions, calls, and variable/member/index access on the IWanna-critical path
+2. headless OpenGMK-derived runtime extraction behind narrow host traits
+3. browser WASM host integration for that runtime core
+4. audio, animation, and broader lifecycle coverage after the runtime can execute trustworthy semantics

@@ -4,7 +4,18 @@
 
 **Goal:** Tighten the GM8 parser/runtime boundary, then push the WASM-first runtime toward sample-driven playability through explicit host traits, clearer package contracts, and a smaller set of proven runtime semantics.
 
+> **Route decision update (2026-05-22):**
+>
+> This plan is now the active parser-side companion to the OpenGMK WASM-first runtime plan.
+> Follow this plan when the next blocker is "runtime cannot execute because parser output is too shallow".
+
 **Architecture:** Keep parser work in Rust and keep runtime execution in the WASM-first core path. The parser owns GM8 extraction, raw and lowered logic preservation, and normalized package emission. The runtime side owns deterministic boot, input, movement, collision, room changes, and diagnostics through the narrow host traits in `iwm-runtime-host`, with the browser shell staying a consumer and fallback viewer rather than a second gameplay engine.
+
+The current repository direction is:
+
+- runtime route: OpenGMK-derived WASM execution core
+- parser route: project-owned structured GML parsing/lowering for the IWanna-critical subset
+- rejected route: expanding TS gameplay semantics as a parallel engine
 
 **Tech Stack:** Rust 1.77+, Cargo workspace, `serde`, `serde_json`, `anyhow`, `sha2`, `zip`, vendored `OpenGMK`, current `iwm-runtime-model` / `iwm-runtime-host` / `iwm-runtime-core` / `iwm-runtime-web`, Vite, TypeScript, Vitest, Playwright
 
@@ -105,6 +116,42 @@ Make the warnings more actionable by separating:
 
 Only extend `gml_lowering.rs` when a sample proves the runtime needs that syntax on the critical path. Do not expand the lowering surface just because a snippet is parseable.
 
+- [ ] **Step 4A: Replace shallow token splitting on the critical path**
+
+Do not keep emitting fake structure for assignments and calls that only survive as raw strings.
+
+At minimum, the active parser path should move toward:
+
+- explicit call nodes
+- explicit assignment nodes
+- member access nodes
+- index access nodes
+- binary expression nodes for common arithmetic and comparisons
+
+Unsupported syntax may still remain unsupported, but it should fail explicitly rather than degrade into misleading structure.
+
+- [ ] **Step 4B: Make the type upgrade the next-cycle minimum**
+
+In the next development cycle, `LoweredLogicStatement` and any supporting expression types must be extended so the runtime side no longer depends on raw-string fallback for the critical-path subset.
+
+Minimum required structured nodes:
+
+- member access
+- index access
+- binary expression
+
+This is a contract-closing requirement, not optional cleanup. If parser output stays string-based here, the runtime still cannot treat lowered output as executable semantics.
+
+- [ ] **Step 4C: Thread the same subset through runtime consumers**
+
+Do not stop at parser-only structure.
+
+In the same cycle:
+
+- shared runtime types must represent the new nodes
+- `iwm-runtime-core` must consume the same subset on the critical path
+- remaining unsupported forms must stay explicit rather than silently collapsing back to raw strings
+
 - [ ] **Step 5: Re-run parser verification**
 
 Run:
@@ -135,6 +182,7 @@ Prefer additive fields only. Likely candidates are:
 - runtime-facing event tags
 - explicit block support classifications
 - diagnostics that explain which layer failed
+- structured lowered expression nodes needed for member access, index access, and binary expressions on the IWanna-critical path
 
 - [ ] **Step 2: Keep Rust and TypeScript models aligned**
 

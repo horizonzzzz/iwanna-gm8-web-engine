@@ -9,6 +9,12 @@ parts of `vendor/OpenGMK/gm8emulator/` are tightly bound to desktop host service
 which parts are essential for a first browser boot, and where a narrow host trait
 layer should sit.
 
+Current repository route decision:
+
+- OpenGMK `gm8emulator` is now the intended runtime-semantics mainline for Phase 4
+- project-owned parser work remains responsible for extracting and structuring runtime input
+- the repository should prefer host-boundary extraction plus headless bring-up over further TS gameplay-runtime growth
+
 ## Source Anchors
 
 The main coupling points found in this pass are:
@@ -174,6 +180,16 @@ These boundaries are implemented initially in `crates/iwm-runtime-host/`.
 4. Extract launch/game-state construction only after those host boundaries are fixed.
 5. Delay browser rendering until deterministic boot/tick works in a headless Rust
    harness.
+
+## Route Implication
+
+Because the project is open source, the current engineering plan prefers semantic correctness over preserving a non-GPL runtime path at all costs.
+
+That means:
+
+- extracting or wrapping OpenGMK-derived semantics is now a chosen direction, not only a feasibility study
+- licensing constraints remain real and must stay visible in release planning
+- "reference, do not copy" still applies to direct code movement decisions, but the repository should no longer pretend that a shallow project-owned runtime is the likely end state
 
 ## Follow-Up Work
 

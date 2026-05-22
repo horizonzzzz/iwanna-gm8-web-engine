@@ -1,6 +1,6 @@
 use iwm_runtime_host::{ButtonState, RuntimeButton};
 
-use crate::{LoweredLogicStatement, RuntimeCore, RuntimeValue};
+use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
 
 use super::support::{add_room_create_block, add_step_block, host, sample_package};
 
@@ -13,16 +13,16 @@ fn core_applies_lowered_create_assignments_to_player_vars_and_movement() {
             block_id: "object:0:event:0:0".into(),
             statements: vec![
                 LoweredLogicStatement::Assignment {
-                    lhs: "moveSpeed".into(),
-                    rhs: "6".into(),
+                    target: LoweredLogicExpr::Identifier("moveSpeed".into()),
+                    value: LoweredLogicExpr::LiteralNumber(6.0),
                 },
                 LoweredLogicStatement::Assignment {
-                    lhs: "jump".into(),
-                    rhs: "11".into(),
+                    target: LoweredLogicExpr::Identifier("jump".into()),
+                    value: LoweredLogicExpr::LiteralNumber(11.0),
                 },
                 LoweredLogicStatement::Assignment {
-                    lhs: "gravity".into(),
-                    rhs: "2".into(),
+                    target: LoweredLogicExpr::Identifier("gravity".into()),
+                    value: LoweredLogicExpr::LiteralNumber(2.0),
                 },
             ],
         }],
@@ -59,12 +59,18 @@ fn core_applies_lowered_room_creation_assignments_to_globals() {
         &mut package,
         vec![
             LoweredLogicStatement::Assignment {
-                lhs: "global.difficulty".into(),
-                rhs: "2".into(),
+                target: LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                    member: "difficulty".into(),
+                },
+                value: LoweredLogicExpr::LiteralNumber(2.0),
             },
             LoweredLogicStatement::Assignment {
-                lhs: "global.practice".into(),
-                rhs: "true".into(),
+                target: LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                    member: "practice".into(),
+                },
+                value: LoweredLogicExpr::LiteralBool(true),
             },
         ],
     );
@@ -89,7 +95,7 @@ fn core_executes_lowered_step_room_goto_calls() {
         &mut package,
         vec![LoweredLogicStatement::FunctionCall {
             name: "room_goto".into(),
-            args: vec!["9".into()],
+            args: vec![LoweredLogicExpr::LiteralNumber(9.0)],
         }],
     );
 
@@ -107,8 +113,8 @@ fn core_applies_lowered_step_assignments_before_player_movement() {
     add_step_block(
         &mut package,
         vec![LoweredLogicStatement::Assignment {
-            lhs: "moveSpeed".into(),
-            rhs: "6".into(),
+            target: LoweredLogicExpr::Identifier("moveSpeed".into()),
+            value: LoweredLogicExpr::LiteralNumber(6.0),
         }],
     );
 
@@ -167,4 +173,53 @@ fn core_executes_lowered_step_game_restart_calls() {
         .unwrap();
     assert_eq!((player.x, player.y), (12, 24));
     assert_eq!(core.snapshot().status, crate::RuntimeStatus::Ready);
+}
+
+#[test]
+fn core_applies_structured_member_assignment_and_binary_value_to_globals() {
+    let mut package = sample_package();
+    add_room_create_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "difficulty".into(),
+            },
+            value: LoweredLogicExpr::BinaryExpr {
+                op: "+".into(),
+                left: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+            },
+        }],
+    );
+
+    let core = RuntimeCore::load(package).unwrap();
+
+    assert_eq!(
+        core.globals.get("global.difficulty"),
+        Some(&RuntimeValue::Number(2.0))
+    );
+}
+
+#[test]
+fn core_executes_room_goto_from_structured_binary_expression_argument() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "room_goto".into(),
+            args: vec![LoweredLogicExpr::BinaryExpr {
+                op: "+".into(),
+                left: Box::new(LoweredLogicExpr::LiteralNumber(4.0)),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(5.0)),
+            }],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(core.snapshot().room_id, Some(9));
 }
