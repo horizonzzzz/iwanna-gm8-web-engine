@@ -9,8 +9,8 @@ This note keeps both the long-lived validation target and the current blocker au
 Important local-path note:
 
 - these sample paths are local development paths, not tracked sample binaries
-- `runtime/public/packages/sample/` is present in this repo state
-- that package currently maps to `I wanna be the Dife.exe`, so the repo-local browser smoke path can now use the intended gold sample package directly
+- `runtime/public/packages/sample/` is the intended local output path for a generated smoke package, not a tracked artifact
+- a fresh clone keeps `runtime/public/packages/` empty except for `.gitkeep`
 
 ## Primary Gold Sample
 
@@ -26,30 +26,29 @@ Why it still matters:
 
 - `runtime/public/packages/sample/`
 
-This repo-local package is now the primary browser smoke target because it is the checked local package artifact present in the current repo state.
+This is the intended local browser smoke target after generating a package from the gold sample. The repo does not currently ship a checked package artifact there.
 
 ## Blockers By Layer
 
-- Parser missing data: no package-artifact absence currently blocks the gold-sample smoke path; `sample/manifest.json`, `analysis.json`, `scripts.ir.json`, and the exported resources are present.
+- Parser/package availability: a fresh clone does not include `runtime/public/packages/sample/`, so the first gold-sample smoke prerequisite is still a local `build-package` run against `IWBT_Dife`.
 - Runtime-core semantic gap: the remaining meaningful gaps are the ones that still block movement, collision, death/reset, or room transition after the WASM runtime has already booted and drawn a room.
-- Wasm/web host gap: no host-only blocker is currently proven on the checked `sample` browser smoke path; the shell boots `/packages/sample` through the WASM bridge, reports telemetry for `rInit`, and can switch to `rStage01`.
-- Shell-only issue: none currently proven on the repo-local `sample` path; the remaining browser-smoke risk is telemetry drift if the shell selectors or sample room IDs change.
+- Wasm/web host gap: the host telemetry path exists, but gold-sample-specific runtime claims still require evidence from a locally generated `sample/` package.
+- Shell-only issue: the default package path remains `/packages/sample`, so missing local artifacts should surface as explicit load errors rather than being mistaken for runtime-semantic failures.
 
 ## Sample Audit
 
 ### IWBT_Dife
 
-- Package path: `runtime/public/packages/sample/`
-- Boot room: `2 / rInit`
-- Frame draws: verified at shell level; the WASM runtime boots and presents frame telemetry through the browser shell
-- Player appears: verified on the current shell path in `rInit`, and also after switching to `147 / rStage01`
-- Movement works: not yet verified as a dedicated browser assertion; current smoke proves boot, room switch, and visible player telemetry
-- First blocking warning or missing behavior: no boot blocker is currently proven from the repo-local package; the first unresolved runtime gaps are still deeper gameplay semantics behind the successful boot path
+- Intended package path: `runtime/public/packages/sample/`
+- Boot room: not repo-proven without a local generated package artifact
+- Frame draws: the shell and WASM bridge can render telemetry, but gold-sample-specific frame proof still depends on local package generation
+- Player appears: not repo-proven on a tracked artifact
+- Movement works: not yet verified as a dedicated browser assertion
+- First blocking warning or missing behavior: not yet narrowed on a tracked gold-sample artifact; use `docs/notes/runtime-wasm-gap-analysis.md` plus local sample evidence to decide the next blocker
 
 Critical-path `runtime-missing-source-lowering:*` warnings:
 
-- no warning is currently proven critical on the checked `rInit` boot path or the verified `rStage01` room-switch smoke path
-- do not escalate broad `runtime-missing-source-lowering:*` lists from `analysis.json` as critical until one is tied to spawn, movement, death/reset, or room transition failure on the actual gold-sample path
+- do not escalate broad `runtime-missing-source-lowering:*` lists from `analysis.json` as critical until one is tied to spawn, movement, death/reset, or room transition failure on the actual locally generated gold-sample path
 
 ## Current Validation Behaviors To Prove
 
@@ -65,11 +64,11 @@ For `IWBT_Dife`, Phase 4 still needs to prove:
 ## Notes
 
 - `runtime-missing-source-lowering:*` warnings are not uniformly urgent; only warnings proven to sit on the first-room, spawn, movement, death/reset, or transition path should drive immediate runtime work.
-- For the current repo state, `sample/` is the active repo-local smoke package and also the intended `IWBT_Dife` gold-sample package.
+- Do not treat the absence of `runtime/public/packages/sample/` in a fresh clone as evidence of a runtime failure; it is a local artifact prerequisite.
 
 ## References
 
-- WASM-first runtime plan: `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md`
 - Package format: `docs/notes/package-format-v1-runtime.md`
 - WASM runtime gap analysis: `docs/notes/runtime-wasm-gap-analysis.md`
+- Runtime vendor reference map: `docs/notes/runtime-vendor-reference-map.md`
 - Design spec: `docs/superpowers/specs/2026-05-19-iwanna-gm8-web-engine-design.md`

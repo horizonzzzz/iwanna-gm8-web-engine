@@ -27,20 +27,17 @@ Read these files before making structural or workflow decisions:
 - `docs/notes/package-format-v1-runtime.md`
 - `docs/notes/runtime-wasm-gap-analysis.md`
 - `docs/notes/runtime-gold-sample.md`
+- `docs/notes/runtime-vendor-reference-map.md`
 - `docs/notes/opengmk-host-coupling-audit.md`
 - `samples/README.md`
 - `vendor/README.md`
 
-Use plan documents in `docs/superpowers/plans/` carefully:
-
-- some plans remain current enough to mine for execution details
-- some plans are historical or superseded and should say so near the top
-- if a plan conflicts with `README.md`, current notes, or actual repository contents, prefer the current repository state and current-note documents
+Do not treat repository-stored implementation plans as a source of truth. Keep the repo aligned through current specs, notes, and actual repository contents.
 
 ## Repository Layout
 
 - `docs/`
-  Design specs, implementation plans, status notes, and project guidance
+  Design specs, status notes, and project guidance
 - `crates/iwm-detector/`
   GM8-target detection and package inventory logic
 - `crates/iwm-parser/`
@@ -177,8 +174,7 @@ For meaningful changes:
 - update docs if the intended architecture or workflow changes
 - keep sample-path references aligned with `samples/local/iwanna-examples/`
 - note any upstream API drift when changing vendored integration assumptions
-
-If a change invalidates an existing plan document, update the relevant plan or add a note explaining the divergence.
+- if a change invalidates a current spec or note, update it or mark it clearly as superseded in the same change
 
 If parser or runtime work changes what is actually required for a playable WASM runtime, update `docs/notes/runtime-wasm-gap-analysis.md` in the same change.
 
@@ -200,6 +196,7 @@ Required behavior:
 - if an older document is no longer current, mark it clearly as `historical` or `superseded`, or remove it if it no longer provides useful context
 - treat `README.md`, `AGENTS.md`, and `docs/notes/runtime-wasm-gap-analysis.md` as high-priority always-current docs
 - for parser, runtime, or package-contract changes, check whether `README.md` and the relevant `docs/notes/*` files also need updates
+- do not accumulate implementation plan files in the repo; preserve lasting rationale in current specs or notes instead
 
 ## Debugging Notes
 

@@ -49,9 +49,9 @@ The goal is not to emulate every Game Maker game. The first focus is a narrower 
 
 See `docs/notes/package-format-v1-runtime.md` for the current runtime package contract.
 See `docs/notes/runtime-wasm-gap-analysis.md` for the current checklist of what is still missing for a fully playable WASM runtime.
-See `docs/superpowers/plans/2026-05-20-opengmk-wasm-first-runtime.md` for the current runtime implementation direction.
+See `docs/notes/runtime-vendor-reference-map.md` for the current OpenGMK-guided runtime reference map.
 See `docs/notes/opengmk-host-coupling-audit.md` for the first OpenGMK host-boundary audit.
-See `docs/superpowers/plans/2026-05-21-parser-and-runtime-next-steps.md` for the current parser-side enabling work for that runtime direction.
+See `docs/notes/runtime-gold-sample.md` for the active gold-sample validation target.
 
 ## Documentation Notes
 
@@ -59,11 +59,14 @@ Current-state documents should be read as the primary project guide:
 
 - `README.md`
 - `AGENTS.md`
+- `docs/superpowers/specs/2026-05-19-iwanna-gm8-web-engine-design.md`
 - `docs/notes/package-format-v1-runtime.md`
 - `docs/notes/runtime-wasm-gap-analysis.md`
 - `docs/notes/runtime-gold-sample.md`
+- `docs/notes/runtime-vendor-reference-map.md`
+- `docs/notes/opengmk-host-coupling-audit.md`
 
-Older plan documents under `docs/superpowers/plans/` may remain for historical context, but some are now superseded and should say so near the top.
+Implementation plans are intentionally not kept in-repo. Use the current specs, notes, and actual repository state instead.
 
 ## Setup
 
@@ -258,19 +261,19 @@ The next development direction is intentionally split into two coupled tracks.
 
 ### Parser track
 
-- stop treating shallow token splitting as a viable long-term GML lowering strategy
-- move toward a parser-owned AST or similarly structured representation for expressions and calls
-- only commit to the IWanna-critical function and event subset first, but preserve real call structure so runtime code can execute semantics instead of guessing from raw strings
-- parser type-upgrade minimum for the next development cycle: extend the lowered-logic contract so runtime no longer depends on raw-string fallback for member access, index access, and binary expressions on the critical path
+- keep the parser-owned lowered contract as the runtime-facing source of executable structure for the current IWanna-critical subset
+- preserve real call, member, index, and binary-expression structure so runtime code executes semantics instead of guessing from raw strings
+- treat `logic.raw.json` as preservation and diagnostics data, not as the steady-state execution contract
+- extend the lowered contract only when gold-sample evidence shows that the current structured subset is insufficient on the critical path
 
 ### Near-Term Execution Order
 
 The next development cycle should execute in this order:
 
-1. parser contract upgrade: add structured lowered nodes for member access, index access, and binary expressions, and thread them through shared runtime types
-2. runtime-core consumption: teach the headless/WASM runtime path to consume that structured subset instead of relying on raw strings for critical function-call semantics
-3. OpenGMK host extraction: continue narrowing desktop coupling once the parser/runtime contract can carry real semantics
-4. browser host follow-through: keep the shell and WASM bridge aligned with the upgraded runtime contract
+1. keep the shared lowered parser contract stable except where gold-sample evidence requires targeted expansion
+2. headless OpenGMK-derived runtime extraction behind narrow host traits
+3. browser host follow-through for that runtime core
+4. audio, animation, and broader lifecycle coverage after the runtime can execute trustworthy semantics
 
 ### Practical decision rule
 

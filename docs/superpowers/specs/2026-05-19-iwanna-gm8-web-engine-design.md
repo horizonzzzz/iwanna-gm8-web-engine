@@ -287,12 +287,21 @@ The package should logically contain the following parts:
 
 - `manifest.json`
 - `resources/`
+- `resources/index.json`
 - `rooms.json`
 - `objects.json`
 - `scripts.ir.json`
+- `logic.raw.json`
+- `logic.lowered.json`
 - `analysis.json`
 
 The package may eventually be compressed as a single archive, but its logical structure should remain explicit.
+
+The current repository direction keeps both script inventory and parser-owned logic artifacts in the runtime-facing package:
+
+- `scripts.ir.json` remains the structural script export
+- `logic.raw.json` preserves original GML for provenance and diagnostics
+- `logic.lowered.json` carries the structured lowered contract used by the current runtime-facing path
 
 ### Phase 2 V0 package output
 
@@ -710,7 +719,8 @@ Recommended characteristics:
 - room transitions present
 - death and respawn easy to validate
 
-The exact gold sample can be finalized from the current `gm8-core` set during implementation planning.
+The current primary gold sample is `IWBT_Dife` under `samples/local/iwanna-examples/gm8-core/IWBT_Dife`.
+If that target changes, `docs/notes/runtime-gold-sample.md` should be updated in the same change.
 
 ## Repository and Workspace Expectations
 
@@ -730,7 +740,7 @@ Vendored parser reference repositories under `vendor/` are tracked as git submod
 
 This document is intended to provide enough context for future sessions started in that project directory.
 
-## Recommended Early Repository Layout
+## Current Repository Layout
 
 The current repository already contains:
 
@@ -739,19 +749,18 @@ The current repository already contains:
 - `docs/notes/`
 - `samples/`
 - `vendor/`
-
-The first implementation bootstrap should add:
-
 - `crates/iwm-detector/`
 - `crates/iwm-parser/`
 - `crates/iwm-cli/`
-
-Later phases may add:
-
+- `crates/iwm-runtime-model/`
+- `crates/iwm-runtime-host/`
+- `crates/iwm-runtime-core/`
+- `crates/iwm-runtime-web/`
 - `runtime/`
-- `backend/`
 
-The implementation may refine the names, but it should not assume `backend/`, `runtime/`, or other future directories already exist today.
+Later phases may still add:
+
+- `backend/`
 
 ## Risks
 
@@ -775,16 +784,16 @@ String heuristics alone are not enough. The parser must eventually become the ma
 
 Without a firm definition of "core gameplay first", the project can collapse into endless edge-case chasing before producing a useful MVP.
 
-## Open Decisions For Planning
+## Open Decisions
 
-These items do not block the design, but they must be resolved in implementation planning:
+These items do not block the design, but they still need explicit resolution during future execution work:
 
-- backend language and framework
-- whether to wrap or directly reuse existing GM8 parsing projects
-- exact IR shape
-- exact browser host boundary between TypeScript shell code and WASM runtime code
+- backend upload/orchestration shape and deployment model
+- exact host-boundary extraction strategy for OpenGMK-derived runtime code
+- exact long-term execution contract beyond the current `logic.lowered.json` subset
+- exact browser-host mapping for GM8 input, audio, and render semantics
 - archive upload format support details
-- whether sample corpus metadata lives inside the repo or separately
+- licensing and distribution constraints for any OpenGMK-derived runtime artifact
 
 ## Recommendation Summary
 
