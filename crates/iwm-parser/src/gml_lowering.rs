@@ -224,6 +224,9 @@ fn lower_expr(expr: &str) -> LoweredLogicExpr {
         };
     }
 
+    // Strip balanced outer parentheses first
+    let expr = strip_balanced_outer_parens(expr);
+
     if let Some(binary) = lower_binary_expr(expr) {
         return binary;
     }
@@ -260,6 +263,18 @@ fn lower_expr(expr: &str) -> LoweredLogicExpr {
 }
 
 fn lower_binary_expr(expr: &str) -> Option<LoweredLogicExpr> {
+    // Lower-precedence boolean operators must split first so the right-hand side
+    // can still contain tighter expressions such as `b && c`.
+    for op in ["||", "&&"] {
+        if let Some((left, right)) = split_top_level_operator(expr, op) {
+            return Some(LoweredLogicExpr::BinaryExpr {
+                op: op.to_string(),
+                left: Box::new(lower_expr(&left)),
+                right: Box::new(lower_expr(&right)),
+            });
+        }
+    }
+    // Comparison and arithmetic operators
     for op in ["==", "!=", ">=", "<=", "+", "-", "*", "/", ">", "<"] {
         if let Some((left, right)) = split_top_level_operator(expr, op) {
             return Some(LoweredLogicExpr::BinaryExpr {
@@ -454,6 +469,32 @@ fn extract_braced_block(input: &str) -> Option<(String, String)> {
         }
     }
     None
+}
+
+fn strip_balanced_outer_parens(s: &str) -> &str {
+    let trimmed = s.trim();
+    if trimmed.starts_with('(') && trimmed.ends_with(')') {
+        let inner = &trimmed[1..trimmed.len() - 1];
+        let mut depth = 0usize;
+        let mut valid = true;
+        for ch in inner.chars() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    if depth == 0 {
+                        valid = false;
+                        break;
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                _ => {}
+            }
+        }
+        if valid && depth == 0 {
+            return strip_balanced_outer_parens(inner);
+        }
+    }
+    trimmed
 }
 
 fn split_top_level_statements(source: &str) -> Vec<String> {

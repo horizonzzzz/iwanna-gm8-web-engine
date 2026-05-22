@@ -69,6 +69,18 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
         }
     }
 
+    // Check for raw-fallback statements in lowered logic
+    let raw_statement_count = lowered_logic
+        .entries
+        .iter()
+        .flat_map(|entry| entry.statements.iter())
+        .filter(|statement| matches!(statement, iwm_runtime_model::LoweredLogicStatement::Raw { .. }))
+        .count();
+
+    if raw_statement_count > 0 {
+        warnings.push(format!("runtime-lowered-raw-fallback-count:{raw_statement_count}"));
+    }
+
     // Add a note about partial execution support
     if !warnings.is_empty() {
         warnings.push("script-ir-partial".to_string());

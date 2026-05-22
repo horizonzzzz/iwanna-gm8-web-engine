@@ -281,13 +281,11 @@ pub(super) fn add_step_block(package: &mut RuntimePackage, statements: Vec<Lower
         block_id: "object:0:event:3:0".into(),
         action_count: 0,
     });
-    package.lowered_logic = Some(LoweredLogicFile {
-        format: "iwm-lowered-logic-v1".into(),
-        entries: vec![LoweredLogicEntry {
-            block_id: "object:0:event:3:0".into(),
-            statements,
-        }],
-    });
+    append_lowered_entry(
+        package,
+        "object:0:event:3:0".into(),
+        statements,
+    );
 }
 
 pub(super) fn add_room_create_block(
@@ -295,11 +293,89 @@ pub(super) fn add_room_create_block(
     statements: Vec<LoweredLogicStatement>,
 ) {
     package.rooms[0].creation_block_id = Some("room:7:create".into());
-    package.lowered_logic = Some(LoweredLogicFile {
-        format: "iwm-lowered-logic-v1".into(),
-        entries: vec![LoweredLogicEntry {
-            block_id: "room:7:create".into(),
+    append_lowered_entry(
+        package,
+        "room:7:create".into(),
+        statements,
+    );
+}
+
+pub(super) fn append_lowered_entry(
+    package: &mut RuntimePackage,
+    block_id: String,
+    statements: Vec<LoweredLogicStatement>,
+) {
+    if package.lowered_logic.is_none() {
+        package.lowered_logic = Some(LoweredLogicFile {
+            format: "iwm-lowered-logic-v1".into(),
+            entries: vec![],
+        });
+    }
+    if let Some(ref mut lowered) = package.lowered_logic {
+        lowered.entries.push(LoweredLogicEntry {
+            block_id,
             statements,
-        }],
+        });
+    }
+}
+
+pub(super) fn add_keyboard_block(
+    package: &mut RuntimePackage,
+    key: u8,
+    statements: Vec<LoweredLogicStatement>,
+) {
+    let key_name = if (key as char).is_ascii_alphanumeric() {
+        (key as char).to_ascii_lowercase().to_string()
+    } else {
+        format!("0x{:02x}", key)
+    };
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type: 5,
+        sub_event: key as u32,
+        event_tag: format!("keyboard:{key_name}"),
+        block_id: format!("object:0:event:5:{key}"),
+        action_count: 0,
     });
+    append_lowered_entry(
+        package,
+        format!("object:0:event:5:{key}"),
+        statements,
+    );
+}
+
+pub(super) fn add_alarm_block(
+    package: &mut RuntimePackage,
+    slot: u32,
+    statements: Vec<LoweredLogicStatement>,
+) {
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type: 2,
+        sub_event: slot,
+        event_tag: format!("alarm:{slot}"),
+        block_id: format!("object:0:event:2:{slot}"),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        package,
+        format!("object:0:event:2:{slot}"),
+        statements,
+    );
+}
+
+pub(super) fn add_create_block(
+    package: &mut RuntimePackage,
+    statements: Vec<LoweredLogicStatement>,
+) {
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type: 0,
+        sub_event: 0,
+        event_tag: "create".into(),
+        block_id: "object:0:event:0:0".into(),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        package,
+        "object:0:event:0:0".into(),
+        statements,
+    );
 }

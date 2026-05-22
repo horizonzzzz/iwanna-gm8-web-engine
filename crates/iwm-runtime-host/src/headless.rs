@@ -49,6 +49,10 @@ impl RuntimeInputHost for HeadlessHost {
         self.input.button_state(button)
     }
 
+    fn active_buttons(&self) -> Vec<(RuntimeButton, ButtonState)> {
+        self.input.active_buttons()
+    }
+
     fn mouse_position(&self) -> (i32, i32) {
         self.input.mouse_position()
     }

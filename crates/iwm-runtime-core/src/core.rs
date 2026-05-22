@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use iwm_runtime_host::{RuntimeButton, RuntimeHost};
 
+use crate::event_dispatch::{object_event_block_ids, RuntimeEventSelector};
 use crate::helpers::is_player_instance;
 use crate::{
-    RuntimeCoreError, RuntimePackage, RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot,
-    RuntimeStatus, RuntimeValue,
+    LoweredLogicEntry, LoweredLogicStatement, RuntimeCoreError, RuntimeInstance, RuntimePackage,
+    RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot, RuntimeStatus, RuntimeValue,
 };
 
 #[derive(Debug)]
@@ -172,6 +173,18 @@ impl RuntimeCore {
             self.step_player(host, left.pressed, right.pressed, jump.just_pressed)?;
         }
 
+        // Dispatch alarm events (countdown alarm state)
+        self.process_alarm_countdowns(host)?;
+
+        // Dispatch keyboard events for any currently pressed key exposed by the host.
+        for (button, state) in host.active_buttons() {
+            if let RuntimeButton::Keyboard(key) = button {
+                if state.pressed {
+                    self.execute_event_blocks(host, RuntimeEventSelector::Keyboard(key))?;
+                }
+            }
+        }
+
         if self.pending_room_reset || self.pending_room_transition.is_some() {
             self.apply_pending_room_change()?;
         }
@@ -185,4 +198,168 @@ impl RuntimeCore {
         self.status = RuntimeStatus::Ready;
         Ok(())
     }
+
+    pub(crate) fn execute_event_blocks<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+        selector: RuntimeEventSelector,
+    ) -> Result<(), RuntimeCoreError> {
+        let block_lookups: Vec<(usize, Vec<String>)> = {
+            let Some(room) = self.current_room.as_ref() else {
+                return Err(RuntimeCoreError::NoRooms);
+            };
+            room.instances
+                .iter()
+                .enumerate()
+                .filter(|(_, i)| i.alive)
+                .filter_map(|(idx, instance)| {
+                    let block_ids = object_event_block_ids(
+                        &self.package,
+                        instance.object_id,
+                        selector.clone(),
+                    );
+                    if block_ids.is_empty() {
+                        None
+                    } else {
+                        Some((idx, block_ids))
+                    }
+                })
+                .collect()
+        };
+
+        for (instance_idx, block_ids) in block_lookups {
+            self.apply_event_blocks_to_instance(host, instance_idx, &block_ids);
+            if self.pending_room_reset || self.pending_room_transition.is_some() {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn apply_event_blocks_to_instance<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+        instance_idx: usize,
+        block_ids: &[String],
+    ) {
+        // Clone entries first to avoid borrow conflicts
+        let entries: Vec<LoweredLogicEntry> = block_ids
+            .iter()
+            .filter_map(|block_id| self.lowered_logic_entry(block_id).cloned())
+            .collect();
+
+        let statements: Vec<LoweredLogicStatement> = entries
+            .iter()
+            .flat_map(|entry| entry.statements.clone())
+            .collect();
+
+        let mut instance = {
+            let Some(room) = self.current_room.as_ref() else {
+                return;
+            };
+            let Some(instance) = room.instances.get(instance_idx) else {
+                return;
+            };
+            instance.clone()
+        };
+
+        for statement in &statements {
+            crate::logic::apply_runtime_statement(
+                statement,
+                &mut instance,
+                &mut self.globals,
+                &mut self.pending_room_transition,
+                &mut self.pending_room_reset,
+                host,
+                &mut self.diagnostics,
+            );
+            if self.pending_room_reset || self.pending_room_transition.is_some() {
+                break;
+            }
+        }
+
+        let Some(room) = self.current_room.as_mut() else {
+            return;
+        };
+        if let Some(slot) = room.instances.get_mut(instance_idx) {
+            *slot = instance;
+        }
+    }
+
+    fn current_room_index(&self) -> Option<usize> {
+        self.current_room.as_ref().map(|room| room.room_id)
+    }
+
+    fn process_alarm_countdowns<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+    ) -> Result<(), RuntimeCoreError> {
+        // First, collect all alarm slots that will fire on this tick.
+        let alarm_triggers: Vec<(usize, u32)> = {
+            let Some(room) = self.current_room.as_ref() else {
+                return Err(RuntimeCoreError::NoRooms);
+            };
+            room.instances
+                .iter()
+                .enumerate()
+                .filter(|(_, i)| i.alive)
+                .flat_map(|(idx, instance)| {
+                    instance
+                        .vars
+                        .iter()
+                        .filter_map(move |(key, value)| match (parse_alarm_slot(key), value) {
+                            (Some(slot), RuntimeValue::Number(ticks)) if *ticks > 0.0 && *ticks <= 1.0 => {
+                                Some((idx, slot))
+                            }
+                            _ => None,
+                        })
+                })
+                .collect()
+        };
+
+        // Decrement all active alarm counters.
+        {
+            let Some(room) = self.current_room.as_mut() else {
+                return Err(RuntimeCoreError::NoRooms);
+            };
+            for instance in &mut room.instances {
+                for (key, value) in instance.vars.iter_mut() {
+                    if parse_alarm_slot(key).is_some() {
+                        if let RuntimeValue::Number(ticks) = value {
+                            if *ticks > 0.0 {
+                                *ticks -= 1.0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for (instance_idx, slot) in alarm_triggers {
+            let block_ids = {
+                let Some(room) = self.current_room.as_ref() else {
+                    continue;
+                };
+                let Some(instance) = room.instances.get(instance_idx) else {
+                    continue;
+                };
+                object_event_block_ids(
+                    &self.package,
+                    instance.object_id,
+                    RuntimeEventSelector::Alarm(slot),
+                )
+            };
+            self.apply_event_blocks_to_instance(host, instance_idx, &block_ids);
+        }
+
+        Ok(())
+    }
+}
+
+fn parse_alarm_slot(key: &str) -> Option<u32> {
+    key.strip_prefix("alarm[")?
+        .strip_suffix(']')?
+        .parse()
+        .ok()
 }

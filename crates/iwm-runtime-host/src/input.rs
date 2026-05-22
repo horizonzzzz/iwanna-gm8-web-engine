@@ -38,6 +38,10 @@ impl RuntimeInputHost for SnapshotInputHost {
         self.buttons.get(&button).copied().unwrap_or_default()
     }
 
+    fn active_buttons(&self) -> Vec<(RuntimeButton, ButtonState)> {
+        self.buttons.iter().map(|(button, state)| (*button, *state)).collect()
+    }
+
     fn mouse_position(&self) -> (i32, i32) {
         self.mouse_position
     }

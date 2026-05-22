@@ -16,6 +16,10 @@ pub trait RuntimeTimeHost {
 pub trait RuntimeInputHost {
     fn button_state(&self, button: RuntimeButton) -> ButtonState;
 
+    fn active_buttons(&self) -> Vec<(RuntimeButton, ButtonState)> {
+        Vec::new()
+    }
+
     fn mouse_position(&self) -> (i32, i32) {
         (0, 0)
     }

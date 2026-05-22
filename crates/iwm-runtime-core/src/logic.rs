@@ -83,7 +83,7 @@ impl RuntimeCore {
 
             for entry in &entries {
                 for statement in &entry.statements {
-                    apply_step_statement(
+                    apply_runtime_statement(
                         statement,
                         instance,
                         &mut self.globals,
@@ -138,7 +138,7 @@ impl RuntimeCore {
         }
     }
 
-    fn lowered_logic_entry(&self, block_id: &str) -> Option<&LoweredLogicEntry> {
+    pub(crate) fn lowered_logic_entry(&self, block_id: &str) -> Option<&LoweredLogicEntry> {
         let index = self.lowered_logic_index.get(block_id)?;
         self.package
             .lowered_logic
@@ -146,7 +146,7 @@ impl RuntimeCore {
             .and_then(|lowered_logic| lowered_logic.entries.get(*index))
     }
 
-    fn apply_statement_to_globals(&mut self, statement: &LoweredLogicStatement) {
+    pub(crate) fn apply_statement_to_globals(&mut self, statement: &LoweredLogicStatement) {
         match statement {
             LoweredLogicStatement::Assignment { target, value } => {
                 if let Some(key) = assignable_key(target, None) {
@@ -156,14 +156,13 @@ impl RuntimeCore {
                 }
             }
             LoweredLogicStatement::Conditional {
+                condition,
                 then_branch,
                 else_branch,
-                ..
             } => {
-                for nested in then_branch {
-                    self.apply_statement_to_globals(nested);
-                }
-                for nested in else_branch {
+                let condition_value = evaluate_expr(condition, None, &self.globals);
+                let branch = if is_truthy(condition_value) { then_branch } else { else_branch };
+                for nested in branch {
                     self.apply_statement_to_globals(nested);
                 }
             }
@@ -179,7 +178,7 @@ impl RuntimeCore {
         }
     }
 
-    fn apply_statement_to_instance(
+    pub(crate) fn apply_statement_to_instance(
         &mut self,
         statement: &LoweredLogicStatement,
         instance: &mut RuntimeInstance,
@@ -188,23 +187,18 @@ impl RuntimeCore {
             LoweredLogicStatement::Assignment { target, value } => {
                 if let Some(key) = assignable_key(target, Some(instance)) {
                     if let Some(value) = evaluate_expr(value, Some(instance), &self.globals) {
-                        if key.starts_with("global.") {
-                            self.globals.insert(key, value);
-                        } else {
-                            instance.vars.insert(key, value);
-                        }
+                        assign_instance_or_global(key, value, instance, &mut self.globals);
                     }
                 }
             }
             LoweredLogicStatement::Conditional {
+                condition,
                 then_branch,
                 else_branch,
-                ..
             } => {
-                for nested in then_branch {
-                    self.apply_statement_to_instance(nested, instance);
-                }
-                for nested in else_branch {
+                let condition_value = evaluate_expr(condition, Some(instance), &self.globals);
+                let branch = if is_truthy(condition_value) { then_branch } else { else_branch };
+                for nested in branch {
                     self.apply_statement_to_instance(nested, instance);
                 }
             }
@@ -221,7 +215,7 @@ impl RuntimeCore {
     }
 }
 
-fn apply_step_statement<H: RuntimeHost>(
+pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     statement: &LoweredLogicStatement,
     instance: &mut RuntimeInstance,
     globals: &mut HashMap<String, RuntimeValue>,
@@ -234,12 +228,23 @@ fn apply_step_statement<H: RuntimeHost>(
         LoweredLogicStatement::Assignment { target, value } => {
             if let Some(key) = assignable_key(target, Some(instance)) {
                 if let Some(value) = evaluate_expr(value, Some(instance), globals) {
-                    if key.starts_with("global.") {
-                        globals.insert(key, value);
-                    } else {
-                        instance.vars.insert(key, value);
-                    }
+                    assign_instance_or_global(key, value, instance, globals);
                 }
+            }
+        }
+        LoweredLogicStatement::Conditional { condition, then_branch, else_branch } => {
+            let condition_value = evaluate_expr(condition, Some(instance), globals);
+            let branch = if is_truthy(condition_value) { then_branch } else { else_branch };
+            for nested in branch {
+                apply_runtime_statement(
+                    nested,
+                    instance,
+                    globals,
+                    pending_room_transition,
+                    pending_room_reset,
+                    host,
+                    diagnostics,
+                );
             }
         }
         LoweredLogicStatement::FunctionCall { name, args } => match name.as_str() {
@@ -272,7 +277,53 @@ fn apply_step_statement<H: RuntimeHost>(
     }
 }
 
-fn assignable_key(expr: &LoweredLogicExpr, instance: Option<&RuntimeInstance>) -> Option<String> {
+fn assign_instance_or_global(
+    key: String,
+    value: RuntimeValue,
+    instance: &mut RuntimeInstance,
+    globals: &mut HashMap<String, RuntimeValue>,
+) {
+    if key.starts_with("global.") {
+        globals.insert(key, value);
+        return;
+    }
+
+    match key.as_str() {
+        "x" => assign_number_field(value, &mut instance.x, &mut instance.vars, key),
+        "y" => assign_number_field(value, &mut instance.y, &mut instance.vars, key),
+        "previous_x" => assign_number_field(value, &mut instance.previous_x, &mut instance.vars, key),
+        "previous_y" => assign_number_field(value, &mut instance.previous_y, &mut instance.vars, key),
+        "hspeed" => assign_number_field(value, &mut instance.hspeed, &mut instance.vars, key),
+        "vspeed" => assign_number_field(value, &mut instance.vspeed, &mut instance.vars, key),
+        _ => {
+            instance.vars.insert(key, value);
+        }
+    }
+}
+
+fn assign_number_field(
+    value: RuntimeValue,
+    field: &mut i32,
+    vars: &mut HashMap<String, RuntimeValue>,
+    key: String,
+) {
+    if let Some(number) = as_number(&value) {
+        *field = number.round() as i32;
+    } else {
+        vars.insert(key, value);
+    }
+}
+
+fn is_truthy(value: Option<RuntimeValue>) -> bool {
+    match value {
+        Some(RuntimeValue::Bool(b)) => b,
+        Some(RuntimeValue::Number(n)) => n != 0.0,
+        Some(RuntimeValue::Text(s)) => !s.is_empty(),
+        None => false,
+    }
+}
+
+pub(crate) fn assignable_key(expr: &LoweredLogicExpr, instance: Option<&RuntimeInstance>) -> Option<String> {
     match expr {
         LoweredLogicExpr::Identifier(name) => Some(name.clone()),
         LoweredLogicExpr::MemberAccess { target, member } => {

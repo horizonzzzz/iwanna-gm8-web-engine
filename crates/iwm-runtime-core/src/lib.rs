@@ -1,5 +1,6 @@
 mod core;
 mod diagnostics;
+mod event_dispatch;
 mod helpers;
 mod logic;
 mod movement;

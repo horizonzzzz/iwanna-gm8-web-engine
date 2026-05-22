@@ -61,3 +61,25 @@ fn real_mashikaku_package_emits_tile_commands_when_local_package_exists() {
         BridgeDrawCommand::DrawTile { .. }
     )));
 }
+
+#[test]
+fn gold_sample_package_has_lowered_logic_file() {
+    let package_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("runtime")
+        .join("public")
+        .join("packages")
+        .join("sample");
+
+    // Verify the sample package has lowered logic file
+    let lowered_path = package_root.join("logic.lowered.json");
+    assert!(
+        lowered_path.exists(),
+        "sample package should have logic.lowered.json"
+    );
+
+    // Verify the file can be read as valid JSON
+    let lowered_json = std::fs::read(&lowered_path).unwrap();
+    let _: serde_json::Value = serde_json::from_slice(&lowered_json).unwrap();
+}
