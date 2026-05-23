@@ -19,6 +19,11 @@ Practical parser note:
 - broad `runtime-missing-source-lowering:*` warnings from `analysis.json` still need gold-sample evidence before they should be treated as real blockers
 - a `source-only` `scripts.ir.json` block can already have a usable structured `logic.lowered.json` entry, so warning interpretation should follow the lowered contract, not only the older IR support label
 
+Practical contract note:
+
+- runtime progress still depends on cross-file package integrity, so parser/runtime/web work should treat identity/reference validation as a first-class prerequisite rather than as browser-only debugging
+- recent regressions showed that unresolved package references such as sparse `object_id` handling can look like rendering bugs even when the real fault is contract consumption drift
+
 ## Route Decision
 
 The repository now treats the runtime and parser problems as two coupled tracks, with one mainline decision:

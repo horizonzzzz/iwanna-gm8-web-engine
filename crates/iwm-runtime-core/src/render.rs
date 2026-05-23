@@ -57,42 +57,38 @@ impl RuntimeCore {
         );
 
         for instance in &room.instances {
-            if let Some(object) = self.package.objects.get(instance.object_id) {
-                if object.visible && object.sprite_index >= 0 {
-                    let sprite = self
-                        .package
-                        .resources
-                        .sprites
-                        .iter()
-                        .find(|sprite| sprite.id == object.sprite_index as usize);
+            let Some(object) = self
+                .object_index
+                .get(&instance.object_id)
+                .and_then(|index| self.package.objects.get(*index))
+            else {
+                continue;
+            };
 
-                    commands.push(RuntimeDrawCommand::DrawSprite {
-                        sprite_id: object.sprite_index as usize,
-                        frame_index: 0,
-                        x: instance.x,
-                        y: instance.y,
-                        origin_x: sprite.map(|sprite| sprite.origin_x).unwrap_or(0),
-                        origin_y: sprite.map(|sprite| sprite.origin_y).unwrap_or(0),
-                        xscale: 1.0,
-                        yscale: 1.0,
-                        angle_degrees: 0.0,
-                    });
-                    continue;
-                }
+            if !object.visible {
+                continue;
             }
 
-            commands.push(RuntimeDrawCommand::FillRect {
-                x: instance.x - 4,
-                y: instance.y - 4,
-                width: 8,
-                height: 8,
-                colour: Rgba8 {
-                    r: 96,
-                    g: 112,
-                    b: 138,
-                    a: 255,
-                },
-            });
+            if object.sprite_index >= 0 {
+                let sprite = self
+                    .package
+                    .resources
+                    .sprites
+                    .iter()
+                    .find(|sprite| sprite.id == object.sprite_index as usize);
+
+                commands.push(RuntimeDrawCommand::DrawSprite {
+                    sprite_id: object.sprite_index as usize,
+                    frame_index: 0,
+                    x: instance.x,
+                    y: instance.y,
+                    origin_x: sprite.map(|sprite| sprite.origin_x).unwrap_or(0),
+                    origin_y: sprite.map(|sprite| sprite.origin_y).unwrap_or(0),
+                    xscale: 1.0,
+                    yscale: 1.0,
+                    angle_degrees: 0.0,
+                });
+            }
         }
 
         commands.extend(

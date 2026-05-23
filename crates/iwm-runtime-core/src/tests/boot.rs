@@ -11,8 +11,20 @@ fn core_loads_default_room_and_instances() {
 
     assert_eq!(core.status(), RuntimeStatus::Ready);
     assert_eq!(core.current_room().map(|room| room.room_id), Some(7));
-    assert_eq!(core.current_room().map(|room| room.instances.len()), Some(4));
+    assert_eq!(core.current_room().map(|room| room.instances.len()), Some(5));
     assert!(core.current_room().unwrap().instances[0].player_candidate);
+}
+
+#[test]
+fn core_preserves_sparse_object_ids_in_room_instances() {
+    let core = RuntimeCore::load(sample_package()).unwrap();
+    let room = core.current_room().unwrap();
+
+    assert!(room.instances.iter().any(|instance| instance.object_id == 705));
+    assert!(room
+        .instances
+        .iter()
+        .any(|instance| instance.object_id == 705 && instance.width == 16));
 }
 
 #[test]

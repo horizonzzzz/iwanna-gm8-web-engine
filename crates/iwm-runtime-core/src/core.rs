@@ -12,6 +12,7 @@ use crate::{
 #[derive(Debug)]
 pub struct RuntimeCore {
     pub(crate) package: RuntimePackage,
+    pub(crate) object_index: HashMap<usize, usize>,
     pub(crate) room_index: HashMap<usize, usize>,
     pub(crate) lowered_logic_index: HashMap<String, usize>,
     pub(crate) current_room: Option<RuntimeRoomState>,
@@ -35,6 +36,12 @@ impl RuntimeCore {
             .enumerate()
             .map(|(index, room)| (room.id, index))
             .collect::<HashMap<_, _>>();
+        let object_index = package
+            .objects
+            .iter()
+            .enumerate()
+            .map(|(index, object)| (object.id, index))
+            .collect::<HashMap<_, _>>();
         let lowered_logic_index = package
             .lowered_logic
             .as_ref()
@@ -50,6 +57,7 @@ impl RuntimeCore {
 
         let mut core = Self {
             package,
+            object_index,
             room_index,
             lowered_logic_index,
             current_room: None,

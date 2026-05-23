@@ -76,6 +76,19 @@ The execution notes below describe the current package contract and shell/runtim
 - Resource index with paths to browser-loadable assets
 - Manifest with default room and compatibility metadata
 
+### Runtime Contract Invariants
+
+The current package format relies on a small set of identity and reference invariants that runtime consumers should treat as part of the contract, not as best-effort hints.
+
+Important current invariants:
+
+- `rooms[*].instances[*].object_id` refers to `objects[*].id`, not to the array position of an object entry
+- `objects[*].sprite_index` refers to `resources.index.json -> sprites[*].id` when non-negative
+- room background and tile references refer to `resources.index.json -> backgrounds[*].id`
+- runtime consumers should validate cross-file references explicitly instead of silently assuming contiguous ids
+
+This matters because normalized package ids may remain sparse even when the emitted JSON arrays are dense. Runtime code must resolve identities by `id` rather than by array offset.
+
 ### Currently Executable Action-List Subset
 
 The following `action-list` script blocks can be executed by the browser runtime:

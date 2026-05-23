@@ -42,7 +42,10 @@ impl RuntimeCore {
             .iter()
             .enumerate()
             .filter_map(|(runtime_id, instance)| {
-                let object = self.package.objects.get(instance.object_id as usize)?;
+                let object = self
+                    .object_index
+                    .get(&(instance.object_id as usize))
+                    .and_then(|index| self.package.objects.get(*index))?;
                 let (width, height, origin_x, origin_y) = self.sprite_metrics(object);
                 Some(RuntimeInstance {
                     runtime_id,

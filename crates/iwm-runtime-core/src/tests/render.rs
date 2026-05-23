@@ -33,6 +33,6 @@ fn runtime_core_emits_browser_consumable_draw_commands() {
     )));
     assert!(frame.commands.iter().any(|command| matches!(
         command,
-        RuntimeDrawCommand::FillRect { .. }
+        RuntimeDrawCommand::DrawSprite { sprite_id: 1, .. }
     )));
 }

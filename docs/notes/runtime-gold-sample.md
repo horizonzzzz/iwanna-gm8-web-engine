@@ -41,6 +41,11 @@ This is the intended local browser smoke target after generating a package from 
 - Wasm/web host gap: the host telemetry path exists, but gold-sample-specific runtime claims still require evidence from a locally generated `sample/` package.
 - Shell-only issue: the default package path remains `/packages/sample`, so missing local artifacts should surface as explicit load errors rather than being mistaken for runtime-semantic failures.
 
+Important validation note:
+
+- because local sample inventories differ across machines, local gold-sample smoke should be treated as environment evidence, not as the only repository-level proof that a parser/runtime/package contract still holds
+- stable repository fixtures and package-contract validation should catch structural drift before gold-sample browser debugging is needed
+
 ## Sample Audit
 
 ### IWBT_Dife
