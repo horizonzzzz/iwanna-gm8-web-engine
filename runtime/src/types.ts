@@ -27,6 +27,10 @@ export type ResourceIndex = {
     frame_paths: string[];
     width: number;
     height: number;
+    bbox_left: number;
+    bbox_right: number;
+    bbox_top: number;
+    bbox_bottom: number;
   }>;
   backgrounds: Array<{
     id: number;

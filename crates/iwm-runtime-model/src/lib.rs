@@ -43,6 +43,10 @@ pub struct SpriteResource {
     pub frame_paths: Vec<String>,
     pub width: u32,
     pub height: u32,
+    pub bbox_left: u32,
+    pub bbox_right: u32,
+    pub bbox_top: u32,
+    pub bbox_bottom: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

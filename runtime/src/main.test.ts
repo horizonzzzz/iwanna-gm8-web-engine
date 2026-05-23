@@ -38,6 +38,7 @@ const samplePackage: RuntimePackage = {
       backgrounds: [],
       views_enabled: false,
       views: [],
+      tiles: [],
       instances: [],
       creation_block_id: null,
       playable: true,
@@ -53,6 +54,7 @@ const samplePackage: RuntimePackage = {
       backgrounds: [],
       views_enabled: false,
       views: [],
+      tiles: [],
       instances: [],
       creation_block_id: null,
       playable: true,
@@ -102,7 +104,11 @@ const samplePackage: RuntimePackage = {
         origin_y: 0,
         frame_paths: ['resources/sprites/0-0.png'],
         width: 30,
-        height: 40
+        height: 40,
+        bbox_left: 0,
+        bbox_right: 29,
+        bbox_top: 0,
+        bbox_bottom: 39
       }
     ],
     backgrounds: [
@@ -412,14 +418,14 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: ['boot ok'],
-        player: { x: 12, y: 34, hspeed: 1, vspeed: 0 }
+        player: { x: 12, y: 34, hspeed: 1, vspeed: 0, facing_left: false }
       })),
       snapshot: vi.fn(async () => ({
         tick: 0,
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: ['boot ok'],
-        player: { x: 12, y: 34, hspeed: 1, vspeed: 0 }
+        player: { x: 12, y: 34, hspeed: 1, vspeed: 0, facing_left: false }
       })),
       frame: vi.fn(async () => ({ tick: 1, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] })),
       setInput: vi.fn(async () => ({
@@ -427,28 +433,28 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: ['input ok'],
-        player: { x: 13, y: 34, hspeed: 1, vspeed: 0 }
+        player: { x: 13, y: 34, hspeed: 1, vspeed: 0, facing_left: false }
       })),
       tick: vi.fn(async (frames = 1) => ({
         tick: frames,
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: ['tick ok'],
-        player: { x: 13, y: 34, hspeed: 1, vspeed: 0 }
+        player: { x: 13, y: 34, hspeed: 1, vspeed: 0, facing_left: false }
       })),
       reset: vi.fn(async () => ({
         tick: 0,
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: ['reset ok'],
-        player: { x: 12, y: 34, hspeed: 0, vspeed: 0 }
+        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
       })),
       selectRoom: vi.fn(async (roomId: number) => ({
         tick: 0,
         roomId,
         roomName: roomId === 1 ? 'Room 2' : 'Room 1',
         diagnostics: ['select ok'],
-        player: roomId === 1 ? null : { x: 12, y: 34, hspeed: 0, vspeed: 0 }
+        player: roomId === 1 ? null : { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
       })),
       diagnostics: vi.fn(async () => ['diag ok'])
     };

@@ -55,6 +55,125 @@ fn bgra_pixels_are_converted_to_rgba_order() {
 }
 
 #[test]
+fn exported_sprite_resources_include_collision_bounding_box_fields() {
+    use gm8exe::{
+        asset::Sprite,
+        asset::sprite::{CollisionMap, Frame},
+        settings::{GameHelpDialog, Settings},
+        Colour,
+        GameAssets, GameVersion,
+    };
+    use iwm_parser::resource_export::export_resources;
+
+    let assets = GameAssets {
+        triggers: vec![],
+        constants: vec![],
+        extensions: vec![],
+        sprites: vec![Some(Box::new(Sprite {
+            name: "spr_player".into(),
+            origin_x: 4,
+            origin_y: 8,
+            frames: vec![Frame {
+                width: 16,
+                height: 16,
+                data: vec![0; 16 * 16 * 4].into_boxed_slice(),
+            }],
+            colliders: vec![CollisionMap {
+                width: 16,
+                height: 16,
+                bbox_left: 1,
+                bbox_right: 14,
+                bbox_top: 2,
+                bbox_bottom: 13,
+                data: vec![false; 16 * 16].into_boxed_slice(),
+            }],
+            per_frame_colliders: false,
+        }))],
+        sounds: vec![],
+        backgrounds: vec![],
+        paths: vec![],
+        scripts: vec![],
+        fonts: vec![],
+        timelines: vec![],
+        objects: vec![],
+        rooms: vec![],
+        included_files: vec![],
+        version: GameVersion::GameMaker8_0,
+        dx_dll: vec![],
+        ico_file_raw: None,
+        help_dialog: GameHelpDialog {
+            bg_colour: Colour::from(0u32),
+            new_window: false,
+            caption: "".into(),
+            left: 0,
+            top: 0,
+            width: 0,
+            height: 0,
+            border: false,
+            resizable: false,
+            window_on_top: false,
+            freeze_game: false,
+            info: "".into(),
+        },
+        last_instance_id: 0,
+        last_tile_id: 0,
+        library_init_strings: vec![],
+        room_order: vec![],
+        settings: Settings {
+            fullscreen: false,
+            scaling: 0,
+            interpolate_pixels: false,
+            clear_colour: 0,
+            allow_resize: false,
+            window_on_top: false,
+            dont_draw_border: false,
+            dont_show_buttons: false,
+            display_cursor: false,
+            freeze_on_lose_focus: false,
+            disable_screensaver: false,
+            force_cpu_render: false,
+            set_resolution: false,
+            colour_depth: 0,
+            resolution: 0,
+            frequency: 0,
+            vsync: false,
+            esc_close_game: false,
+            treat_close_as_esc: false,
+            f1_help_menu: false,
+            f4_fullscreen_toggle: false,
+            f5_save_f6_load: false,
+            f9_screenshot: false,
+            priority: 0,
+            custom_load_image: None,
+            transparent: false,
+            translucency: 0,
+            loading_bar: 0,
+            backdata: None,
+            frontdata: None,
+            scale_progress_bar: false,
+            show_error_messages: false,
+            log_errors: false,
+            always_abort: false,
+            zero_uninitialized_vars: false,
+            error_on_uninitialized_args: false,
+            swap_creation_events: false,
+        },
+        game_id: 0,
+        guid: [0; 4],
+    };
+
+    let temp = tempfile::tempdir().unwrap();
+    let resources = export_resources(&assets, temp.path()).unwrap();
+    let json = serde_json::to_value(&resources).unwrap();
+    let sprite = &json["sprites"][0];
+
+    assert_eq!(sprite["bbox_left"], 1);
+    assert_eq!(sprite["bbox_right"], 14);
+    assert_eq!(sprite["bbox_top"], 2);
+    assert_eq!(sprite["bbox_bottom"], 13);
+}
+
+#[test]
 fn runtime_resources_are_written_under_expected_directories() {
     let base = std::path::Path::new("resources");
     assert_eq!(

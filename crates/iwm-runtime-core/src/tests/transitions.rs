@@ -189,3 +189,34 @@ fn core_reset_clears_previous_movement_and_input_effects() {
         .unwrap();
     assert_eq!((player.previous_x, player.previous_y), (12, 24));
 }
+
+#[test]
+fn core_spawn_adjusts_fallback_player_out_of_checkpoint_solid() {
+    let mut package = sample_package();
+    package.rooms[0]
+        .instances
+        .retain(|instance| instance.object_id != 0);
+    package.rooms[0].instances[0].is_checkpoint = false;
+    package.rooms[0].instances[1].is_checkpoint = true;
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+
+    assert_eq!(room.spawn_point, Some((12, 40)));
+    assert_eq!((player.x, player.y), (12, 24));
+
+    core.request_room_transition(7);
+    core.tick(&mut host()).unwrap();
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!((player.x, player.y), (12, 24));
+}

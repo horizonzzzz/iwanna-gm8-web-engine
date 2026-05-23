@@ -13,6 +13,10 @@ const sampleResources: ResourceIndex = {
       frame_paths: ['resources/sprites/0-0.png'],
       width: 30,
       height: 40,
+      bbox_left: 2,
+      bbox_right: 27,
+      bbox_top: 3,
+      bbox_bottom: 36,
     }
   ],
   backgrounds: [

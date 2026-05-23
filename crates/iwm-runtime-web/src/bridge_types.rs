@@ -18,6 +18,7 @@ pub struct BridgePlayerSnapshot {
     pub y: i32,
     pub hspeed: i32,
     pub vspeed: i32,
+    pub facing_left: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

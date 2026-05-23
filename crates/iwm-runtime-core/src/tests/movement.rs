@@ -1,5 +1,6 @@
 use iwm_runtime_host::{ButtonState, RuntimeButton};
 
+use crate::helpers::collides_at;
 use crate::RuntimeCore;
 
 use super::support::{host, sample_package};
@@ -165,4 +166,89 @@ fn core_updates_previous_position_before_moving_player() {
         .unwrap();
     assert_eq!((player.previous_x, player.previous_y), (12, 24));
     assert!(player.x > player.previous_x);
+}
+
+#[test]
+fn core_collisions_use_runtime_bbox_instead_of_whole_sprite_extents() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let room = core.current_room.as_mut().unwrap();
+    let player_index = room
+        .instances
+        .iter()
+        .position(|instance| instance.player_candidate)
+        .unwrap();
+    let solid_index = room
+        .instances
+        .iter()
+        .position(|instance| instance.solid)
+        .unwrap();
+
+    room.instances[player_index].x = 12;
+    room.instances[player_index].y = 24;
+    room.instances[player_index].width = 32;
+    room.instances[player_index].height = 32;
+    room.instances[player_index].bbox_left = 8;
+    room.instances[player_index].bbox_right = 23;
+    room.instances[player_index].bbox_top = 8;
+    room.instances[player_index].bbox_bottom = 23;
+    room.instances[solid_index].x = 12;
+    room.instances[solid_index].y = 48;
+    room.instances[solid_index].width = 32;
+    room.instances[solid_index].height = 32;
+    room.instances[solid_index].bbox_left = 0;
+    room.instances[solid_index].bbox_right = 31;
+    room.instances[solid_index].bbox_top = 0;
+    room.instances[solid_index].bbox_bottom = 31;
+
+    let player = room.instances[player_index].clone();
+    let solids = vec![room.instances[solid_index].clone()];
+    assert!(!collides_at(
+        &player,
+        player.x,
+        player.y,
+        &solids,
+        Some(player.runtime_id)
+    ));
+}
+
+#[test]
+fn core_tracks_left_facing_state_for_player_movement() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x25),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert!(player.facing_left);
+
+    host.input.replace_button_states([(
+        RuntimeButton::Keyboard(0x27),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    )]);
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert!(!player.facing_left);
 }

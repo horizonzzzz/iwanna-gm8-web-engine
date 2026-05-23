@@ -32,6 +32,7 @@ Important direction note:
 Included in this phase:
 
 - browser-ready sprite exports
+- sprite exports now include `bbox_left`, `bbox_right`, `bbox_top`, and `bbox_bottom` collision bounds sourced from the parser's OpenGMK sprite collision metadata
 - browser-ready background exports
 - audio file exports
 - normalized room instance placements with runtime categorization hints
@@ -85,6 +86,7 @@ Important current invariants:
 - `rooms[*].instances[*].object_id` refers to `objects[*].id`, not to the array position of an object entry
 - `objects[*].sprite_index` refers to `resources.index.json -> sprites[*].id` when non-negative
 - room background and tile references refer to `resources.index.json -> backgrounds[*].id`
+- sprite resource collision bounds are emitted in `resources/index.json` for each sprite record; the parser currently stores one aggregated rectangle per sprite, derived from the source sprite collision maps
 - runtime consumers should validate cross-file references explicitly instead of silently assuming contiguous ids
 
 This matters because normalized package ids may remain sparse even when the emitted JSON arrays are dense. Runtime code must resolve identities by `id` rather than by array offset.

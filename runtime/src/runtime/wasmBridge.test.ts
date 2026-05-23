@@ -10,13 +10,13 @@ import {
 function makeBridge(): WasmRuntimeBridge {
   return {
     backend: 'opengmk-wasm',
-    boot: async () => ({ tick: 0, roomId: 0, diagnostics: [] }),
-    snapshot: async () => ({ tick: 0, roomId: 0, diagnostics: [] }),
+    boot: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null }),
+    snapshot: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null }),
     frame: async () => ({ tick: 0, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] }),
-    setInput: async () => ({ tick: 0, roomId: 0, diagnostics: [] }),
-    tick: async (frames = 1) => ({ tick: frames, roomId: 0, diagnostics: [] }),
-    reset: async () => ({ tick: 0, roomId: 0, diagnostics: [] }),
-    selectRoom: async (roomId: number) => ({ tick: 0, roomId, diagnostics: [] }),
+    setInput: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null }),
+    tick: async (frames = 1) => ({ tick: frames, roomId: 0, diagnostics: [], player: null }),
+    reset: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null }),
+    selectRoom: async (roomId: number) => ({ tick: 0, roomId, diagnostics: [], player: null }),
     diagnostics: async () => [],
   };
 }
@@ -51,7 +51,8 @@ describe('wasm bridge loader', () => {
       JSON.stringify({
         tick: 3,
         roomId: 1,
-        diagnostics: ['runtime-idle:tick advanced']
+        diagnostics: ['runtime-idle:tick advanced'],
+        player: null
       })
     );
     const encodedDiagnostics = new TextEncoder().encode(
@@ -173,7 +174,8 @@ describe('wasm bridge loader', () => {
       JSON.stringify({
         tick: 0,
         roomId: 0,
-        diagnostics: []
+        diagnostics: [],
+        player: null
       })
     );
     const encodedFrame = new TextEncoder().encode(

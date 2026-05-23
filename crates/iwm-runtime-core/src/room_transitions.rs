@@ -1,4 +1,4 @@
-use crate::helpers::is_player_instance;
+use crate::helpers::{adjusted_spawn_for_player, is_player_instance};
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeStatus};
 
 impl RuntimeCore {
@@ -32,15 +32,14 @@ impl RuntimeCore {
             return;
         };
 
-        if let Some(player) = room
-            .instances
-            .iter_mut()
-            .find(|instance| is_player_instance(instance))
-        {
-            player.x = spawn_x;
-            player.y = spawn_y;
-            player.previous_x = spawn_x;
-            player.previous_y = spawn_y;
+        if let Some(player_index) = room.instances.iter().position(is_player_instance) {
+            let (x, y) =
+                adjusted_spawn_for_player(&room.instances[player_index], spawn_x, spawn_y, room);
+            let player = &mut room.instances[player_index];
+            player.x = x;
+            player.y = y;
+            player.previous_x = x;
+            player.previous_y = y;
             player.hspeed = 0;
             player.vspeed = 0;
         }

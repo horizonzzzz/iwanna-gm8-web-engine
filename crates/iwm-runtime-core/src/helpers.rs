@@ -1,6 +1,6 @@
 use iwm_runtime_host::{RuntimeDiagnostic, RuntimeDiagnosticLevel, RuntimeHost};
 
-use crate::{RuntimeInstance, RuntimeValue};
+use crate::{RuntimeInstance, RuntimeRoomState, RuntimeValue};
 
 #[derive(Clone, Copy)]
 pub(crate) enum Axis {
@@ -19,12 +19,12 @@ pub(crate) fn is_player_instance(instance: &RuntimeInstance) -> bool {
     instance.player_candidate && instance.alive && is_preferred_player_name(&instance.object_name)
 }
 
-fn bounds_at(instance: &RuntimeInstance, x: i32, y: i32) -> (i32, i32, i32, i32) {
-    let left = x - instance.origin_x;
-    let top = y - instance.origin_y;
-    let right = left + instance.width.max(1);
-    let bottom = top + instance.height.max(1);
-    (left, top, right, bottom)
+pub(crate) fn bounds_at(instance: &RuntimeInstance, x: i32, y: i32) -> (i32, i32, i32, i32) {
+    let left = x - instance.origin_x + instance.bbox_left;
+    let top = y - instance.origin_y + instance.bbox_top;
+    let right = x - instance.origin_x + instance.bbox_right + 1;
+    let bottom = y - instance.origin_y + instance.bbox_bottom + 1;
+    (left, top, right.max(left + 1), bottom.max(top + 1))
 }
 
 pub(crate) fn collides_at(
@@ -41,8 +41,7 @@ pub(crate) fn collides_at(
             return false;
         }
 
-        let (other_left, other_top, other_right, other_bottom) =
-            bounds_at(other, other.x, other.y);
+        let (other_left, other_top, other_right, other_bottom) = bounds_at(other, other.x, other.y);
         left < other_right && right > other_left && top < other_bottom && bottom > other_top
     })
 }
@@ -88,6 +87,48 @@ pub(crate) fn player_out_of_bounds(
 ) -> bool {
     let (left, top, right, bottom) = bounds_at(instance, instance.x, instance.y);
     right < 0 || bottom < 0 || left > room_width as i32 || top > room_height as i32
+}
+
+pub(crate) fn adjusted_spawn_for_player(
+    player: &RuntimeInstance,
+    spawn_x: i32,
+    spawn_y: i32,
+    room: &RuntimeRoomState,
+) -> (i32, i32) {
+    let solids = room
+        .instances
+        .iter()
+        .filter(|instance| instance.alive && instance.solid)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if !collides_at(player, spawn_x, spawn_y, &solids, Some(player.runtime_id)) {
+        return (spawn_x, spawn_y);
+    }
+
+    for distance in 1..=player.height.max(player.width).max(16) {
+        for (dx, dy) in [(0, -distance), (0, distance), (-distance, 0), (distance, 0)] {
+            let x = spawn_x + dx;
+            let y = spawn_y + dy;
+            if spawn_candidate_is_inside_room(player, x, y, room)
+                && !collides_at(player, x, y, &solids, Some(player.runtime_id))
+            {
+                return (x, y);
+            }
+        }
+    }
+
+    (spawn_x, spawn_y)
+}
+
+fn spawn_candidate_is_inside_room(
+    player: &RuntimeInstance,
+    x: i32,
+    y: i32,
+    room: &RuntimeRoomState,
+) -> bool {
+    let (left, top, right, bottom) = bounds_at(player, x, y);
+    left >= 0 && top >= 0 && right <= room.width as i32 && bottom <= room.height as i32
 }
 
 pub(crate) fn parse_runtime_value(raw: &str) -> Option<RuntimeValue> {

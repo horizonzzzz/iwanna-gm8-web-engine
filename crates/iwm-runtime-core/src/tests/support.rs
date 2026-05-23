@@ -273,6 +273,10 @@ pub(super) fn sample_package() -> RuntimePackage {
                 frame_paths: vec![],
                 width: 16,
                 height: 16,
+                bbox_left: 0,
+                bbox_right: 15,
+                bbox_top: 0,
+                bbox_bottom: 15,
             }, SpriteResource {
                 id: 1,
                 name: "spr_sparse".into(),
@@ -281,6 +285,10 @@ pub(super) fn sample_package() -> RuntimePackage {
                 frame_paths: vec![],
                 width: 16,
                 height: 16,
+                bbox_left: 0,
+                bbox_right: 15,
+                bbox_top: 0,
+                bbox_bottom: 15,
             }],
             backgrounds: vec![BackgroundResource {
                 id: 0,

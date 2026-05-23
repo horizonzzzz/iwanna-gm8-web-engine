@@ -25,6 +25,7 @@ pub fn bridge_player_snapshot(snapshot: RuntimePlayerSnapshot) -> BridgePlayerSn
         y: snapshot.y,
         hspeed: snapshot.hspeed,
         vspeed: snapshot.vspeed,
+        facing_left: snapshot.facing_left,
     }
 }
 

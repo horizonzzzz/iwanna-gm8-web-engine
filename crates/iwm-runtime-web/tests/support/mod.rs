@@ -151,6 +151,10 @@ pub fn sample_package() -> RuntimePackage {
                 frame_paths: vec!["resources/sprites/0-0.png".into()],
                 width: 16,
                 height: 16,
+                bbox_left: 0,
+                bbox_right: 15,
+                bbox_top: 0,
+                bbox_bottom: 15,
             }],
             backgrounds: vec![BackgroundResource {
                 id: 0,

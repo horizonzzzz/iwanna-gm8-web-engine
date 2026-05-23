@@ -11,6 +11,7 @@ export type WasmRuntimeBridgeSnapshot = {
     y: number;
     hspeed: number;
     vspeed: number;
+    facing_left: boolean;
   } | null;
   diagnostics: string[];
 };

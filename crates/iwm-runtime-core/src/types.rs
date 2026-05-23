@@ -2,8 +2,7 @@ use std::collections::HashMap;
 
 use iwm_runtime_host::{RuntimeDiagnostic, RuntimeHostError};
 use iwm_runtime_model::{
-    AnalysisReport, ObjectDefinition, ResourceIndex, RoomDefinition, RuntimeManifest,
-    ScriptIrFile,
+    AnalysisReport, ObjectDefinition, ResourceIndex, RoomDefinition, RuntimeManifest, ScriptIrFile,
 };
 use serde::{Deserialize, Serialize};
 
@@ -140,6 +139,11 @@ pub struct RuntimeInstance {
     pub height: i32,
     pub origin_x: i32,
     pub origin_y: i32,
+    pub bbox_left: i32,
+    pub bbox_right: i32,
+    pub bbox_top: i32,
+    pub bbox_bottom: i32,
+    pub facing_left: bool,
     pub alive: bool,
     pub solid: bool,
     pub hazard: bool,
@@ -167,6 +171,7 @@ pub struct RuntimePlayerSnapshot {
     pub y: i32,
     pub hspeed: i32,
     pub vspeed: i32,
+    pub facing_left: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -43,7 +43,10 @@ impl RuntimeCore {
             .cloned()
             .collect::<Vec<_>>();
 
-        let room = self.current_room.as_mut().ok_or(RuntimeCoreError::NoRooms)?;
+        let room = self
+            .current_room
+            .as_mut()
+            .ok_or(RuntimeCoreError::NoRooms)?;
         let player = room
             .instances
             .get_mut(player_index)
@@ -79,13 +82,24 @@ impl RuntimeCore {
         player.previous_y = player.y;
 
         player.hspeed = match (left_pressed, right_pressed) {
-            (true, false) => -run_speed,
-            (false, true) => run_speed,
+            (true, false) => {
+                player.facing_left = true;
+                -run_speed
+            }
+            (false, true) => {
+                player.facing_left = false;
+                run_speed
+            }
             _ => 0,
         };
 
-        let standing_on_solid =
-            collides_at(player, player.x, player.y + 1, &solids, Some(player.runtime_id));
+        let standing_on_solid = collides_at(
+            player,
+            player.x,
+            player.y + 1,
+            &solids,
+            Some(player.runtime_id),
+        );
         if jump_just_pressed && standing_on_solid {
             player.vspeed = -jump_speed;
         }
@@ -107,7 +121,13 @@ impl RuntimeCore {
             player.vspeed,
         );
 
-        if collides_at(player, player.x, player.y, &hazards, Some(player.runtime_id)) {
+        if collides_at(
+            player,
+            player.x,
+            player.y,
+            &hazards,
+            Some(player.runtime_id),
+        ) {
             self.record_diagnostic(
                 host,
                 iwm_runtime_host::RuntimeDiagnosticLevel::Warning,

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use iwm_runtime_model::ObjectDefinition;
+use iwm_runtime_model::{ObjectDefinition, SpriteResource};
 
-use crate::helpers::is_preferred_player_name;
+use crate::helpers::{adjusted_spawn_for_player, is_preferred_player_name};
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState};
 
 impl RuntimeCore {
@@ -46,7 +46,7 @@ impl RuntimeCore {
                     .object_index
                     .get(&(instance.object_id as usize))
                     .and_then(|index| self.package.objects.get(*index))?;
-                let (width, height, origin_x, origin_y) = self.sprite_metrics(object);
+                let metrics = self.sprite_metrics(object);
                 Some(RuntimeInstance {
                     runtime_id,
                     instance_id: instance.instance_id,
@@ -58,10 +58,15 @@ impl RuntimeCore {
                     previous_y: instance.y,
                     hspeed: 0,
                     vspeed: 0,
-                    width,
-                    height,
-                    origin_x,
-                    origin_y,
+                    width: metrics.width,
+                    height: metrics.height,
+                    origin_x: metrics.origin_x,
+                    origin_y: metrics.origin_y,
+                    bbox_left: metrics.bbox_left,
+                    bbox_right: metrics.bbox_right,
+                    bbox_top: metrics.bbox_top,
+                    bbox_bottom: metrics.bbox_bottom,
+                    facing_left: false,
                     alive: true,
                     solid: instance.is_solid || object.solid,
                     hazard: instance.is_hazard || object.is_hazard.unwrap_or(false),
@@ -86,7 +91,7 @@ impl RuntimeCore {
                 .or_else(|| self.package.objects.iter().find(|object| object.is_player));
 
             if let Some(player_object) = preferred_player {
-                let (width, height, origin_x, origin_y) = self.sprite_metrics(player_object);
+                let metrics = self.sprite_metrics(player_object);
                 let (x, y) = spawn_point.unwrap_or((0, 0));
                 instances.push(RuntimeInstance {
                     runtime_id: instances.len(),
@@ -99,10 +104,15 @@ impl RuntimeCore {
                     previous_y: y,
                     hspeed: 0,
                     vspeed: 0,
-                    width,
-                    height,
-                    origin_x,
-                    origin_y,
+                    width: metrics.width,
+                    height: metrics.height,
+                    origin_x: metrics.origin_x,
+                    origin_y: metrics.origin_y,
+                    bbox_left: metrics.bbox_left,
+                    bbox_right: metrics.bbox_right,
+                    bbox_top: metrics.bbox_top,
+                    bbox_bottom: metrics.bbox_bottom,
+                    facing_left: false,
                     alive: true,
                     solid: player_object.solid,
                     hazard: player_object.is_hazard.unwrap_or(false),
@@ -124,28 +134,96 @@ impl RuntimeCore {
             spawn_point,
             instances,
         };
+        if let Some((spawn_x, spawn_y)) = room_state.spawn_point {
+            if let Some(player_index) = room_state.instances.iter().position(|instance| {
+                instance.player_candidate
+                    && instance.alive
+                    && is_preferred_player_name(&instance.object_name)
+            }) {
+                let adjusted = adjusted_spawn_for_player(
+                    &room_state.instances[player_index],
+                    spawn_x,
+                    spawn_y,
+                    &room_state,
+                );
+                let player = &mut room_state.instances[player_index];
+                player.x = adjusted.0;
+                player.y = adjusted.1;
+                player.previous_x = adjusted.0;
+                player.previous_y = adjusted.1;
+            }
+        }
         self.apply_create_logic(&mut room_state, &room);
         Ok(room_state)
     }
 
-    pub(crate) fn sprite_metrics(&self, object: &ObjectDefinition) -> (i32, i32, i32, i32) {
-        if object.sprite_index >= 0 {
-            if let Some(sprite) = self
-                .package
-                .resources
-                .sprites
-                .iter()
-                .find(|sprite| sprite.id == object.sprite_index as usize)
-            {
-                return (
-                    sprite.width.max(1) as i32,
-                    sprite.height.max(1) as i32,
-                    sprite.origin_x,
-                    sprite.origin_y,
-                );
+    pub(crate) fn sprite_metrics(&self, object: &ObjectDefinition) -> RuntimeSpriteMetrics {
+        let sprite = self.sprite_for_index(object.mask_index).or_else(|| {
+            if object.mask_index < 0 {
+                self.sprite_for_index(object.sprite_index)
+            } else {
+                None
             }
+        });
+
+        sprite.map(RuntimeSpriteMetrics::from).unwrap_or_default()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RuntimeSpriteMetrics {
+    pub width: i32,
+    pub height: i32,
+    pub origin_x: i32,
+    pub origin_y: i32,
+    pub bbox_left: i32,
+    pub bbox_right: i32,
+    pub bbox_top: i32,
+    pub bbox_bottom: i32,
+}
+
+impl Default for RuntimeSpriteMetrics {
+    fn default() -> Self {
+        Self {
+            width: 16,
+            height: 16,
+            origin_x: 0,
+            origin_y: 0,
+            bbox_left: 0,
+            bbox_right: 15,
+            bbox_top: 0,
+            bbox_bottom: 15,
+        }
+    }
+}
+
+impl From<&SpriteResource> for RuntimeSpriteMetrics {
+    fn from(sprite: &SpriteResource) -> Self {
+        let width = sprite.width.max(1) as i32;
+        let height = sprite.height.max(1) as i32;
+        Self {
+            width,
+            height,
+            origin_x: sprite.origin_x,
+            origin_y: sprite.origin_y,
+            bbox_left: sprite.bbox_left as i32,
+            bbox_right: sprite.bbox_right as i32,
+            bbox_top: sprite.bbox_top as i32,
+            bbox_bottom: sprite.bbox_bottom as i32,
+        }
+    }
+}
+
+impl RuntimeCore {
+    fn sprite_for_index(&self, sprite_index: i32) -> Option<&SpriteResource> {
+        if sprite_index < 0 {
+            return None;
         }
 
-        (16, 16, 0, 0)
+        self.package
+            .resources
+            .sprites
+            .iter()
+            .find(|sprite| sprite.id == sprite_index as usize)
     }
 }

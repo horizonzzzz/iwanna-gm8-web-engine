@@ -16,7 +16,10 @@ fn runtime_core_emits_browser_consumable_draw_commands() {
     assert_eq!(frame.room_id, Some(7));
     assert!(frame.commands.iter().any(|command| matches!(
         command,
-        RuntimeDrawCommand::DrawBackground { background_id: 0, .. }
+        RuntimeDrawCommand::DrawBackground {
+            background_id: 0,
+            ..
+        }
     )));
     assert!(frame.commands.iter().any(|command| matches!(
         command,
@@ -27,12 +30,37 @@ fn runtime_core_emits_browser_consumable_draw_commands() {
             ..
         }
     )));
+    assert!(frame
+        .commands
+        .iter()
+        .any(|command| matches!(command, RuntimeDrawCommand::DrawSprite { sprite_id: 0, .. })));
+    assert!(frame
+        .commands
+        .iter()
+        .any(|command| matches!(command, RuntimeDrawCommand::DrawSprite { sprite_id: 1, .. })));
+}
+
+#[test]
+fn runtime_core_mirrors_player_sprite_when_facing_left() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+    let room = core.current_room.as_mut().unwrap();
+    let player = room
+        .instances
+        .iter_mut()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    player.facing_left = true;
+
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
     assert!(frame.commands.iter().any(|command| matches!(
         command,
-        RuntimeDrawCommand::DrawSprite { sprite_id: 0, .. }
-    )));
-    assert!(frame.commands.iter().any(|command| matches!(
-        command,
-        RuntimeDrawCommand::DrawSprite { sprite_id: 1, .. }
+        RuntimeDrawCommand::DrawSprite {
+            sprite_id: 0,
+            xscale,
+            ..
+        } if *xscale < 0.0
     )));
 }

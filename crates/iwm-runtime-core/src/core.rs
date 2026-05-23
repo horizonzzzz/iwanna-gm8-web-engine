@@ -112,6 +112,7 @@ impl RuntimeCore {
                         y: instance.y,
                         hspeed: instance.hspeed,
                         vspeed: instance.vspeed,
+                        facing_left: instance.facing_left,
                     })
             }),
             diagnostics: self.diagnostics.clone(),

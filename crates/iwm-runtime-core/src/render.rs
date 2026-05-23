@@ -4,7 +4,10 @@ use crate::{RuntimeCore, RuntimeCoreError};
 
 impl RuntimeCore {
     pub(crate) fn build_render_frame(&self) -> Result<RuntimeRenderFrame, RuntimeCoreError> {
-        let room = self.current_room.as_ref().ok_or(RuntimeCoreError::NoRooms)?;
+        let room = self
+            .current_room
+            .as_ref()
+            .ok_or(RuntimeCoreError::NoRooms)?;
         let source_room = self
             .room_index
             .get(&room.room_id)
@@ -84,7 +87,7 @@ impl RuntimeCore {
                     y: instance.y,
                     origin_x: sprite.map(|sprite| sprite.origin_x).unwrap_or(0),
                     origin_y: sprite.map(|sprite| sprite.origin_y).unwrap_or(0),
-                    xscale: 1.0,
+                    xscale: if instance.facing_left { -1.0 } else { 1.0 },
                     yscale: 1.0,
                     angle_degrees: 0.0,
                 });

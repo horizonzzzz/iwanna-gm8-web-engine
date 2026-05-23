@@ -1,4 +1,6 @@
-use crate::models::{BackgroundResource, ResourceIndex, SoundResource, SpriteResource};
+use crate::models::{
+    BackgroundResource, ResourceIndex, SoundResource, SpriteResource,
+};
 use anyhow::{Context, Result};
 use gm8exe::GameAssets;
 use png::{BitDepth, ColorType, Encoder};
@@ -43,6 +45,30 @@ pub fn export_resources(assets: &GameAssets, output_dir: &Path) -> Result<Resour
                 frame_paths,
                 width,
                 height,
+                bbox_left: sprite
+                    .colliders
+                    .iter()
+                    .map(|collider| collider.bbox_left)
+                    .min()
+                    .unwrap_or(0),
+                bbox_right: sprite
+                    .colliders
+                    .iter()
+                    .map(|collider| collider.bbox_right)
+                    .max()
+                    .unwrap_or(width.saturating_sub(1)),
+                bbox_top: sprite
+                    .colliders
+                    .iter()
+                    .map(|collider| collider.bbox_top)
+                    .min()
+                    .unwrap_or(0),
+                bbox_bottom: sprite
+                    .colliders
+                    .iter()
+                    .map(|collider| collider.bbox_bottom)
+                    .max()
+                    .unwrap_or(height.saturating_sub(1)),
             })
         })
         .collect::<Result<Vec<_>>>()?;
