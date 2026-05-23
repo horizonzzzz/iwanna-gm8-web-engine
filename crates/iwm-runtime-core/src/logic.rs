@@ -174,7 +174,10 @@ impl RuntimeCore {
                     self.apply_statement_to_globals(nested);
                 }
             }
-            LoweredLogicStatement::FunctionCall { .. } | LoweredLogicStatement::Raw { .. } => {}
+            LoweredLogicStatement::VariableDeclaration { .. }
+            | LoweredLogicStatement::Return { .. }
+            | LoweredLogicStatement::FunctionCall { .. }
+            | LoweredLogicStatement::Raw { .. } => {}
         }
     }
 
@@ -210,7 +213,10 @@ impl RuntimeCore {
                     self.apply_statement_to_instance(nested, instance);
                 }
             }
-            LoweredLogicStatement::FunctionCall { .. } | LoweredLogicStatement::Raw { .. } => {}
+            LoweredLogicStatement::VariableDeclaration { .. }
+            | LoweredLogicStatement::Return { .. }
+            | LoweredLogicStatement::FunctionCall { .. }
+            | LoweredLogicStatement::Raw { .. } => {}
         }
     }
 }
@@ -247,6 +253,8 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 );
             }
         }
+        LoweredLogicStatement::VariableDeclaration { .. } => {}
+        LoweredLogicStatement::Return { .. } => {}
         LoweredLogicStatement::FunctionCall { name, args } => match name.as_str() {
             "room_goto" => {
                 if let Some(room_id) = args

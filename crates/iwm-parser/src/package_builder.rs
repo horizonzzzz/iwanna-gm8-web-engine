@@ -4,6 +4,7 @@ use crate::gml_lowering::lower_raw_logic_file;
 use crate::models::{AnalysisReport, CompatibilityLevel, LogicOp, RawLogicFile, RuntimeManifest};
 use crate::raw_logic_export::export_raw_logic;
 use crate::resource_export::export_resources;
+use crate::LoweredLogicStatement;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -30,9 +31,25 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     // Generate actionable warnings
     let mut warnings = Vec::new();
 
-    // Check for source-only blocks that are critical for gameplay
+    let lowered_entry_by_block_id = lowered_logic
+        .entries
+        .iter()
+        .map(|entry| (entry.block_id.as_str(), entry))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    // Check for source-only blocks that still rely on raw fallback after lowering
     for block in &script_ir.blocks {
-        if block.support == "source-only" {
+        let still_has_raw = lowered_entry_by_block_id
+            .get(block.id.as_str())
+            .map(|entry| {
+                entry
+                    .statements
+                    .iter()
+                    .any(|statement| matches!(statement, LoweredLogicStatement::Raw { .. }))
+            })
+            .unwrap_or(false);
+
+        if block.support == "source-only" && still_has_raw {
             warnings.push(format!("runtime-missing-source-lowering:{}", block.id));
         }
     }
@@ -74,7 +91,7 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
         .entries
         .iter()
         .flat_map(|entry| entry.statements.iter())
-        .filter(|statement| matches!(statement, iwm_runtime_model::LoweredLogicStatement::Raw { .. }))
+        .filter(|statement| matches!(statement, LoweredLogicStatement::Raw { .. }))
         .count();
 
     if raw_statement_count > 0 {

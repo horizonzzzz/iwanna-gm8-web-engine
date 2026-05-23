@@ -5,7 +5,7 @@ use iwm_runtime_host::{RuntimeButton, RuntimeHost};
 use crate::event_dispatch::{object_event_block_ids, RuntimeEventSelector};
 use crate::helpers::is_player_instance;
 use crate::{
-    LoweredLogicEntry, LoweredLogicStatement, RuntimeCoreError, RuntimeInstance, RuntimePackage,
+    LoweredLogicEntry, LoweredLogicStatement, RuntimeCoreError, RuntimePackage,
     RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot, RuntimeStatus, RuntimeValue,
 };
 
@@ -285,10 +285,6 @@ impl RuntimeCore {
         if let Some(slot) = room.instances.get_mut(instance_idx) {
             *slot = instance;
         }
-    }
-
-    fn current_room_index(&self) -> Option<usize> {
-        self.current_room.as_ref().map(|room| room.room_id)
     }
 
     fn process_alarm_countdowns<H: RuntimeHost>(

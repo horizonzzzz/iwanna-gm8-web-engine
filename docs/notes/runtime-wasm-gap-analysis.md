@@ -10,8 +10,14 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 
 - The browser shell can load packages, boot the WASM bridge, tick, reset, select rooms, and show telemetry.
 - The parser now preserves raw logic in `logic.raw.json` and emits a structured lowered contract in `logic.lowered.json` for the current IWanna-critical subset.
+- The lowered parser contract now covers common comment stripping, `var` declarations, assignments, returns, calls, member/index access, and common control-flow heads on the current critical path.
 - The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, but it still does not execute general GM8 gameplay logic.
 - The browser-facing host path now treats one-shot controls such as jump/restart as host-boundary input edges; the next runtime blocker is deeper host extraction and headless bring-up, not expanding shell-side gameplay rules.
+
+Practical parser note:
+
+- broad `runtime-missing-source-lowering:*` warnings from `analysis.json` still need gold-sample evidence before they should be treated as real blockers
+- a `source-only` `scripts.ir.json` block can already have a usable structured `logic.lowered.json` entry, so warning interpretation should follow the lowered contract, not only the older IR support label
 
 ## Route Decision
 

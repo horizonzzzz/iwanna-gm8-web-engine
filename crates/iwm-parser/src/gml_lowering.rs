@@ -64,7 +64,8 @@ pub fn lower_raw_logic_file(raw: &RawLogicFile) -> LoweredLogicFile {
 }
 
 fn lower_source(source: &str) -> Vec<LoweredLogicStatement> {
-    split_top_level_statements(source)
+    let source = strip_block_comments(&strip_line_comments(source));
+    split_top_level_statements(&source)
         .into_iter()
         .filter_map(|stmt| lower_statement(&stmt))
         .collect()
@@ -74,6 +75,20 @@ fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
     let stmt = stmt.trim();
     if stmt.is_empty() {
         return None;
+    }
+
+    if let Some(names) = lower_variable_declaration(stmt) {
+        return Some(LoweredLogicStatement::VariableDeclaration { names });
+    }
+
+    if let Some(expr) = stmt.strip_prefix("return ") {
+        let expr = expr.trim().trim_end_matches(';').trim();
+        let value = if expr.is_empty() {
+            None
+        } else {
+            Some(lower_expr(expr))
+        };
+        return Some(LoweredLogicStatement::Return { value });
     }
 
     if stmt.ends_with("++") && !stmt.ends_with("+++") {
@@ -203,6 +218,81 @@ fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
     Some(LoweredLogicStatement::Raw {
         source: stmt.to_string(),
     })
+}
+
+fn strip_line_comments(source: &str) -> String {
+    let mut result = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    let mut in_string = false;
+
+    while let Some(ch) = chars.next() {
+        if ch == '"' {
+            in_string = !in_string;
+            result.push(ch);
+            continue;
+        }
+
+        if !in_string && ch == '/' && matches!(chars.peek(), Some('/')) {
+            chars.next();
+            while let Some(next) = chars.next() {
+                if next == '\n' {
+                    result.push('\n');
+                    break;
+                }
+            }
+            continue;
+        }
+
+        result.push(ch);
+    }
+
+    result
+}
+
+fn strip_block_comments(source: &str) -> String {
+    let mut result = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    let mut in_string = false;
+
+    while let Some(ch) = chars.next() {
+        if ch == '"' {
+            in_string = !in_string;
+            result.push(ch);
+            continue;
+        }
+
+        if !in_string && ch == '/' && matches!(chars.peek(), Some('*')) {
+            chars.next();
+            while let Some(next) = chars.next() {
+                if next == '*' && matches!(chars.peek(), Some('/')) {
+                    chars.next();
+                    break;
+                }
+            }
+            continue;
+        }
+
+        result.push(ch);
+    }
+
+    result
+}
+
+fn lower_variable_declaration(stmt: &str) -> Option<Vec<String>> {
+    let rest = stmt.strip_prefix("var ")?;
+    if rest.contains('=') {
+        return None;
+    }
+    let names = split_top_level_csv(rest.to_string())
+        .into_iter()
+        .map(|name| name.trim().trim_end_matches(';').to_string())
+        .filter(|name| !name.is_empty())
+        .collect::<Vec<_>>();
+    if names.is_empty() {
+        None
+    } else {
+        Some(names)
+    }
 }
 
 fn lower_if_statement(stmt: &str) -> Option<LoweredLogicStatement> {

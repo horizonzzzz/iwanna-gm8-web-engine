@@ -1,7 +1,5 @@
 #[derive(Clone)]
 pub(crate) enum RuntimeEventSelector {
-    Create,
-    Step,
     Alarm(u32),
     Keyboard(u16),
 }
@@ -14,8 +12,6 @@ pub(crate) fn object_event_block_ids(
     selector: RuntimeEventSelector,
 ) -> Vec<String> {
     let wanted = match selector {
-        RuntimeEventSelector::Create => "create".to_string(),
-        RuntimeEventSelector::Step => "step".to_string(),
         RuntimeEventSelector::Alarm(slot) => format!("alarm:{slot}"),
         RuntimeEventSelector::Keyboard(key) => {
             format!("keyboard:{}", format_key_name(key))

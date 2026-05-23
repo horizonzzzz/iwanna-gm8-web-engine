@@ -22,6 +22,12 @@ Why it still matters:
 - it is the sample that should decide whether parser/package/runtime gaps are actually on the critical gameplay path
 - it should stay ahead of secondary samples when priorities conflict
 
+Important local-environment note:
+
+- the local sample corpus may differ between development machines
+- if this exact path is absent in the current environment, use the closest available `gm8-core` sample for local package-smoke verification
+- that local fallback does not change the repository's intended gold-sample target or repo-wide contract
+
 ## Repo-Local Runtime Package
 
 - `runtime/public/packages/sample/`

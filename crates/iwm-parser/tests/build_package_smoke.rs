@@ -900,6 +900,43 @@ fn analysis_warnings_use_actionable_categories() {
 }
 
 #[test]
+fn fully_lowered_source_only_blocks_do_not_emit_missing_source_lowering_warning() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawLogicFile, RawLogicOwner, RawLogicOwnerKind};
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![RawLogicOwner {
+            owner_kind: RawLogicOwnerKind::RoomInstance,
+            owner_id: 1001,
+            owner_name: "obj_exit".to_string(),
+            event_type: None,
+            sub_event: None,
+            collision_object_id: None,
+            block_id: "room:7:instance:1001:create".to_string(),
+            gml_source: "roomTo=room8".to_string(),
+        }],
+        object_events: vec![],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let still_has_raw = lowered
+        .entries
+        .iter()
+        .find(|entry| entry.block_id == "room:7:instance:1001:create")
+        .unwrap()
+        .statements
+        .iter()
+        .any(|statement| matches!(statement, iwm_parser::LoweredLogicStatement::Raw { .. }));
+
+    assert!(!still_has_raw);
+}
+
+#[test]
 fn event_block_ids_are_stable_and_parseable() {
     // Block IDs should follow consistent format for runtime parsing
     let block_id = "object:12:event:3:0";

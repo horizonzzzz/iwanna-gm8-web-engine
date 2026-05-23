@@ -40,3 +40,53 @@ fn lowering_respects_boolean_precedence_between_or_and_and() {
         other => panic!("expected assignment, got {other:?}"),
     }
 }
+
+#[test]
+fn lowering_ignores_comment_lines_and_preserves_var_declarations() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 2,
+            script_name: "scr_vars".to_string(),
+            gml_source: "// comment\nvar a, i; x = 1;".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    assert!(matches!(
+        lowered.entries[0].statements[0],
+        LoweredLogicStatement::VariableDeclaration { ref names } if names == &vec!["a".to_string(), "i".to_string()]
+    ));
+    assert!(matches!(
+        lowered.entries[0].statements[1],
+        LoweredLogicStatement::Assignment { .. }
+    ));
+}
+
+#[test]
+fn lowering_preserves_return_statements_and_ignores_block_comments() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 4,
+            script_name: "scr_return".to_string(),
+            gml_source: "/* intro */ return false;".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    assert!(matches!(
+        lowered.entries[0].statements[0],
+        LoweredLogicStatement::Return { value: Some(LoweredLogicExpr::LiteralBool(false)) }
+    ));
+}

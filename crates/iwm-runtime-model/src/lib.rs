@@ -261,6 +261,12 @@ pub enum LoweredLogicStatement {
         target: LoweredLogicExpr,
         value: LoweredLogicExpr,
     },
+    VariableDeclaration {
+        names: Vec<String>,
+    },
+    Return {
+        value: Option<LoweredLogicExpr>,
+    },
     FunctionCall {
         name: String,
         args: Vec<LoweredLogicExpr>,

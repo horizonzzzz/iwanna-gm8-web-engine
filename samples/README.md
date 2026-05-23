@@ -28,6 +28,11 @@ These samples are used for:
 - compatibility triage
 - future runtime regression checks
 
+Important local-environment note:
+
+- `samples/local/iwanna-examples/` is environment-local and may not contain the same files on different development machines
+- treat the local corpus as input data for the current machine, not as a single repo-wide fixed inventory
+
 ## Current Usage
 
 These samples are used for:
