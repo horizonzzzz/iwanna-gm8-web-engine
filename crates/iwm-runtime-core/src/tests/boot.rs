@@ -1,4 +1,7 @@
-use crate::{RuntimeCore, RuntimeCoreError, RuntimeStatus};
+use crate::{
+    LoweredLogicEntry, LoweredLogicExpr, LoweredLogicFile, LoweredLogicStatement, RuntimeCore,
+    RuntimeCoreError, RuntimeStatus,
+};
 
 use super::support::sample_package;
 
@@ -84,4 +87,43 @@ fn core_ignores_player_start_markers_when_deciding_whether_a_room_has_a_player()
     assert!(room.instances.iter().any(|instance| {
         instance.instance_id == -1 && instance.object_id == 0 && instance.player_candidate
     }));
+}
+
+#[test]
+fn core_loads_structured_lowered_logic_entries() {
+    let mut package = sample_package();
+    package.lowered_logic = Some(LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![LoweredLogicEntry {
+            block_id: "room:7:create".into(),
+            statements: vec![
+                LoweredLogicStatement::VariableDeclaration {
+                    names: vec!["i".into()],
+                },
+                LoweredLogicStatement::For {
+                    init: LoweredLogicExpr::Identifier("i = 0".into()),
+                    condition: LoweredLogicExpr::BinaryExpr {
+                        op: "<".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(3.0)),
+                    },
+                    step: LoweredLogicExpr::BinaryExpr {
+                        op: "+".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                    },
+                    body: vec![LoweredLogicStatement::Return {
+                        value: Some(LoweredLogicExpr::LiteralBool(false)),
+                    }],
+                },
+            ],
+        }],
+    });
+
+    let core = RuntimeCore::load(package).unwrap();
+
+    assert_eq!(core.current_room().map(|room| room.room_id), Some(7));
+    assert!(core
+        .current_room()
+        .is_some_and(|room| room.instances.iter().any(|instance| instance.player_candidate)));
 }

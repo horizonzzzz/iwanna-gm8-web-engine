@@ -71,21 +71,21 @@ pub enum LoweredLogicStatement {
         else_branch: Vec<LoweredLogicStatement>,
     },
     With {
-        target: String,
+        target: LoweredLogicExpr,
         body: Vec<LoweredLogicStatement>,
     },
     Repeat {
-        count: String,
+        count: LoweredLogicExpr,
         body: Vec<LoweredLogicStatement>,
     },
     While {
-        condition: String,
+        condition: LoweredLogicExpr,
         body: Vec<LoweredLogicStatement>,
     },
     For {
-        init: String,
-        condition: String,
-        step: String,
+        init: LoweredLogicExpr,
+        condition: LoweredLogicExpr,
+        step: LoweredLogicExpr,
         body: Vec<LoweredLogicStatement>,
     },
     Raw {
