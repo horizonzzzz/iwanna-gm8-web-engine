@@ -479,3 +479,70 @@ fn core_executes_conditional_branch_before_room_transition() {
 
     assert_eq!(core.snapshot().room_id, Some(9));
 }
+
+#[test]
+fn core_evaluates_unary_negative_in_assignments() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("score".into()),
+            value: LoweredLogicExpr::UnaryExpr {
+                op: "-".into(),
+                child: Box::new(LoweredLogicExpr::Identifier("y".into())),
+            },
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("score"), Some(&RuntimeValue::Number(-24.0)));
+}
+
+#[test]
+fn core_evaluates_unary_not_in_conditionals() {
+    let mut package = sample_package();
+    add_create_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("flag".into()),
+            value: LoweredLogicExpr::LiteralBool(false),
+        }],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::UnaryExpr {
+                op: "!".into(),
+                child: Box::new(LoweredLogicExpr::Identifier("flag".into())),
+            },
+            then_branch: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("armed".into()),
+                value: LoweredLogicExpr::LiteralBool(true),
+            }],
+            else_branch: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("armed"), Some(&RuntimeValue::Bool(true)));
+}

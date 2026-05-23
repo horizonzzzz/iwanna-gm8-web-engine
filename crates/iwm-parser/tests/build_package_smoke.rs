@@ -900,6 +900,156 @@ fn analysis_warnings_use_actionable_categories() {
 }
 
 #[test]
+fn logic_and_raw_exports_share_normalized_event_tags_for_gm8_event_ids() {
+    use gm8exe::{
+        asset::{object::Object, room::Room, CodeAction},
+        settings::{GameHelpDialog, Settings},
+        GameAssets, GameVersion,
+    };
+    use iwm_parser::logic_export::export_rooms_and_logic;
+    use iwm_parser::raw_logic_export::export_raw_logic;
+
+    fn sample_assets_for_event(event_type: usize, sub_event: u32) -> GameAssets {
+        let mut events: Vec<Vec<(u32, Vec<CodeAction>)>> = (0..12).map(|_| Vec::new()).collect();
+        events[event_type].push((sub_event, Vec::new()));
+
+        GameAssets {
+            triggers: vec![],
+            constants: vec![],
+            extensions: vec![],
+            sprites: vec![],
+            sounds: vec![],
+            backgrounds: vec![],
+            paths: vec![],
+            scripts: vec![],
+            fonts: vec![],
+            timelines: vec![],
+            objects: vec![Some(Box::new(Object {
+                name: "obj_event".into(),
+                sprite_index: -1,
+                solid: false,
+                visible: true,
+                depth: 0,
+                persistent: false,
+                parent_index: -1,
+                mask_index: -1,
+                events,
+            }))],
+            rooms: vec![Some(Box::new(Room {
+                name: "rm_event".into(),
+                caption: "".into(),
+                width: 320,
+                height: 240,
+                speed: 30,
+                persistent: false,
+                bg_colour: 0u32.into(),
+                clear_screen: true,
+                clear_region: true,
+                creation_code: "".into(),
+                backgrounds: vec![],
+                views_enabled: false,
+                views: vec![],
+                instances: vec![],
+                tiles: vec![],
+                uses_810_features: false,
+                uses_811_features: false,
+            }))],
+            included_files: vec![],
+            version: GameVersion::GameMaker8_0,
+            dx_dll: vec![],
+            ico_file_raw: None,
+            help_dialog: GameHelpDialog {
+                bg_colour: 0u32.into(),
+                new_window: false,
+                caption: "".into(),
+                left: 0,
+                top: 0,
+                width: 0,
+                height: 0,
+                border: false,
+                resizable: false,
+                window_on_top: false,
+                freeze_game: false,
+                info: "".into(),
+            },
+            last_instance_id: 0,
+            last_tile_id: 0,
+            library_init_strings: vec![],
+            room_order: vec![],
+            settings: Settings {
+                fullscreen: false,
+                scaling: 0,
+                interpolate_pixels: false,
+                clear_colour: 0,
+                allow_resize: false,
+                window_on_top: false,
+                dont_draw_border: false,
+                dont_show_buttons: false,
+                display_cursor: false,
+                freeze_on_lose_focus: false,
+                disable_screensaver: false,
+                force_cpu_render: false,
+                set_resolution: false,
+                colour_depth: 0,
+                resolution: 0,
+                frequency: 0,
+                vsync: false,
+                esc_close_game: false,
+                treat_close_as_esc: false,
+                f1_help_menu: false,
+                f4_fullscreen_toggle: false,
+                f5_save_f6_load: false,
+                f9_screenshot: false,
+                priority: 0,
+                custom_load_image: None,
+                transparent: false,
+                translucency: 0,
+                loading_bar: 0,
+                backdata: None,
+                frontdata: None,
+                scale_progress_bar: false,
+                show_error_messages: false,
+                log_errors: false,
+                always_abort: false,
+                zero_uninitialized_vars: false,
+                error_on_uninitialized_args: false,
+                swap_creation_events: false,
+            },
+            game_id: 0,
+            guid: [0; 4],
+        }
+    }
+
+    let cases = [
+        (0, 0, "create", None),
+        (2, 7, "alarm:7", None),
+        (3, 0, "step", None),
+        (3, 1, "step:begin", None),
+        (3, 2, "step:end", None),
+        (4, 7, "collision", Some(7)),
+        (5, 65, "keyboard:a", None),
+        (9, 65, "keypress:a", None),
+        (10, 65, "keyrelease:a", None),
+    ];
+
+    for (event_type, sub_event, expected_tag, expected_collision_id) in cases {
+        let assets = sample_assets_for_event(event_type, sub_event);
+        let (room_defs, object_defs, _) = export_rooms_and_logic(&assets.rooms, &assets.objects);
+        assert!(room_defs.is_empty() || room_defs.iter().all(|room| room.transition_targets.is_empty()));
+
+        let logic_event = &object_defs[0].events[0];
+        assert_eq!(logic_event.event_tag, expected_tag);
+        assert_eq!(logic_event.sub_event, sub_event);
+
+        let raw_logic = export_raw_logic(&assets);
+        let raw_event = &raw_logic.object_events[0];
+        assert_eq!(raw_event.event_tag, expected_tag);
+        assert_eq!(raw_event.sub_event, sub_event);
+        assert_eq!(raw_event.collision_object_id, expected_collision_id);
+    }
+}
+
+#[test]
 fn fully_lowered_source_only_blocks_do_not_emit_missing_source_lowering_warning() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
     use iwm_parser::models::{RawLogicFile, RawLogicOwner, RawLogicOwnerKind};

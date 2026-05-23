@@ -160,6 +160,37 @@ fn web_runtime_host_treats_restart_as_a_one_shot_press_edge() {
 }
 
 #[test]
+fn web_runtime_host_clears_input_edge_bits_after_each_tick() {
+    let mut host = WebRuntimeHost::new();
+    host.boot(sample_package()).unwrap();
+
+    host.set_input(WebInputState {
+        left: false,
+        right: true,
+        jump: true,
+        jump_pressed: true,
+        jump_released: false,
+        restart: true,
+    });
+
+    host.tick(1).unwrap();
+    let after_first = host.snapshot().unwrap();
+    assert_eq!(after_first.tick, 1);
+    host.set_input(WebInputState {
+        left: false,
+        right: true,
+        jump: true,
+        jump_pressed: false,
+        jump_released: false,
+        restart: true,
+    });
+    host.tick(1).unwrap();
+
+    let after_second = host.snapshot().unwrap();
+    assert_eq!(after_second.tick, 2);
+}
+
+#[test]
 fn web_runtime_host_frame_snapshot_includes_tiles_and_fallback_player_output() {
     let mut package = sample_package();
     package.rooms[0].instances[0].object_id = 1;

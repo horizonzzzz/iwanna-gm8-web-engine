@@ -141,3 +141,28 @@ fn core_emits_hazard_diagnostic_and_requests_reset() {
         .any(|diagnostic| diagnostic.code == "runtime-player-died"));
     assert_eq!(core.snapshot().status, crate::RuntimeStatus::Ready);
 }
+
+#[test]
+fn core_updates_previous_position_before_moving_player() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x27),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!((player.previous_x, player.previous_y), (12, 24));
+    assert!(player.x > player.previous_x);
+}

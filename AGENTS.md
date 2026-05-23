@@ -32,7 +32,7 @@ Read these files before making structural or workflow decisions:
 - `samples/README.md`
 - `vendor/README.md`
 
-Do not treat repository-stored implementation plans as a source of truth. Keep the repo aligned through current specs, notes, and actual repository contents.
+Do not treat implementation plans as a source of truth. Keep the repo aligned through current specs, notes, and actual repository contents. Local plan files may be created under `docs/superpowers/plans/` to coordinate work, but they are working artifacts and do not need to be submitted with code changes.
 
 ## Repository Layout
 
@@ -196,7 +196,7 @@ Required behavior:
 - if an older document is no longer current, mark it clearly as `historical` or `superseded`, or remove it if it no longer provides useful context
 - treat `README.md`, `AGENTS.md`, and `docs/notes/runtime-wasm-gap-analysis.md` as high-priority always-current docs
 - for parser, runtime, or package-contract changes, check whether `README.md` and the relevant `docs/notes/*` files also need updates
-- do not accumulate implementation plan files in the repo; preserve lasting rationale in current specs or notes instead
+- implementation plan files under `docs/superpowers/plans/` may be used as local working artifacts, but they should not be treated as required commit contents; preserve lasting rationale in current specs or notes instead
 
 ## Debugging Notes
 

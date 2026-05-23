@@ -380,6 +380,73 @@ pub(super) fn add_keyboard_block(
     );
 }
 
+pub(super) fn add_keyboard_press_block(
+    package: &mut RuntimePackage,
+    key: u8,
+    statements: Vec<LoweredLogicStatement>,
+) {
+    let key_name = if (key as char).is_ascii_alphanumeric() {
+        (key as char).to_ascii_lowercase().to_string()
+    } else {
+        format!("0x{:02x}", key)
+    };
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type: 9,
+        sub_event: key as u32,
+        event_tag: format!("keypress:{key_name}"),
+        block_id: format!("object:0:event:9:{key}"),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        package,
+        format!("object:0:event:9:{key}"),
+        statements,
+    );
+}
+
+pub(super) fn add_keyboard_release_block(
+    package: &mut RuntimePackage,
+    key: u8,
+    statements: Vec<LoweredLogicStatement>,
+) {
+    let key_name = if (key as char).is_ascii_alphanumeric() {
+        (key as char).to_ascii_lowercase().to_string()
+    } else {
+        format!("0x{:02x}", key)
+    };
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type: 10,
+        sub_event: key as u32,
+        event_tag: format!("keyrelease:{key_name}"),
+        block_id: format!("object:0:event:10:{key}"),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        package,
+        format!("object:0:event:10:{key}"),
+        statements,
+    );
+}
+
+pub(super) fn add_collision_block(
+    package: &mut RuntimePackage,
+    target_object_id: usize,
+    statements: Vec<LoweredLogicStatement>,
+) {
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type: 4,
+        sub_event: target_object_id as u32,
+        event_tag: "collision".into(),
+        block_id: format!("object:0:event:4:{target_object_id}"),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        package,
+        format!("object:0:event:4:{target_object_id}"),
+        statements,
+    );
+}
+
 pub(super) fn add_alarm_block(
     package: &mut RuntimePackage,
     slot: u32,

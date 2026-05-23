@@ -1,7 +1,11 @@
 #[derive(Clone)]
 pub(crate) enum RuntimeEventSelector {
     Alarm(u32),
-    Keyboard(u16),
+    KeyboardHeld(u16),
+    KeyboardPressed(u16),
+    KeyboardReleased(u16),
+    #[cfg_attr(not(test), allow(dead_code))]
+    Collision { target_object_id: usize },
 }
 
 use crate::RuntimePackage;
@@ -11,22 +15,51 @@ pub(crate) fn object_event_block_ids(
     object_id: usize,
     selector: RuntimeEventSelector,
 ) -> Vec<String> {
-    let wanted = match selector {
-        RuntimeEventSelector::Alarm(slot) => format!("alarm:{slot}"),
-        RuntimeEventSelector::Keyboard(key) => {
-            format!("keyboard:{}", format_key_name(key))
-        }
+    let (event_type, sub_event, wanted) = match selector {
+        RuntimeEventSelector::Alarm(slot) => (2usize, slot, format!("alarm:{slot}")),
+        RuntimeEventSelector::KeyboardHeld(key) => (
+            5usize,
+            key as u32,
+            format!("keyboard:{}", format_key_name(key)),
+        ),
+        RuntimeEventSelector::KeyboardPressed(key) => (
+            9usize,
+            key as u32,
+            format!("keypress:{}", format_key_name(key)),
+        ),
+        RuntimeEventSelector::KeyboardReleased(key) => (
+            10usize,
+            key as u32,
+            format!("keyrelease:{}", format_key_name(key)),
+        ),
+        RuntimeEventSelector::Collision { target_object_id } => (
+            4usize,
+            target_object_id as u32,
+            "collision".to_string(),
+        ),
     };
 
-    package
-        .objects
-        .iter()
-        .find(|object| object.id == object_id)
-        .into_iter()
-        .flat_map(|object| object.events.iter())
-        .filter(|event| event.event_tag == wanted)
-        .map(|event| event.block_id.clone())
-        .collect()
+    let mut current_object_id = Some(object_id);
+    let mut block_ids = Vec::new();
+    while let Some(id) = current_object_id {
+        let Some(object) = package.objects.iter().find(|object| object.id == id) else {
+            break;
+        };
+
+        for event in &object.events {
+            if event.event_type == event_type && event.sub_event == sub_event && event.event_tag == wanted {
+                block_ids.push(event.block_id.clone());
+            }
+        }
+
+        if !block_ids.is_empty() {
+            break;
+        }
+
+        current_object_id = object.parent_index.try_into().ok();
+    }
+
+    block_ids
 }
 
 fn format_key_name(sub_event: u16) -> String {

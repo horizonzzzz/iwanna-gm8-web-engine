@@ -152,3 +152,40 @@ fn core_only_restarts_on_restart_press_edge() {
         .unwrap();
     assert!(player.x > 12);
 }
+
+#[test]
+fn core_reset_clears_previous_movement_and_input_effects() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x27),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    host.input.replace_button_states([(
+        RuntimeButton::Keyboard(0x52),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    )]);
+    core.tick(&mut host).unwrap();
+
+    host.input.clear_transitions();
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!((player.previous_x, player.previous_y), (12, 24));
+}

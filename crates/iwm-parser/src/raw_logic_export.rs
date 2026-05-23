@@ -1,3 +1,4 @@
+use crate::event_tags::normalize_event_tag;
 use crate::logic_export::{
     event_block_id, instance_creation_block_id, room_creation_block_id, take_action_args,
 };
@@ -124,25 +125,3 @@ fn raw_action(action: &CodeAction) -> RawCodeAction {
     }
 }
 
-fn normalize_event_tag(event_type: usize, sub_event: u32) -> String {
-    match event_type {
-        0 => "create".to_string(),
-        1 => "destroy".to_string(),
-        2 => format!("alarm:{sub_event}"),
-        3 => match sub_event {
-            0 => "step".to_string(),
-            1 => "step:begin".to_string(),
-            2 => "step:end".to_string(),
-            _ => format!("step:{sub_event}"),
-        },
-        4 => "collision".to_string(),
-        5 => format!("keyboard:0x{:02x}", sub_event as u8),
-        6 => format!("mouse:{sub_event}"),
-        7 => format!("other:{sub_event}"),
-        8 => "draw".to_string(),
-        9 => format!("keypress:{}", (sub_event as u8) as char),
-        10 => format!("keyrelease:{}", (sub_event as u8) as char),
-        11 => format!("trigger:{sub_event}"),
-        _ => format!("event:{event_type}-{sub_event}"),
-    }
-}

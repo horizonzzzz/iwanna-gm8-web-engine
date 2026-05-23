@@ -321,6 +321,10 @@ fn lower_expr(expr: &str) -> LoweredLogicExpr {
         return binary;
     }
 
+    if let Some(unary) = lower_unary_expr(expr) {
+        return unary;
+    }
+
     if let Some(call) = lower_call_expr(expr) {
         return call;
     }
@@ -416,9 +420,43 @@ fn lower_member_expr(expr: &str) -> Option<LoweredLogicExpr> {
     if left.is_empty() || right.is_empty() {
         return None;
     }
+    let target = lower_expr(left);
+    let member_target = match target {
+        LoweredLogicExpr::MemberAccess { .. } | LoweredLogicExpr::IndexAccess { .. } => target,
+        _ => target,
+    };
     Some(LoweredLogicExpr::MemberAccess {
-        target: Box::new(lower_expr(left)),
+        target: Box::new(member_target),
         member: right.to_string(),
+    })
+}
+
+fn lower_unary_expr(expr: &str) -> Option<LoweredLogicExpr> {
+    let expr = expr.trim();
+    let (op, rest) = if let Some(rest) = expr.strip_prefix('!') {
+        ("!", rest)
+    } else if let Some(rest) = expr.strip_prefix('-') {
+        if rest.starts_with('-') {
+            return None;
+        }
+        ("-", rest)
+    } else if let Some(rest) = expr.strip_prefix('+') {
+        if rest.starts_with('+') {
+            return None;
+        }
+        ("+", rest)
+    } else {
+        return None;
+    };
+
+    let child = rest.trim();
+    if child.is_empty() {
+        return None;
+    }
+
+    Some(LoweredLogicExpr::UnaryExpr {
+        op: op.to_string(),
+        child: Box::new(lower_expr(child)),
     })
 }
 
@@ -775,6 +813,7 @@ fn find_top_level_dot(source: &str) -> Option<usize> {
     let mut paren_depth = 0usize;
     let mut bracket_depth = 0usize;
     let mut brace_depth = 0usize;
+    let mut last_dot = None;
 
     for (index, ch) in source.char_indices() {
         match ch {
@@ -784,10 +823,10 @@ fn find_top_level_dot(source: &str) -> Option<usize> {
             ']' => bracket_depth = bracket_depth.saturating_sub(1),
             '{' => brace_depth += 1,
             '}' => brace_depth = brace_depth.saturating_sub(1),
-            '.' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => return Some(index),
+            '.' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => last_dot = Some(index),
             _ => {}
         }
     }
 
-    None
+    last_dot
 }

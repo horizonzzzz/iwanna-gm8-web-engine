@@ -232,6 +232,10 @@ pub enum LoweredLogicExpr {
     LiteralNumber(f64),
     LiteralBool(bool),
     LiteralText(String),
+    UnaryExpr {
+        op: String,
+        child: Box<LoweredLogicExpr>,
+    },
     Call {
         name: String,
         args: Vec<LoweredLogicExpr>,

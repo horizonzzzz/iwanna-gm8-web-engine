@@ -394,6 +394,15 @@ fn evaluate_expr(
         LoweredLogicExpr::LiteralNumber(number) => Some(RuntimeValue::Number(*number)),
         LoweredLogicExpr::LiteralBool(flag) => Some(RuntimeValue::Bool(*flag)),
         LoweredLogicExpr::LiteralText(text) => Some(RuntimeValue::Text(text.clone())),
+        LoweredLogicExpr::UnaryExpr { op, child } => {
+            let value = evaluate_expr(child, instance, globals)?;
+            match op.as_str() {
+                "-" => Some(RuntimeValue::Number(-as_number(&value)?)),
+                "+" => Some(RuntimeValue::Number(as_number(&value)?)),
+                "!" => Some(RuntimeValue::Bool(!is_truthy(Some(value)))),
+                _ => None,
+            }
+        }
         LoweredLogicExpr::Call { name, args } => match name.as_str() {
             "room_goto" => args
                 .first()

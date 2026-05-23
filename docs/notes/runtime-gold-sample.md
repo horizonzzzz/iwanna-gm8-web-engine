@@ -45,6 +45,7 @@ Important validation note:
 
 - because local sample inventories differ across machines, local gold-sample smoke should be treated as environment evidence, not as the only repository-level proof that a parser/runtime/package contract still holds
 - stable repository fixtures and package-contract validation should catch structural drift before gold-sample browser debugging is needed
+- the current runtime slice already covers alarm dispatch, held/press/release keyboard dispatch, and parent-aware event lookup, so the next gold-sample blockers should be judged against the remaining runtime gap rather than those already-covered slices
 
 ## Sample Audit
 
@@ -69,6 +70,7 @@ For `IWBT_Dife`, Phase 4 still needs to prove:
 - the runtime core boots the intended first playable room
 - the browser host can drive deterministic ticks
 - player movement and collision match the runtime-core semantic slice being implemented
+- broader collision dispatch and remaining room/lifecycle semantics still behave as expected now that keyboard and alarm slices are covered
 - at least one room transition works through the WASM path
 - diagnostics stay explicit when unsupported logic, externals, or host gaps are hit
 

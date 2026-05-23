@@ -66,4 +66,24 @@ mod tests {
         assert!(input.button_state(RuntimeButton::Keyboard(0x25)).pressed);
         assert!(!input.button_state(RuntimeButton::Keyboard(0x27)).pressed);
     }
+
+    #[test]
+    fn snapshot_input_host_clears_transitions_without_clearing_held_state() {
+        let mut input = SnapshotInputHost::default();
+        input.set_button_state(
+            RuntimeButton::Keyboard(0x20),
+            ButtonState {
+                pressed: true,
+                just_pressed: true,
+                just_released: true,
+            },
+        );
+
+        input.clear_transitions();
+
+        let state = input.button_state(RuntimeButton::Keyboard(0x20));
+        assert!(state.pressed);
+        assert!(!state.just_pressed);
+        assert!(!state.just_released);
+    }
 }

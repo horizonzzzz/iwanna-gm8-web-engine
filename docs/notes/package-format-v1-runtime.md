@@ -35,11 +35,11 @@ Included in this phase:
 - browser-ready background exports
 - audio file exports
 - normalized room instance placements with runtime categorization hints
-- normalized object event table with event tags for dispatch
+- normalized object event table with event tags and collision target ids for dispatch
 - logic envelope in `scripts.ir.json` with executable/source-only distinction
 - raw parser-owned GML preservation in `logic.raw.json`
 - structured parser-owned lowered logic in `logic.lowered.json` for the current IWanna-critical subset
-- the current lowered contract also preserves common comment stripping, `var` declarations, and `return` statements on the current critical path
+- the current lowered contract also preserves common comment stripping, `var` declarations, unary expressions, and `return` statements on the current critical path
 - control-flow heads in `logic.lowered.json` are represented as lowered expressions so the WASM bridge can deserialize them directly
 - runtime categorization: hazard, checkpoint, player-controlled hints
 
@@ -123,6 +123,7 @@ The current `iwm-runtime-web` bridge can now:
 - reset the runtime
 - switch rooms by room id
 - return formatted diagnostics
+- clear host edge bits after each tick so one-shot keyboard input does not repeat across bridge frames
 
 It does **not** yet provide:
 

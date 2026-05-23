@@ -10,9 +10,9 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 
 - The browser shell can load packages, boot the WASM bridge, tick, reset, select rooms, and show telemetry.
 - The parser now preserves raw logic in `logic.raw.json` and emits a structured lowered contract in `logic.lowered.json` for the current IWanna-critical subset.
-- The lowered parser contract now covers common comment stripping, `var` declarations, assignments, returns, calls, member/index access, and common control-flow heads on the current critical path.
-- The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, but it still does not execute general GM8 gameplay logic.
-- The browser-facing host path now treats one-shot controls such as jump/restart as host-boundary input edges; the next runtime blocker is deeper host extraction and headless bring-up, not expanding shell-side gameplay rules.
+- The lowered parser contract now covers common comment stripping, `var` declarations, assignments, returns, calls, member/index access, unary expressions, and common control-flow heads on the current critical path.
+- The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, and it now also dispatches alarm, held-key, key-press, and key-release slices with parent fallback lookup for event dispatch.
+- The browser-facing host path now treats one-shot controls such as jump/restart as host-boundary input edges and clears edge bits after each tick; the next runtime blocker is broader OpenGMK semantic coverage, not expanding shell-side gameplay rules.
 
 Practical parser note:
 
@@ -23,6 +23,7 @@ Practical contract note:
 
 - runtime progress still depends on cross-file package integrity, so parser/runtime/web work should treat identity/reference validation as a first-class prerequisite rather than as browser-only debugging
 - recent regressions showed that unresolved package references such as sparse `object_id` handling can look like rendering bugs even when the real fault is contract consumption drift
+- event dispatch now also depends on preserving `parent_index` as a runtime lookup path rather than assuming dense object arrays imply direct ownership
 
 ## Route Decision
 
@@ -98,10 +99,13 @@ Current input handling already has a partial edge-triggered basis for `jump` and
 
 Missing pieces include:
 
-- `just_pressed` and `just_released`
-- `Keyboard` vs `Key Press`
 - mouse click and hover events
-- one-shot key press behavior instead of pure level-triggered input
+- one-shot key press behavior for the broader key map instead of only the browser shell's current subset
+
+Current status:
+
+- held, press, and release dispatch now exists for the current runtime core keyboard slice
+- the remaining gap is broader GM8 input coverage beyond the shell/runtime buttons currently wired in the bridge
 
 ### 6. Lifecycle Event Chain
 
@@ -114,13 +118,13 @@ Missing pieces include:
 - `instance_create()` -> `Create`
 - per-frame `Step`
 - `Draw event` logic execution
-- collision event dispatch
+- collision event dispatch beyond selector and lookup coverage
 - `instance_destroy()` -> `Destroy`
 - `Clean Up`
 - room creation code execution
 - instance creation code execution
 
-For current planning purposes, `keyboard`, `collision`, and `alarm` handling should be treated as part of the first IWanna-critical lifecycle slice rather than as optional polish.
+For current planning purposes, `keyboard`, `collision`, and `alarm` handling should be treated as part of the first IWanna-critical lifecycle slice rather than as optional polish. Keyboard and alarm dispatch now exist in the current runtime slice; collision lookup is wired for selection and test coverage, but full runtime collision dispatch remains deferred.
 
 ## Important Missing
 
@@ -163,7 +167,7 @@ Missing pieces include:
 
 Parent/child object inheritance is not fully modeled.
 
-The parser already preserves `parent_index` in object definitions, but runtime inheritance semantics do not use that data yet.
+The parser already preserves `parent_index` in object definitions, and runtime event lookup now follows the parent chain for matching event blocks. Full inheritance semantics still do not use that data for variable defaults or broader object behavior.
 
 Missing pieces include:
 
@@ -184,7 +188,7 @@ Missing pieces include:
 
 ### 12. Alarm
 
-Alarm logic is not yet implemented.
+Alarm logic now exists in the current runtime slice for countdown-triggered event dispatch, but broader semantic parity is still incomplete.
 
 This is not always a first-room blocker, but many fangame traps, delayed spikes, and boss patterns depend on it. Treat it as an important missing feature and promote it to necessary if the active gold sample depends on alarms on the first playable path.
 
@@ -206,9 +210,9 @@ These are real GM8 features, but they do not need to block the first playable ru
 
 For IWanna-style games, the runtime is only meaningfully playable when it can do all of the following:
 
-- execute GML
+- execute GML for the current lowered subset
 - store variables
-- dispatch Create / Step / Collision / Destroy
+- dispatch Create / Step / Collision / Destroy and alarm / key-edge slices
 - react to keyboard edges
 - animate sprites
 - play audio

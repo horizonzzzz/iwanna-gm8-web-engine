@@ -151,13 +151,6 @@ impl RuntimeCore {
             );
         }
 
-        if restart.just_pressed {
-            self.pending_room_reset = true;
-            self.apply_pending_room_change()?;
-            self.render(host)?;
-            return Ok(());
-        }
-
         self.apply_pending_room_change()?;
 
         let Some(room) = self.current_room.as_ref() else {
@@ -184,13 +177,35 @@ impl RuntimeCore {
         // Dispatch alarm events (countdown alarm state)
         self.process_alarm_countdowns(host)?;
 
-        // Dispatch keyboard events for any currently pressed key exposed by the host.
+        // Dispatch held keyboard events for any currently pressed key exposed by the host.
         for (button, state) in host.active_buttons() {
             if let RuntimeButton::Keyboard(key) = button {
                 if state.pressed {
-                    self.execute_event_blocks(host, RuntimeEventSelector::Keyboard(key))?;
+                    self.execute_event_blocks(host, RuntimeEventSelector::KeyboardHeld(key))?;
                 }
             }
+        }
+
+        // Dispatch key press events.
+        for (button, state) in host.active_buttons() {
+            if let RuntimeButton::Keyboard(key) = button {
+                if state.just_pressed {
+                    self.execute_event_blocks(host, RuntimeEventSelector::KeyboardPressed(key))?;
+                }
+            }
+        }
+
+        // Dispatch key release events.
+        for (button, state) in host.active_buttons() {
+            if let RuntimeButton::Keyboard(key) = button {
+                if state.just_released {
+                    self.execute_event_blocks(host, RuntimeEventSelector::KeyboardReleased(key))?;
+                }
+            }
+        }
+
+        if restart.just_pressed {
+            self.pending_room_reset = true;
         }
 
         if self.pending_room_reset || self.pending_room_transition.is_some() {
