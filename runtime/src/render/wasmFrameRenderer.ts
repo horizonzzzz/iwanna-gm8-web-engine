@@ -75,8 +75,12 @@ export async function renderWasmFrame(
   basePath: string,
   cache: ResourceCache = new ResourceCache()
 ): Promise<void> {
-  canvas.width = frame.width;
-  canvas.height = frame.height;
+  if (canvas.width !== frame.width) {
+    canvas.width = frame.width;
+  }
+  if (canvas.height !== frame.height) {
+    canvas.height = frame.height;
+  }
   const context = canvas.getContext('2d');
   if (!context) {
     throw new Error('Canvas 2d context unavailable');

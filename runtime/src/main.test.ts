@@ -588,6 +588,99 @@ describe('main runtime shell', () => {
     expect(collectText(doc.body)).toContain('Tick: 0');
   });
 
+  it('reuses the same render cache and keeps runtime diagnostics bounded while auto-running', async () => {
+    const loadPackage = vi.fn(async () => samplePackage);
+    const renderStaticRoom = vi.fn(async () => undefined);
+    const scheduler = new FakeIntervalScheduler();
+    const renderWasmFrame = vi.fn(async () => undefined);
+    let currentTick = 0;
+    let currentDiagnostics = ['boot ok'];
+    const wasmBridge: WasmRuntimeBridge = {
+      backend: 'opengmk-wasm',
+      boot: vi.fn(async () => ({
+        tick: currentTick,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: currentDiagnostics,
+        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+      })),
+      snapshot: vi.fn(async () => ({
+        tick: currentTick,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: currentDiagnostics,
+        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+      })),
+      frame: vi.fn(async () => ({
+        tick: currentTick,
+        roomId: 0,
+        width: 320,
+        height: 240,
+        commands: [{ kind: 'present' as const }]
+      })),
+      setInput: vi.fn(async () => ({
+        tick: currentTick,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: currentDiagnostics,
+        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+      })),
+      tick: vi.fn(async () => ({
+        tick: ++currentTick,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: (currentDiagnostics = Array.from({ length: currentTick }, (_, index) => `diag-${index + 1}`)),
+        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+      })),
+      reset: vi.fn(async () => ({
+        tick: (currentTick = 0),
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: (currentDiagnostics = ['reset ok']),
+        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+      })),
+      selectRoom: vi.fn(async () => ({
+        tick: currentTick,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: currentDiagnostics,
+        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+      })),
+      diagnostics: vi.fn(async () => currentDiagnostics)
+    };
+
+    const root = doc.createElement('div');
+    doc.body.append(root);
+
+    createRuntimeShell(root as unknown as HTMLElement, {
+      loadPackage,
+      renderStaticRoom,
+      renderWasmFrame,
+      loadWasmBridge: vi.fn(async () => wasmBridge),
+      setInterval: scheduler.setIntervalFn,
+      clearInterval: scheduler.clearIntervalFn
+    });
+
+    doc.querySelectorAll<FakeElement>('button')[0]?.click();
+    await flushAsyncWork();
+
+    for (let index = 0; index < 12; index += 1) {
+      await scheduler.fireAll();
+    }
+
+    expect(renderWasmFrame).toHaveBeenCalledTimes(13);
+    const cacheReferences = renderWasmFrame.mock.calls.map((call) => call[4]);
+    expect(new Set(cacheReferences).size).toBe(1);
+
+    const runtimeDiagnosticsText = doc.querySelector<FakeElement>('#runtime-diagnostics')?.textContent ?? '';
+    expect(runtimeDiagnosticsText).toContain('diag-5');
+    expect(runtimeDiagnosticsText).toContain('diag-12');
+    expect(runtimeDiagnosticsText).not.toContain('diag-4 |');
+
+    const diagnosticsPre = doc.querySelector<FakeElement>('pre');
+    expect((diagnosticsPre?.textContent ?? '').length).toBeLessThan(200);
+  });
+
   it('falls back to the static room viewer when the wasm runtime cannot boot', async () => {
     const loadPackage = vi.fn(async () => samplePackage);
     const renderStaticRoom = vi.fn(async () => undefined);

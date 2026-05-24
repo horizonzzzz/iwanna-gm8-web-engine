@@ -1,5 +1,5 @@
 import { loadPackage } from '../loadPackage';
-import { makeBackgroundPathMap, makeSpriteFrameMap } from '../render/resourceCache';
+import { makeBackgroundPathMap, makeSpriteFrameMap, ResourceCache } from '../render/resourceCache';
 import { renderStaticRoom } from '../render/staticRoomRenderer';
 import { renderWasmFrame } from '../render/wasmFrameRenderer';
 import { renderManifestSummary, renderObjectsSlice, renderRoomsSlice, renderScriptsSlice } from './inspectors';
@@ -33,6 +33,7 @@ const defaultDependencies: ShellDependencies = {
 };
 
 const AUTO_TICK_MS = 1000 / 60;
+const MAX_VISIBLE_DIAGNOSTICS = 8;
 
 type ShellElements = {
   input: HTMLInputElement;
@@ -224,7 +225,7 @@ function renderTextDiagnostics(doc: Document, root: HTMLElement, diagnostics: st
   const heading = doc.createElement('h3');
   heading.textContent = 'Diagnostics';
   const pre = doc.createElement('pre');
-  pre.textContent = JSON.stringify(diagnostics, null, 2);
+  pre.textContent = JSON.stringify(diagnostics.slice(-MAX_VISIBLE_DIAGNOSTICS), null, 2);
   section.append(heading, pre);
   root.append(section);
 }
@@ -259,8 +260,9 @@ function renderRuntimeTelemetry(
 
   const diagnostics = doc.createElement('p');
   diagnostics.id = 'runtime-diagnostics';
-  diagnostics.textContent = snapshot.diagnostics.length > 0
-    ? `Diagnostics: ${snapshot.diagnostics.join(' | ')}`
+  const visibleDiagnostics = snapshot.diagnostics.slice(-MAX_VISIBLE_DIAGNOSTICS);
+  diagnostics.textContent = visibleDiagnostics.length > 0
+    ? `Diagnostics: ${visibleDiagnostics.join(' | ')}`
     : 'Diagnostics: none';
 
   root.append(room, tick, player, diagnostics);
@@ -333,6 +335,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
   let autoTickHandle: IntervalHandle | null = null;
   let autoTickRunning = false;
   let autoTickInFlight = false;
+  const renderCache = new ResourceCache();
 
   const stopAutoTick = (): void => {
     if (autoTickHandle != null && resolved.clearInterval) {
@@ -370,7 +373,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     if (activeBackend.kind === 'wasm') {
       const snapshot = await activeBackend.bridge.snapshot();
       const frame = await activeBackend.bridge.frame();
-      await resolved.renderWasmFrame(canvas, frame, loadedPackage.resources, input.value);
+      await resolved.renderWasmFrame(canvas, frame, loadedPackage.resources, input.value, renderCache);
       renderTextDiagnostics(doc, diagnostics, snapshot.diagnostics);
       renderRuntimeTelemetry(
         doc,
@@ -415,7 +418,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
 
     activeBackend.session.setInputState(keyboardState);
     const { snapshot, frame } = await activeBackend.session.stepOnce();
-    await resolved.renderWasmFrame(canvas, frame, loadedPackage.resources, input.value);
+    await resolved.renderWasmFrame(canvas, frame, loadedPackage.resources, input.value, renderCache);
     renderTextDiagnostics(doc, diagnostics, snapshot.diagnostics);
     renderRuntimeTelemetry(
       doc,

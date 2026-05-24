@@ -56,6 +56,24 @@ fn core_records_idle_diagnostics_in_the_host_sink() {
 }
 
 #[test]
+fn core_keeps_runtime_diagnostics_bounded_over_many_idle_ticks() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+
+    for _ in 0..300 {
+        core.tick(&mut host).unwrap();
+    }
+
+    assert!(core.diagnostics().len() <= 64);
+    assert!(host.diagnostics.diagnostics.len() <= 64);
+    assert!(core
+        .diagnostics()
+        .last()
+        .map(|diagnostic| diagnostic.message.contains("tick 300"))
+        .unwrap_or(false));
+}
+
+#[test]
 fn core_resets_player_back_to_spawn() {
     let mut core = RuntimeCore::load(sample_package()).unwrap();
     let mut host = host();

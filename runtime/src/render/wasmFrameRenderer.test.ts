@@ -134,4 +134,59 @@ describe('renderWasmFrame', () => {
     expect(fillRect).toHaveBeenNthCalledWith(2, 30, 40, 8, 9);
     expect(restore).toHaveBeenCalledTimes(1);
   });
+
+  it('does not reset canvas dimensions when the frame size is unchanged', async () => {
+    const clearRect = vi.fn();
+    const fillRect = vi.fn();
+    const drawImage = vi.fn();
+    const context = {
+      clearRect,
+      fillRect,
+      drawImage,
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      scale: vi.fn(),
+      fillStyle: '',
+    };
+
+    let width = 320;
+    let height = 240;
+    let widthSetCount = 0;
+    let heightSetCount = 0;
+    const canvas = {
+      get width() {
+        return width;
+      },
+      set width(value: number) {
+        widthSetCount++;
+        width = value;
+      },
+      get height() {
+        return height;
+      },
+      set height(value: number) {
+        heightSetCount++;
+        height = value;
+      },
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    const backgroundImage = { id: 'bg', width: 320, height: 240 } as unknown as HTMLImageElement;
+    const spriteImage = { id: 'sprite', width: 30, height: 40 } as unknown as HTMLImageElement;
+    const cache = {
+      getImage: vi.fn(async (src: string) => src.includes('backgrounds') ? backgroundImage : spriteImage),
+    };
+
+    await renderWasmFrame(canvas, sampleFrame, sampleResources, '/packages/sample', cache as never);
+    await renderWasmFrame(canvas, sampleFrame, sampleResources, '/packages/sample', cache as never);
+
+    expect(width).toBe(320);
+    expect(height).toBe(240);
+    expect(widthSetCount).toBe(0);
+    expect(heightSetCount).toBe(0);
+    expect(clearRect).toHaveBeenCalledTimes(2);
+    expect(fillRect).toHaveBeenNthCalledWith(1, 0, 0, 320, 240);
+  });
 });

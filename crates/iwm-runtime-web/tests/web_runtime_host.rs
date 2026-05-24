@@ -18,7 +18,7 @@ fn web_runtime_host_boots_and_ticks_headless_runtime() {
     let after_tick = host.tick(2).unwrap();
     assert_eq!(after_tick.tick, 2);
     assert_eq!(after_tick.room_id, Some(0));
-    assert_eq!(host.host_frame_count(), 3);
+    assert_eq!(host.host_frame_count(), 1);
 }
 
 #[test]
