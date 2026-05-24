@@ -31,13 +31,19 @@ export class WasmRuntimeSession {
 
   setInputState(
     snapshot: Pick<WasmRuntimeInputState, 'left' | 'right' | 'jump' | 'restart'>
-      & { keysHeld?: number[] }
+      & { keysHeld?: number[]; keysPressed?: number[]; keysReleased?: number[] }
   ): void {
     const jumpPressed = snapshot.jump && !this.previousJump;
     const jumpReleased = !snapshot.jump && this.previousJump;
     const heldKeys = new Set(snapshot.keysHeld ?? []);
-    const keysPressed = [...heldKeys].filter((key) => !this.previousKeys.has(key));
-    const keysReleased = [...this.previousKeys].filter((key) => !heldKeys.has(key));
+    const keysPressed = new Set([
+      ...[...heldKeys].filter((key) => !this.previousKeys.has(key)),
+      ...(snapshot.keysPressed ?? [])
+    ]);
+    const keysReleased = new Set([
+      ...[...this.previousKeys].filter((key) => !heldKeys.has(key)),
+      ...(snapshot.keysReleased ?? [])
+    ]);
 
     if (jumpPressed) {
       this.pendingJumpPressed = true;

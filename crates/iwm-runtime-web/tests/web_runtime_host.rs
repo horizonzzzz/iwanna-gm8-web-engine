@@ -132,12 +132,12 @@ fn web_runtime_host_snapshot_exposes_jump_trace_after_jump_press() {
     host.set_input(WebInputState {
         left: false,
         right: false,
-        jump: true,
-        jump_pressed: true,
+        jump: false,
+        jump_pressed: false,
         jump_released: false,
         restart: false,
-        keys_held: vec![],
-        keys_pressed: vec![],
+        keys_held: vec![0x20],
+        keys_pressed: vec![0x20],
         keys_released: vec![],
     });
 
@@ -220,6 +220,51 @@ fn web_runtime_host_preserves_raw_key_edges_when_semantic_jump_is_false() {
         .as_ref()
         .map(|player| player.jump.cut_applied)
         .unwrap_or(false));
+}
+
+#[test]
+fn web_runtime_host_does_not_map_semantic_jump_to_space_without_raw_space_input() {
+    let mut package = sample_package();
+    package.rooms[0].creation_block_id = Some("room:7:create".into());
+    package.lowered_logic = Some(iwm_runtime_core::LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![iwm_runtime_core::LoweredLogicEntry {
+            block_id: "room:7:create".into(),
+            statements: vec![iwm_runtime_core::LoweredLogicStatement::Assignment {
+                target: iwm_runtime_core::LoweredLogicExpr::MemberAccess {
+                    target: Box::new(iwm_runtime_core::LoweredLogicExpr::Identifier("global".into())),
+                    member: "jumpbutton".into(),
+                },
+                value: iwm_runtime_core::LoweredLogicExpr::LiteralNumber(0x10 as f64),
+            }],
+        }],
+    });
+
+    let mut host = WebRuntimeHost::new();
+    host.boot(package).unwrap();
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: true,
+        jump_pressed: true,
+        jump_released: false,
+        restart: false,
+        keys_held: vec![],
+        keys_pressed: vec![],
+        keys_released: vec![],
+    });
+
+    let after_tick = host.tick(1).unwrap();
+    assert_eq!(
+        after_tick.player.as_ref().map(|player| (
+            player.jump.grounded,
+            player.jump.active,
+            player.jump.hold_frames,
+            player.jump.cut_applied
+        )),
+        Some((true, false, 0, false))
+    );
 }
 
 #[test]

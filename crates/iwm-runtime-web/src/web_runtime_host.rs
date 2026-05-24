@@ -15,7 +15,6 @@ pub struct WebRuntimeHost {
     package: Option<RuntimePackage>,
     previous_left: bool,
     previous_right: bool,
-    previous_jump: bool,
     previous_restart: bool,
 }
 
@@ -27,7 +26,6 @@ impl WebRuntimeHost {
             package: None,
             previous_left: false,
             previous_right: false,
-            previous_jump: false,
             previous_restart: false,
         }
     }
@@ -42,7 +40,6 @@ impl WebRuntimeHost {
         self.host = host;
         self.previous_left = false;
         self.previous_right = false;
-        self.previous_jump = false;
         self.previous_restart = false;
         Ok(snapshot)
     }
@@ -58,8 +55,6 @@ impl WebRuntimeHost {
         let left_just_released = !input.left && self.previous_left;
         let right_just_pressed = input.right && !self.previous_right;
         let right_just_released = !input.right && self.previous_right;
-        let jump_just_pressed = input.jump && !self.previous_jump;
-        let jump_just_released = !input.jump && self.previous_jump;
         let restart_just_pressed = input.restart && !self.previous_restart;
         let restart_just_released = !input.restart && self.previous_restart;
         let mut states = input
@@ -120,15 +115,6 @@ impl WebRuntimeHost {
         );
         merge_semantic_button_state(
             &mut states,
-            0x20,
-            ButtonState {
-                pressed: input.jump,
-                just_pressed: jump_just_pressed || input.jump_pressed,
-                just_released: jump_just_released || input.jump_released,
-            },
-        );
-        merge_semantic_button_state(
-            &mut states,
             0x52,
             ButtonState {
                 pressed: input.restart,
@@ -140,7 +126,6 @@ impl WebRuntimeHost {
         self.host.input.replace_button_states(states);
         self.previous_left = input.left;
         self.previous_right = input.right;
-        self.previous_jump = input.jump;
         self.previous_restart = input.restart;
     }
 
@@ -173,7 +158,6 @@ impl WebRuntimeHost {
         self.previous_restart = false;
         self.previous_left = false;
         self.previous_right = false;
-        self.previous_jump = false;
         Ok(snapshot)
     }
 

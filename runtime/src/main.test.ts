@@ -618,6 +618,313 @@ describe('main runtime shell', () => {
     expect(collectText(doc.body)).toContain('Tick: 0');
   });
 
+  it('routes shift as a raw key without mapping w or arrow-up into semantic jump', async () => {
+    const loadPackage = vi.fn(async () => samplePackage);
+    const renderStaticRoom = vi.fn(async () => undefined);
+    const scheduler = new FakeIntervalScheduler();
+    const renderWasmFrame = vi.fn(async () => undefined);
+    const wasmBridge: WasmRuntimeBridge = {
+      backend: 'opengmk-wasm',
+      boot: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      snapshot: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      frame: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        width: 320,
+        height: 240,
+        commands: [{ kind: 'clear', colour: [0, 0, 0, 255] }, { kind: 'present' }]
+      })),
+      setInput: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      tick: vi.fn(async () => ({
+        tick: 1,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      reset: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      selectRoom: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      diagnostics: vi.fn(async () => [])
+    };
+
+    const root = doc.createElement('div');
+    doc.body.append(root);
+
+    createRuntimeShell(root as unknown as HTMLElement, {
+      loadPackage,
+      renderStaticRoom,
+      renderWasmFrame,
+      loadWasmBridge: vi.fn(async () => wasmBridge),
+      setInterval: scheduler.setIntervalFn,
+      clearInterval: scheduler.clearIntervalFn
+    });
+
+    doc.querySelectorAll<FakeElement>('button')[0]?.click();
+    await flushAsyncWork();
+
+    doc.dispatchKeyboardEvent('keydown', 'Shift');
+    await scheduler.fireAll();
+    expect(wasmBridge.setInput).toHaveBeenLastCalledWith({
+      left: false,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false,
+      keysHeld: [0x10],
+      keysPressed: [0x10],
+      keysReleased: []
+    });
+
+    doc.dispatchKeyboardEvent('keyup', 'Shift');
+    await scheduler.fireAll();
+    expect(wasmBridge.setInput).toHaveBeenLastCalledWith({
+      left: false,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false,
+      keysHeld: [],
+      keysPressed: [],
+      keysReleased: [0x10]
+    });
+
+    doc.dispatchKeyboardEvent('keydown', 'W');
+    await scheduler.fireAll();
+    expect(wasmBridge.setInput).toHaveBeenLastCalledWith({
+      left: false,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false,
+      keysHeld: [0x57],
+      keysPressed: [0x57],
+      keysReleased: []
+    });
+
+    doc.dispatchKeyboardEvent('keyup', 'W');
+    doc.dispatchKeyboardEvent('keydown', 'ArrowUp');
+    await scheduler.fireAll();
+    expect(wasmBridge.setInput).toHaveBeenLastCalledWith({
+      left: false,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false,
+      keysHeld: [0x26],
+      keysPressed: [0x26],
+      keysReleased: [0x57]
+    });
+  });
+
+  it('preserves a very short shift tap that begins and ends before the next tick', async () => {
+    const loadPackage = vi.fn(async () => samplePackage);
+    const renderStaticRoom = vi.fn(async () => undefined);
+    const scheduler = new FakeIntervalScheduler();
+    const renderWasmFrame = vi.fn(async () => undefined);
+    const wasmBridge: WasmRuntimeBridge = {
+      backend: 'opengmk-wasm',
+      boot: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      snapshot: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      frame: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        width: 320,
+        height: 240,
+        commands: [{ kind: 'clear', colour: [0, 0, 0, 255] }, { kind: 'present' }]
+      })),
+      setInput: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      tick: vi.fn(async () => ({
+        tick: 1,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      reset: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      selectRoom: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
+      })),
+      diagnostics: vi.fn(async () => [])
+    };
+
+    const root = doc.createElement('div');
+    doc.body.append(root);
+
+    createRuntimeShell(root as unknown as HTMLElement, {
+      loadPackage,
+      renderStaticRoom,
+      renderWasmFrame,
+      loadWasmBridge: vi.fn(async () => wasmBridge),
+      setInterval: scheduler.setIntervalFn,
+      clearInterval: scheduler.clearIntervalFn
+    });
+
+    doc.querySelectorAll<FakeElement>('button')[0]?.click();
+    await flushAsyncWork();
+
+    doc.dispatchKeyboardEvent('keydown', 'Shift');
+    doc.dispatchKeyboardEvent('keyup', 'Shift');
+    await scheduler.fireAll();
+
+    expect(wasmBridge.setInput).toHaveBeenLastCalledWith({
+      left: false,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false,
+      keysHeld: [],
+      keysPressed: [0x10],
+      keysReleased: [0x10]
+    });
+  });
+
   it('reuses the same render cache and keeps runtime diagnostics bounded while auto-running', async () => {
     const loadPackage = vi.fn(async () => samplePackage);
     const renderStaticRoom = vi.fn(async () => undefined);

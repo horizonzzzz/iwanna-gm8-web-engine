@@ -17,6 +17,7 @@ impl RuntimeCore {
         left_pressed: bool,
         right_pressed: bool,
         jump: ButtonState,
+        enable_builtin_jump: bool,
     ) -> Result<(), RuntimeCoreError> {
         let Some(room) = self.current_room.as_ref() else {
             return Err(RuntimeCoreError::NoRooms);
@@ -109,25 +110,27 @@ impl RuntimeCore {
         );
         player.jump.grounded_last_tick = standing_on_solid;
 
-        if jump.just_pressed && standing_on_solid {
-            player.jump.active = true;
-            player.jump.hold_frames = 0;
-            player.jump.cut_applied = false;
-            player.vspeed = -jump_speed;
-        }
+        if enable_builtin_jump {
+            if jump.just_pressed && standing_on_solid {
+                player.jump.active = true;
+                player.jump.hold_frames = 0;
+                player.jump.cut_applied = false;
+                player.vspeed = -jump_speed;
+            }
 
-        if player.jump.active
-            && jump.pressed
-            && player.jump.hold_frames < jump_hold_frames
-            && player.vspeed < 0.0
-        {
-            player.vspeed = player.vspeed.min(-jump_speed);
-            player.jump.hold_frames += 1;
-        }
+            if player.jump.active
+                && jump.pressed
+                && player.jump.hold_frames < jump_hold_frames
+                && player.vspeed < 0.0
+            {
+                player.vspeed = player.vspeed.min(-jump_speed);
+                player.jump.hold_frames += 1;
+            }
 
-        if jump.just_released && player.jump.active && player.vspeed < 0.0 && !player.jump.cut_applied {
-            player.vspeed = player.vspeed.max(-jump_cut_speed);
-            player.jump.cut_applied = true;
+            if jump.just_released && player.jump.active && player.vspeed < 0.0 && !player.jump.cut_applied {
+                player.vspeed = player.vspeed.max(-jump_cut_speed);
+                player.jump.cut_applied = true;
+            }
         }
 
         player.vspeed = (player.vspeed + gravity).min(max_fall_speed);

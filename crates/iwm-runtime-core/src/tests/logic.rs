@@ -931,3 +931,75 @@ fn core_evaluates_file_exists_conditions_against_host_files() {
         .unwrap();
     assert_eq!(player.vars.get("loaded_temp"), Some(&RuntimeValue::Bool(true)));
 }
+
+#[test]
+fn core_skips_builtin_jump_when_step_scripts_own_jump_queries() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "jumpbutton".into(),
+            },
+            value: LoweredLogicExpr::LiteralNumber(0x10 as f64),
+        },
+        LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::Call {
+                name: "keyboard_check_pressed".into(),
+                args: vec![LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                    member: "jumpbutton".into(),
+                }],
+            },
+            then_branch: vec![LoweredLogicStatement::FunctionCall {
+                name: "playerJump".into(),
+                args: vec![],
+            }],
+            else_branch: vec![],
+        }],
+    );
+    add_script_block(
+        &mut package,
+        11,
+        "playerJump",
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("jump_pressed_seen".into()),
+                value: LoweredLogicExpr::LiteralBool(true),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("vspeed".into()),
+                value: LoweredLogicExpr::LiteralNumber(-3.0),
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("jump_pressed_seen"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert!(player.vspeed < 0.0);
+    assert!(player.vspeed > -8.0);
+    assert_eq!(player.jump.active, false);
+}

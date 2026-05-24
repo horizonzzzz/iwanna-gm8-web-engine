@@ -285,7 +285,7 @@ function renderRuntimeRoom(
   return renderStatic(canvas, room, pkg.objects, backgroundPaths, spritePaths);
 }
 
-function keyToAction(key: string): 'left' | 'right' | 'jump' | 'restart' | null {
+function keyToAction(key: string): 'left' | 'right' | 'restart' | null {
   switch (key) {
     case 'ArrowLeft':
     case 'a':
@@ -295,12 +295,6 @@ function keyToAction(key: string): 'left' | 'right' | 'jump' | 'restart' | null 
     case 'd':
     case 'D':
       return 'right';
-    case ' ':
-    case 'Spacebar':
-    case 'ArrowUp':
-    case 'w':
-    case 'W':
-      return 'jump';
     case 'r':
     case 'R':
       return 'restart';
@@ -361,6 +355,8 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     restart: false
   };
   const heldVirtualKeys = new Set<number>();
+  const pendingPressedVirtualKeys = new Set<number>();
+  const pendingReleasedVirtualKeys = new Set<number>();
   let autoTickHandle: IntervalHandle | null = null;
   let autoTickRunning = false;
   let autoTickInFlight = false;
@@ -389,6 +385,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     const virtualKey = keyToVirtualKey(event.key);
     if (virtualKey != null) {
       heldVirtualKeys.add(virtualKey);
+      pendingPressedVirtualKeys.add(virtualKey);
     }
   });
 
@@ -400,6 +397,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     const virtualKey = keyToVirtualKey(event.key);
     if (virtualKey != null) {
       heldVirtualKeys.delete(virtualKey);
+      pendingReleasedVirtualKeys.add(virtualKey);
     }
   });
 
@@ -455,9 +453,13 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
 
     activeBackend.session.setInputState({
       ...keyboardState,
-      keysHeld: [...heldVirtualKeys]
+      keysHeld: [...heldVirtualKeys],
+      keysPressed: [...pendingPressedVirtualKeys],
+      keysReleased: [...pendingReleasedVirtualKeys]
     });
     const { snapshot, frame } = await activeBackend.session.stepOnce();
+    pendingPressedVirtualKeys.clear();
+    pendingReleasedVirtualKeys.clear();
     await resolved.renderWasmFrame(canvas, frame, loadedPackage.resources, input.value, renderCache);
     renderTextDiagnostics(doc, diagnostics, snapshot.diagnostics);
     renderRuntimeTelemetry(

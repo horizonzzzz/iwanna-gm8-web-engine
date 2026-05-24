@@ -186,15 +186,21 @@ impl RuntimeCore {
                 format!("room {} has no live instances", room.room_name),
             );
         } else {
-            let (interrupted, player_motion_changed) = self.execute_lowered_step_events(host)?;
-            if interrupted {
+            let step_result = self.execute_lowered_step_events(host)?;
+            if step_result.interrupted {
                 self.apply_pending_room_change()?;
                 self.render(host)?;
                 return Ok(());
             }
-            if !player_motion_changed {
+            if !step_result.player_motion_changed || step_result.player_jump_owned_by_script {
                 jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
-                self.step_player(host, left.pressed, right.pressed, jump)?;
+                self.step_player(
+                    host,
+                    left.pressed,
+                    right.pressed,
+                    jump,
+                    !step_result.player_jump_owned_by_script,
+                )?;
             }
         }
 

@@ -43,7 +43,7 @@ impl RuntimeCore {
     pub(crate) fn execute_lowered_step_events<H: RuntimeHost>(
         &mut self,
         host: &mut H,
-    ) -> Result<(bool, bool), RuntimeCoreError> {
+    ) -> Result<StepExecutionResult, RuntimeCoreError> {
         let Some(room) = self.current_room.as_ref() else {
             return Err(RuntimeCoreError::NoRooms);
         };
@@ -73,6 +73,7 @@ impl RuntimeCore {
             .collect::<Vec<_>>();
 
         let mut player_motion_changed = false;
+        let mut player_jump_owned_by_script = false;
 
         for (index, entries) in dispatches {
             let button_states = host
@@ -95,6 +96,13 @@ impl RuntimeCore {
             }
             let is_player = crate::helpers::is_player_instance(instance);
             let motion_before = (instance.x, instance.y, instance.hspeed, instance.vspeed);
+            if is_player
+                && entries
+                    .iter()
+                    .any(|entry| statements_reference_jump_queries(&entry.statements))
+            {
+                player_jump_owned_by_script = true;
+            }
             let known_files = sample_known_files(host);
 
             let eval_context = RuntimeEvalContext {
@@ -120,7 +128,11 @@ impl RuntimeCore {
                         Some(&eval_context),
                     );
                     if self.pending_room_reset || self.pending_room_transition.is_some() {
-                        return Ok((true, player_motion_changed));
+                        return Ok(StepExecutionResult {
+                            interrupted: true,
+                            player_motion_changed,
+                            player_jump_owned_by_script,
+                        });
                     }
                 }
             }
@@ -130,7 +142,11 @@ impl RuntimeCore {
             }
         }
 
-        Ok((false, player_motion_changed))
+        Ok(StepExecutionResult {
+            interrupted: false,
+            player_motion_changed,
+            player_jump_owned_by_script,
+        })
     }
 
     fn object_event_blocks_by_tag(&self, event_tag: &str) -> HashMap<usize, Vec<String>> {
@@ -367,6 +383,85 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
         },
         _ => {}
     }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StepExecutionResult {
+    pub interrupted: bool,
+    pub player_motion_changed: bool,
+    pub player_jump_owned_by_script: bool,
+}
+
+fn statements_reference_jump_queries(statements: &[LoweredLogicStatement]) -> bool {
+    statements
+        .iter()
+        .any(statement_references_jump_queries)
+}
+
+fn statement_references_jump_queries(statement: &LoweredLogicStatement) -> bool {
+    match statement {
+        LoweredLogicStatement::Assignment { value, .. } => expr_references_jump_queries(value),
+        LoweredLogicStatement::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            expr_references_jump_queries(condition)
+                || statements_reference_jump_queries(then_branch)
+                || statements_reference_jump_queries(else_branch)
+        }
+        LoweredLogicStatement::FunctionCall { name, args } => {
+            matches!(
+                name.as_str(),
+                "keyboard_check" | "keyboard_check_direct" | "keyboard_check_pressed" | "keyboard_check_released"
+            ) && args.iter().any(expr_is_global_jumpbutton)
+                || args.iter().any(expr_references_jump_queries)
+        }
+        LoweredLogicStatement::With { body, .. }
+        | LoweredLogicStatement::Repeat { body, .. }
+        | LoweredLogicStatement::While { body, .. }
+        | LoweredLogicStatement::For { body, .. } => statements_reference_jump_queries(body),
+        LoweredLogicStatement::Return { value } => value
+            .as_ref()
+            .map(expr_references_jump_queries)
+            .unwrap_or(false),
+        LoweredLogicStatement::VariableDeclaration { .. }
+        | LoweredLogicStatement::Raw { .. } => false,
+    }
+}
+
+fn expr_references_jump_queries(expr: &LoweredLogicExpr) -> bool {
+    match expr {
+        LoweredLogicExpr::Call { name, args } => {
+            (matches!(
+                name.as_str(),
+                "keyboard_check" | "keyboard_check_direct" | "keyboard_check_pressed" | "keyboard_check_released"
+            ) && args.iter().any(expr_is_global_jumpbutton))
+                || args.iter().any(expr_references_jump_queries)
+        }
+        LoweredLogicExpr::UnaryExpr { child, .. } => expr_references_jump_queries(child),
+        LoweredLogicExpr::BinaryExpr { left, right, .. } => {
+            expr_references_jump_queries(left) || expr_references_jump_queries(right)
+        }
+        LoweredLogicExpr::MemberAccess { target, .. } => expr_references_jump_queries(target),
+        LoweredLogicExpr::IndexAccess { target, index } => {
+            expr_references_jump_queries(target) || expr_references_jump_queries(index)
+        }
+        LoweredLogicExpr::Identifier(_)
+        | LoweredLogicExpr::LiteralNumber(_)
+        | LoweredLogicExpr::LiteralBool(_)
+        | LoweredLogicExpr::LiteralText(_)
+        | LoweredLogicExpr::Raw { .. } => false,
+    }
+}
+
+fn expr_is_global_jumpbutton(expr: &LoweredLogicExpr) -> bool {
+    matches!(
+        expr,
+        LoweredLogicExpr::MemberAccess { target, member }
+            if member == "jumpbutton"
+                && matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "global")
+    )
 }
 
 fn assign_instance_or_global(
