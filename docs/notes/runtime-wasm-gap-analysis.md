@@ -8,13 +8,13 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 
 ## Current Baseline
 
-- The browser shell can load packages, boot the WASM bridge, tick, reset, select rooms, and show telemetry.
+- The browser shell can load packages, boot the WASM bridge, auto-run it at a shell-driven 60 Hz tick, pause/resume that loop, reset, select rooms, and show telemetry.
 - The parser now preserves raw logic in `logic.raw.json` and emits a structured lowered contract in `logic.lowered.json` for the current IWanna-critical subset.
 - The parser now also emits sprite collision bounds in `resources/index.json` as `bbox_left`, `bbox_right`, `bbox_top`, and `bbox_bottom`, sourced from OpenGMK collision metadata.
 - The lowered parser contract now covers common comment stripping, `var` declarations, assignments, returns, calls, member/index access, unary expressions, and common control-flow heads on the current critical path.
 - The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, and it now also dispatches alarm, held-key, key-press, and key-release slices with parent fallback lookup for event dispatch.
 - The runtime core now uses a variable-height jump state machine on the IWanna-critical path, including held jump differentiation, release-cut tracking, ceiling-hit phase clearing, and landing reset state clearing.
-- The browser-facing host path now treats one-shot controls such as jump/restart as host-boundary input edges and clears edge bits after each tick; the next runtime blocker is broader OpenGMK semantic coverage, not expanding shell-side gameplay rules.
+- The browser-facing host path now treats one-shot controls such as jump/restart as host-boundary input edges and clears edge bits after each tick; the shell now drives those per-tick inputs through a 60 Hz auto-run loop instead of only a manual single-step button. The next runtime blocker is broader OpenGMK semantic coverage, not expanding shell-side gameplay rules.
 
 Practical parser note:
 

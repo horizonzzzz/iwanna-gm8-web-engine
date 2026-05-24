@@ -22,7 +22,7 @@ describe('WasmRuntimeSession', () => {
     const session = new WasmRuntimeSession(bridge);
     session.setInputState({ left: true, right: false, jump: true, restart: false });
 
-    const frame = await session.stepOnce();
+    const result = await session.stepOnce();
 
     expect(bridge.setInput).toHaveBeenCalledWith({
       left: true,
@@ -33,8 +33,10 @@ describe('WasmRuntimeSession', () => {
       restart: false,
     });
     expect(bridge.tick).toHaveBeenCalledWith(1);
+    expect(bridge.snapshot).toHaveBeenCalledTimes(1);
     expect(bridge.frame).toHaveBeenCalledTimes(1);
-    expect(frame.width).toBe(320);
+    expect(result.frame.width).toBe(320);
+    expect(result.snapshot.tick).toBe(0);
   });
 
   it('clears jump edge transitions after a step', async () => {

@@ -324,6 +324,33 @@ async function flushAsyncWork(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+class FakeIntervalScheduler {
+  private nextId = 1;
+  private readonly callbacks = new Map<number, () => void>();
+
+  readonly setIntervalFn = vi.fn((callback: () => void, _ms: number) => {
+    const id = this.nextId++;
+    this.callbacks.set(id, callback);
+    return id;
+  });
+
+  readonly clearIntervalFn = vi.fn((handle: unknown) => {
+    this.callbacks.delete(Number(handle));
+  });
+
+  get activeCount(): number {
+    return this.callbacks.size;
+  }
+
+  async fireAll(): Promise<void> {
+    const callbacks = [...this.callbacks.values()];
+    for (const callback of callbacks) {
+      callback();
+    }
+    await flushAsyncWork();
+  }
+}
+
 describe('main runtime shell', () => {
   let doc: FakeDocument;
 
@@ -407,54 +434,66 @@ describe('main runtime shell', () => {
     expect(collectText(doc.body)).toContain('Load failed: bad package');
   });
 
-  it('boots and drives the wasm bridge when one is available', async () => {
+  it('boots and auto-runs the wasm bridge at 60fps when one is available', async () => {
     const loadPackage = vi.fn(async () => samplePackage);
     const renderStaticRoom = vi.fn(async () => undefined);
     const renderWasmFrame = vi.fn(async () => undefined);
+    const scheduler = new FakeIntervalScheduler();
+    let currentTick = 0;
+    let currentRoomId = 0;
+    let currentRoomName = 'Room 1';
+    let currentDiagnostics = ['boot ok'];
+    let currentPlayer = { x: 12, y: 34, hspeed: 1, vspeed: 0, facing_left: false };
     const wasmBridge: WasmRuntimeBridge = {
       backend: 'opengmk-wasm',
       boot: vi.fn(async () => ({
-        tick: 0,
-        roomId: 0,
-        roomName: 'Room 1',
-        diagnostics: ['boot ok'],
-        player: { x: 12, y: 34, hspeed: 1, vspeed: 0, facing_left: false }
+        tick: currentTick,
+        roomId: currentRoomId,
+        roomName: currentRoomName,
+        diagnostics: currentDiagnostics,
+        player: currentPlayer
       })),
       snapshot: vi.fn(async () => ({
-        tick: 0,
-        roomId: 0,
-        roomName: 'Room 1',
-        diagnostics: ['boot ok'],
-        player: { x: 12, y: 34, hspeed: 1, vspeed: 0, facing_left: false }
+        tick: currentTick,
+        roomId: currentRoomId,
+        roomName: currentRoomName,
+        diagnostics: currentDiagnostics,
+        player: currentPlayer
       })),
-      frame: vi.fn(async () => ({ tick: 1, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] })),
+      frame: vi.fn(async () => ({
+        tick: currentTick,
+        roomId: currentRoomId,
+        width: 320,
+        height: 240,
+        commands: [{ kind: 'present' as const }]
+      })),
       setInput: vi.fn(async () => ({
-        tick: 0,
-        roomId: 0,
-        roomName: 'Room 1',
+        tick: currentTick,
+        roomId: currentRoomId,
+        roomName: currentRoomName,
         diagnostics: ['input ok'],
-        player: { x: 13, y: 34, hspeed: 1, vspeed: 0, facing_left: false }
+        player: { ...currentPlayer, x: currentPlayer.x + 1 }
       })),
       tick: vi.fn(async (frames = 1) => ({
-        tick: frames,
-        roomId: 0,
-        roomName: 'Room 1',
-        diagnostics: ['tick ok'],
-        player: { x: 13, y: 34, hspeed: 1, vspeed: 0, facing_left: false }
+        tick: (currentTick += frames),
+        roomId: currentRoomId,
+        roomName: currentRoomName,
+        diagnostics: (currentDiagnostics = ['tick ok']),
+        player: currentPlayer
       })),
       reset: vi.fn(async () => ({
-        tick: 0,
-        roomId: 0,
-        roomName: 'Room 1',
-        diagnostics: ['reset ok'],
-        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+        tick: (currentTick = 0),
+        roomId: (currentRoomId = 0),
+        roomName: (currentRoomName = 'Room 1'),
+        diagnostics: (currentDiagnostics = ['reset ok']),
+        player: (currentPlayer = { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false })
       })),
       selectRoom: vi.fn(async (roomId: number) => ({
-        tick: 0,
-        roomId,
-        roomName: roomId === 1 ? 'Room 2' : 'Room 1',
-        diagnostics: ['select ok'],
-        player: roomId === 1 ? null : { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+        tick: currentTick,
+        roomId: (currentRoomId = roomId),
+        roomName: (currentRoomName = roomId === 1 ? 'Room 2' : 'Room 1'),
+        diagnostics: (currentDiagnostics = ['select ok']),
+        player: (currentPlayer = roomId === 1 ? null : { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false })
       })),
       diagnostics: vi.fn(async () => ['diag ok'])
     };
@@ -464,7 +503,14 @@ describe('main runtime shell', () => {
     root.attributes.set('id', 'app');
     doc.body.append(root);
 
-    createRuntimeShell(root as unknown as HTMLElement, { loadPackage, renderStaticRoom, renderWasmFrame, loadWasmBridge });
+    createRuntimeShell(root as unknown as HTMLElement, {
+      loadPackage,
+      renderStaticRoom,
+      renderWasmFrame,
+      loadWasmBridge,
+      setInterval: scheduler.setIntervalFn,
+      clearInterval: scheduler.clearIntervalFn
+    });
 
     const buttons = doc.querySelectorAll<FakeElement>('button');
     const button = buttons[0];
@@ -489,13 +535,40 @@ describe('main runtime shell', () => {
     expect(doc.querySelector('#runtime-player')).not.toBeNull();
     expect(pauseButton?.disabled).toBe(false);
     expect(resetButton?.disabled).toBe(false);
+    expect(pauseButton?.textContent).toContain('Pause');
+    expect(scheduler.setIntervalFn).toHaveBeenCalledTimes(1);
+    expect(scheduler.activeCount).toBe(1);
+    expect(scheduler.setIntervalFn.mock.calls[0]?.[1]).toBeCloseTo(1000 / 60, 5);
+
+    await scheduler.fireAll();
+    expect(wasmBridge.tick).toHaveBeenCalledTimes(1);
+    expect(collectText(doc.body)).toContain('Tick: 1');
+
+    pauseButton?.click();
+    expect(scheduler.clearIntervalFn).toHaveBeenCalledTimes(1);
+    expect(scheduler.activeCount).toBe(0);
+    expect(pauseButton?.textContent).toContain('Resume');
+
+    await scheduler.fireAll();
+    expect(wasmBridge.tick).toHaveBeenCalledTimes(1);
+
+    pauseButton?.click();
+    expect(scheduler.setIntervalFn).toHaveBeenCalledTimes(2);
+    expect(scheduler.activeCount).toBe(1);
+    expect(pauseButton?.textContent).toContain('Pause');
 
     doc.dispatchKeyboardEvent('keydown', 'ArrowLeft');
-    pauseButton?.click();
-    await flushAsyncWork();
+    await scheduler.fireAll();
 
-    expect(wasmBridge.setInput).toHaveBeenCalled();
-    expect(wasmBridge.tick).toHaveBeenCalled();
+    expect(wasmBridge.setInput).toHaveBeenLastCalledWith({
+      left: true,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false
+    });
+    expect(wasmBridge.tick).toHaveBeenCalledTimes(2);
 
     if (!select) {
       throw new Error('missing room select');
@@ -506,12 +579,13 @@ describe('main runtime shell', () => {
     await flushAsyncWork();
 
     expect(wasmBridge.selectRoom).toHaveBeenCalledWith(1);
-    expect(wasmBridge.frame).toHaveBeenCalledTimes(4);
+    expect(collectText(doc.body)).toContain('Room 2');
 
     resetButton?.click();
     await flushAsyncWork();
 
     expect(wasmBridge.reset).toHaveBeenCalledTimes(1);
+    expect(collectText(doc.body)).toContain('Tick: 0');
   });
 
   it('falls back to the static room viewer when the wasm runtime cannot boot', async () => {

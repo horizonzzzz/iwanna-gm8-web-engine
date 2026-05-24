@@ -11,19 +11,28 @@ import {
   type WasmRuntimeBridge,
   type WasmRuntimeInputState,
 } from '../runtime/wasmBridge';
+import type { WasmRuntimeStepResult } from '../runtime/wasmSession';
+
+type IntervalHandle = ReturnType<typeof globalThis.setInterval>;
 
 type ShellDependencies = {
   loadPackage: typeof loadPackage;
   renderStaticRoom: typeof renderStaticRoom;
   renderWasmFrame: typeof renderWasmFrame;
   loadWasmBridge?: () => Promise<WasmRuntimeBridge>;
+  setInterval?: (handler: () => void, timeout: number) => IntervalHandle;
+  clearInterval?: (handle: IntervalHandle) => void;
 };
 
 const defaultDependencies: ShellDependencies = {
   loadPackage,
   renderStaticRoom,
-  renderWasmFrame
+  renderWasmFrame,
+  setInterval: (handler, timeout) => globalThis.setInterval(handler, timeout),
+  clearInterval: (handle) => globalThis.clearInterval(handle)
 };
+
+const AUTO_TICK_MS = 1000 / 60;
 
 type ShellElements = {
   input: HTMLInputElement;
@@ -321,6 +330,24 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     jump: false,
     restart: false
   };
+  let autoTickHandle: IntervalHandle | null = null;
+  let autoTickRunning = false;
+  let autoTickInFlight = false;
+
+  const stopAutoTick = (): void => {
+    if (autoTickHandle != null && resolved.clearInterval) {
+      resolved.clearInterval(autoTickHandle);
+    }
+    autoTickHandle = null;
+    autoTickRunning = false;
+  };
+
+  const updateExecutionControls = (): void => {
+    const runtimeActive = loadedPackage != null && activeBackend.kind === 'wasm';
+    pauseButton.disabled = !runtimeActive;
+    pauseButton.textContent = runtimeActive ? (autoTickRunning ? 'Pause' : 'Resume') : 'Pause';
+    resetButton.disabled = !runtimeActive;
+  };
 
   doc.addEventListener('keydown', (event) => {
     const action = keyToAction(event.key);
@@ -381,16 +408,57 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     status.textContent = 'Package loaded, but no room is available to preview.';
   };
 
-  const updateExecutionControls = (): void => {
-    const runtimeActive = loadedPackage != null && activeBackend.kind === 'wasm';
-    pauseButton.disabled = !runtimeActive;
-    resetButton.disabled = !runtimeActive;
+  const tickRuntimeOnce = async (): Promise<WasmRuntimeStepResult | null> => {
+    if (!loadedPackage || activeBackend.kind !== 'wasm') {
+      return null;
+    }
+
+    activeBackend.session.setInputState(keyboardState);
+    const { snapshot, frame } = await activeBackend.session.stepOnce();
+    await resolved.renderWasmFrame(canvas, frame, loadedPackage.resources, input.value);
+    renderTextDiagnostics(doc, diagnostics, snapshot.diagnostics);
+    renderRuntimeTelemetry(
+      doc,
+      elements.runtimeTelemetry,
+      snapshot,
+      snapshot.roomId != null
+        ? `${snapshot.roomId}: ${snapshot.roomName ?? 'room'}`
+        : 'none'
+    );
+    status.textContent = `WASM runtime active: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`;
+    return { snapshot, frame };
+  };
+
+  const startAutoTick = (): void => {
+    if (!loadedPackage || activeBackend.kind !== 'wasm' || autoTickRunning || !resolved.setInterval) {
+      updateExecutionControls();
+      return;
+    }
+
+    autoTickHandle = resolved.setInterval(() => {
+      if (autoTickInFlight) {
+        return;
+      }
+
+      autoTickInFlight = true;
+      void tickRuntimeOnce()
+        .catch((error) => {
+          stopAutoTick();
+          status.textContent = `Runtime tick failed: ${formatErrorMessage(error)}`;
+        })
+        .finally(() => {
+          autoTickInFlight = false;
+        });
+    }, AUTO_TICK_MS);
+    autoTickRunning = true;
+    updateExecutionControls();
   };
 
   button.addEventListener('click', async () => {
     status.textContent = 'Loading package...';
     button.disabled = true;
     select.disabled = true;
+    stopAutoTick();
 
     try {
       const pkg = await resolved.loadPackage(input.value);
@@ -456,6 +524,9 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
           : 'none'
       );
       await draw();
+      if (activeBackend.kind === 'wasm') {
+        startAutoTick();
+      }
     } catch (error) {
       loadedPackage = null;
       activeBackend = {
@@ -484,9 +555,13 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       return;
     }
 
-    activeBackend.session.setInputState(keyboardState);
-    await activeBackend.session.stepOnce();
-    await draw();
+    if (autoTickRunning) {
+      stopAutoTick();
+      updateExecutionControls();
+      return;
+    }
+
+    startAutoTick();
   });
 
   resetButton.addEventListener('click', async () => {
@@ -496,6 +571,9 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
 
     await activeBackend.bridge.reset();
     await draw();
+    if (!autoTickRunning) {
+      updateExecutionControls();
+    }
   });
 
   select.addEventListener('change', async () => {

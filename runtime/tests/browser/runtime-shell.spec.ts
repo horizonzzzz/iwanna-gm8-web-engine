@@ -12,8 +12,11 @@ test('sample package boots through the wasm path and exposes runtime telemetry',
   await expect(page.locator('#runtime-status')).toContainText('WASM runtime active');
   await expect(page.locator('#runtime-room')).toContainText('2: rInit');
   await expect(page.locator('#runtime-player')).toContainText('Player: x=');
-  await expect(page.locator('#runtime-tick')).toContainText('Tick: 0');
-  await expect(page.locator('#runtime-diagnostics')).toContainText('Diagnostics: none');
+  await expect.poll(async () => {
+    const text = await page.locator('#runtime-tick').textContent();
+    return Number(text?.replace('Tick: ', '') ?? '0');
+  }).toBeGreaterThan(0);
+  await expect(page.locator('#runtime-diagnostics')).toContainText('Diagnostics:');
   await expect(page.locator('select[name="roomSelect"]')).toHaveValue('2');
   await expect(page.locator('#runtime-status')).toContainText('rInit');
 });
@@ -27,6 +30,35 @@ test('sample package can switch to rStage01 and keep wasm telemetry visible', as
   await expect(page.locator('#runtime-room')).toContainText('147: rStage01');
   await expect(page.locator('#runtime-status')).toContainText('rStage01');
   await expect(page.locator('#runtime-player')).toContainText('Player: x=');
-  await expect(page.locator('#runtime-tick')).toContainText('Tick: 0');
+  await expect.poll(async () => {
+    const text = await page.locator('#runtime-tick').textContent();
+    return Number(text?.replace('Tick: ', '') ?? '0');
+  }).toBeGreaterThan(0);
   await expect(page.locator('#runtime-diagnostics')).toContainText('Diagnostics:');
+});
+
+test('sample package pause button stops and resumes automatic ticking', async ({ page }) => {
+  await loadPackage(page, '/packages/sample');
+
+  const tickLocator = page.locator('#runtime-tick');
+  const pauseButton = page.getByRole('button', { name: 'Pause' });
+
+  await expect.poll(async () => {
+    const text = await tickLocator.textContent();
+    return Number(text?.replace('Tick: ', '') ?? '0');
+  }).toBeGreaterThan(0);
+
+  await pauseButton.click();
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
+  const pausedBaseline = Number((await tickLocator.textContent())?.replace('Tick: ', '') ?? '0');
+  await page.waitForTimeout(120);
+  const pausedTick = Number((await tickLocator.textContent())?.replace('Tick: ', '') ?? '0');
+  expect(pausedTick).toBe(pausedBaseline);
+
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible();
+  await expect.poll(async () => {
+    const text = await tickLocator.textContent();
+    return Number(text?.replace('Tick: ', '') ?? '0');
+  }).toBeGreaterThan(pausedTick);
 });

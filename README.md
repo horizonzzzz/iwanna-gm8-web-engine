@@ -140,7 +140,7 @@ Current browser controls for the WASM runtime path:
 - use `ArrowRight` / `D` for right
 - use `Space` / `ArrowUp` / `W` for jump
 - use `R` for restart
-- use `Pause` as the current deterministic single-step button for the WASM path
+- the WASM path now auto-runs at 60 Hz; use `Pause` to pause and `Resume` to continue
 
 Important local-only paths:
 

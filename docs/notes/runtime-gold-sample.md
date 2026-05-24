@@ -70,7 +70,7 @@ For `IWBT_Dife`, Phase 4 still needs to prove:
 
 - package loads successfully
 - the runtime core boots the intended first playable room
-- the browser host can drive deterministic ticks
+- the browser host can drive a stable 60 Hz auto-tick loop with pause/resume control for hand-feel validation
 - player movement and collision match the runtime-core semantic slice being implemented
 - variable-height jump, release cut, and landing reset match the intended `IWBT_Dife` trajectory closely enough to use as the runtime jump baseline
 - broader collision dispatch and remaining room/lifecycle semantics still behave as expected now that keyboard and alarm slices are covered

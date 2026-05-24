@@ -1,4 +1,10 @@
 import type { WasmRuntimeBridge, WasmRuntimeFrame, WasmRuntimeInputState } from './wasmBridge';
+import type { WasmRuntimeBridgeSnapshot } from './wasmBridge';
+
+export type WasmRuntimeStepResult = {
+  snapshot: WasmRuntimeBridgeSnapshot;
+  frame: WasmRuntimeFrame;
+};
 
 const DEFAULT_INPUT: WasmRuntimeInputState = {
   left: false,
@@ -29,14 +35,15 @@ export class WasmRuntimeSession {
     };
   }
 
-  async stepOnce(): Promise<WasmRuntimeFrame> {
+  async stepOnce(): Promise<WasmRuntimeStepResult> {
     const input = { ...this.input };
     await this.bridge.setInput(input);
     await this.bridge.tick(1);
+    const snapshot = await this.bridge.snapshot();
     const frame = await this.bridge.frame();
     this.previousJump = input.jump;
     this.input.jumpPressed = false;
     this.input.jumpReleased = false;
-    return frame;
+    return { snapshot, frame };
   }
 }
