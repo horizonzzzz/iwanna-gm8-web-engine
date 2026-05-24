@@ -443,7 +443,14 @@ describe('main runtime shell', () => {
     let currentRoomId = 0;
     let currentRoomName = 'Room 1';
     let currentDiagnostics = ['boot ok'];
-    let currentPlayer = { x: 12, y: 34, hspeed: 1, vspeed: 0, facing_left: false };
+    let currentPlayer = {
+      x: 12,
+      y: 34,
+      hspeed: 1,
+      vspeed: 0,
+      facing_left: false,
+      jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+    };
     const wasmBridge: WasmRuntimeBridge = {
       backend: 'opengmk-wasm',
       boot: vi.fn(async () => ({
@@ -486,14 +493,30 @@ describe('main runtime shell', () => {
         roomId: (currentRoomId = 0),
         roomName: (currentRoomName = 'Room 1'),
         diagnostics: (currentDiagnostics = ['reset ok']),
-        player: (currentPlayer = { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false })
+        player: (currentPlayer = {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        })
       })),
       selectRoom: vi.fn(async (roomId: number) => ({
         tick: currentTick,
         roomId: (currentRoomId = roomId),
         roomName: (currentRoomName = roomId === 1 ? 'Room 2' : 'Room 1'),
         diagnostics: (currentDiagnostics = ['select ok']),
-        player: (currentPlayer = roomId === 1 ? null : { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false })
+        player: (currentPlayer = roomId === 1
+          ? null
+          : {
+              x: 12,
+              y: 34,
+              hspeed: 0,
+              vspeed: 0,
+              facing_left: false,
+              jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+            })
       })),
       diagnostics: vi.fn(async () => ['diag ok'])
     };
@@ -530,6 +553,10 @@ describe('main runtime shell', () => {
     expect(collectText(doc.body)).toContain('Room 1');
     expect(collectText(doc.body)).toContain('x=12');
     expect(collectText(doc.body)).toContain('hspeed=1');
+    expect(collectText(doc.body)).toContain('grounded=true');
+    expect(collectText(doc.body)).toContain('jumpActive=false');
+    expect(collectText(doc.body)).toContain('hold=0');
+    expect(collectText(doc.body)).toContain('cut=false');
     expect(doc.querySelector('#runtime-room')).not.toBeNull();
     expect(doc.querySelector('#runtime-tick')).not.toBeNull();
     expect(doc.querySelector('#runtime-player')).not.toBeNull();
@@ -602,14 +629,28 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: currentDiagnostics,
-        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
       })),
       snapshot: vi.fn(async () => ({
         tick: currentTick,
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: currentDiagnostics,
-        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
       })),
       frame: vi.fn(async () => ({
         tick: currentTick,
@@ -623,28 +664,56 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: currentDiagnostics,
-        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
       })),
       tick: vi.fn(async () => ({
         tick: ++currentTick,
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: (currentDiagnostics = Array.from({ length: currentTick }, (_, index) => `diag-${index + 1}`)),
-        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: currentTick % 2 === 0, active: currentTick % 2 === 1, holdFrames: currentTick, cutApplied: false }
+        }
       })),
       reset: vi.fn(async () => ({
         tick: (currentTick = 0),
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: (currentDiagnostics = ['reset ok']),
-        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
       })),
       selectRoom: vi.fn(async () => ({
         tick: currentTick,
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: currentDiagnostics,
-        player: { x: 12, y: 34, hspeed: 0, vspeed: 0, facing_left: false }
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: 0,
+          facing_left: false,
+          jump: { grounded: true, active: false, holdFrames: 0, cutApplied: false }
+        }
       })),
       diagnostics: vi.fn(async () => currentDiagnostics)
     };
@@ -676,6 +745,11 @@ describe('main runtime shell', () => {
     expect(runtimeDiagnosticsText).toContain('diag-5');
     expect(runtimeDiagnosticsText).toContain('diag-12');
     expect(runtimeDiagnosticsText).not.toContain('diag-4 |');
+    const runtimePlayerText = doc.querySelector<FakeElement>('#runtime-player')?.textContent ?? '';
+    expect(runtimePlayerText).toContain('grounded=');
+    expect(runtimePlayerText).toContain('jumpActive=');
+    expect(runtimePlayerText).toContain('hold=');
+    expect(runtimePlayerText).toContain('cut=');
 
     const diagnosticsPre = doc.querySelector<FakeElement>('pre');
     expect((diagnosticsPre?.textContent ?? '').length).toBeLessThan(200);

@@ -405,6 +405,29 @@ pub(super) fn append_lowered_entry(
     }
 }
 
+pub(super) fn add_script_block(
+    package: &mut RuntimePackage,
+    script_id: usize,
+    script_name: &str,
+    statements: Vec<LoweredLogicStatement>,
+) {
+    package.scripts.blocks.push(LogicBlock {
+        id: format!("script:{script_id}"),
+        name: script_name.to_string(),
+        kind: "script".into(),
+        support: "source-only".into(),
+        executable_action_count: 0,
+        ops: vec![LogicOp::SourceSnippet {
+            code: script_name.to_string(),
+        }],
+    });
+    append_lowered_entry(
+        package,
+        format!("script:{script_id}"),
+        statements,
+    );
+}
+
 pub(super) fn add_keyboard_block(
     package: &mut RuntimePackage,
     key: u8,

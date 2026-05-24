@@ -47,6 +47,7 @@ Important validation note:
 - stable repository fixtures and package-contract validation should catch structural drift before gold-sample browser debugging is needed
 - the current runtime slice already covers alarm dispatch, held/press/release keyboard dispatch, and parent-aware event lookup, so the next gold-sample blockers should be judged against the remaining runtime gap rather than those already-covered slices
 - jump is no longer a fixed-height placeholder in repository fixtures; the remaining gold-sample jump work is numeric calibration of tap, hold, release-cut, and landing-reset behavior against `IWBT_Dife`
+- the shell/runtime snapshot path now exposes grounded plus jump-phase trace flags for the player, which makes browser-side hand-feel debugging easier but does not change the remaining semantic blocker: the gold sample still needs its own player movement path executed accurately
 
 ## Sample Audit
 

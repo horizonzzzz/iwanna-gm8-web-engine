@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use iwm_runtime_host::{RuntimeButton, RuntimeHost};
 
 use crate::event_dispatch::{object_event_block_ids, RuntimeEventSelector};
-use crate::helpers::is_player_instance;
+use crate::helpers::{collides_at, is_player_instance};
 use crate::{
     LoweredLogicEntry, LoweredLogicStatement, RuntimeCoreError, RuntimePackage,
-    RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot, RuntimeStatus, RuntimeValue,
+    RuntimeJumpSnapshot, RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot, RuntimeStatus,
+    RuntimeValue,
 };
 
 #[derive(Debug)]
@@ -104,6 +105,12 @@ impl RuntimeCore {
                 .map(|room| room.instances.len())
                 .unwrap_or(0),
             player: self.current_room.as_ref().and_then(|room| {
+                let solids = room
+                    .instances
+                    .iter()
+                    .filter(|instance| instance.alive && instance.solid)
+                    .cloned()
+                    .collect::<Vec<_>>();
                 room.instances
                     .iter()
                     .find(|instance| is_player_instance(instance))
@@ -113,6 +120,18 @@ impl RuntimeCore {
                         hspeed: instance.hspeed,
                         vspeed: instance.vspeed,
                         facing_left: instance.facing_left,
+                        jump: RuntimeJumpSnapshot {
+                            grounded: collides_at(
+                                instance,
+                                instance.x,
+                                instance.y + 1,
+                                &solids,
+                                Some(instance.runtime_id),
+                            ),
+                            active: instance.jump.active,
+                            hold_frames: instance.jump.hold_frames,
+                            cut_applied: instance.jump.cut_applied,
+                        },
                     })
             }),
             diagnostics: self.diagnostics.clone(),
@@ -167,12 +186,15 @@ impl RuntimeCore {
                 format!("room {} has no live instances", room.room_name),
             );
         } else {
-            if self.execute_lowered_step_events(host)? {
+            let (interrupted, player_motion_changed) = self.execute_lowered_step_events(host)?;
+            if interrupted {
                 self.apply_pending_room_change()?;
                 self.render(host)?;
                 return Ok(());
             }
-            self.step_player(host, left.pressed, right.pressed, jump)?;
+            if !player_motion_changed {
+                self.step_player(host, left.pressed, right.pressed, jump)?;
+            }
         }
 
         // Dispatch alarm events (countdown alarm state)
@@ -277,6 +299,7 @@ impl RuntimeCore {
             .iter()
             .flat_map(|entry| entry.statements.clone())
             .collect();
+        let script_entries = self.lowered_script_entries();
 
         let mut instance = {
             let Some(room) = self.current_room.as_ref() else {
@@ -292,6 +315,7 @@ impl RuntimeCore {
             crate::logic::apply_runtime_statement(
                 statement,
                 &mut instance,
+                &script_entries,
                 &mut self.globals,
                 &mut self.pending_room_transition,
                 &mut self.pending_room_reset,

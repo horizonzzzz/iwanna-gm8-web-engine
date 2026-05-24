@@ -24,7 +24,7 @@ pub fn lower_raw_logic_file(raw: &RawLogicFile) -> LoweredLogicFile {
     for event in &raw.object_events {
         let mut statements = Vec::new();
         for action in &event.actions {
-            statements.extend(lower_source(&action.fn_code));
+            statements.extend(lower_action_source(action));
         }
         entries.push(LoweredLogicEntry {
             block_id: event.block_id.clone(),
@@ -49,7 +49,7 @@ pub fn lower_raw_logic_file(raw: &RawLogicFile) -> LoweredLogicFile {
     for moment in &raw.timelines {
         let mut statements = Vec::new();
         for action in &moment.actions {
-            statements.extend(lower_source(&action.fn_code));
+            statements.extend(lower_action_source(action));
         }
         entries.push(LoweredLogicEntry {
             block_id: format!("timeline:{}:{}", moment.timeline_id, moment.moment),
@@ -61,6 +61,30 @@ pub fn lower_raw_logic_file(raw: &RawLogicFile) -> LoweredLogicFile {
         format: "iwm-lowered-logic-v1".into(),
         entries,
     }
+}
+
+fn lower_action_source(action: &crate::models::RawCodeAction) -> Vec<LoweredLogicStatement> {
+    let primary = action.fn_code.trim();
+    if !primary.is_empty() {
+        return lower_source(primary);
+    }
+
+    action
+        .args
+        .iter()
+        .filter(|arg| looks_like_gml_source(arg))
+        .flat_map(|arg| lower_source(arg))
+        .collect()
+}
+
+fn looks_like_gml_source(source: &str) -> bool {
+    let trimmed = source.trim();
+    !trimmed.is_empty()
+        && (trimmed.contains('=')
+            || trimmed.contains('(')
+            || trimmed.contains('{')
+            || trimmed.contains('}')
+            || trimmed.contains(';'))
 }
 
 fn lower_source(source: &str) -> Vec<LoweredLogicStatement> {

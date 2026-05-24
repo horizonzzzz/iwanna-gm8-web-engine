@@ -43,12 +43,13 @@ impl RuntimeCore {
     pub(crate) fn execute_lowered_step_events<H: RuntimeHost>(
         &mut self,
         host: &mut H,
-    ) -> Result<bool, RuntimeCoreError> {
+    ) -> Result<(bool, bool), RuntimeCoreError> {
         let Some(room) = self.current_room.as_ref() else {
             return Err(RuntimeCoreError::NoRooms);
         };
 
         let step_event_blocks = self.object_event_blocks_by_tag("step");
+        let script_entries = self.lowered_script_entries();
         let dispatches = room
             .instances
             .iter()
@@ -70,6 +71,8 @@ impl RuntimeCore {
             })
             .collect::<Vec<_>>();
 
+        let mut player_motion_changed = false;
+
         for (index, entries) in dispatches {
             let Some(room) = self.current_room.as_mut() else {
                 return Err(RuntimeCoreError::NoRooms);
@@ -80,12 +83,15 @@ impl RuntimeCore {
             if !instance.alive {
                 continue;
             }
+            let is_player = crate::helpers::is_player_instance(instance);
+            let motion_before = (instance.x, instance.y, instance.hspeed, instance.vspeed);
 
             for entry in &entries {
                 for statement in &entry.statements {
                     apply_runtime_statement(
                         statement,
                         instance,
+                        &script_entries,
                         &mut self.globals,
                         &mut self.pending_room_transition,
                         &mut self.pending_room_reset,
@@ -93,13 +99,17 @@ impl RuntimeCore {
                         &mut self.diagnostics,
                     );
                     if self.pending_room_reset || self.pending_room_transition.is_some() {
-                        return Ok(true);
+                        return Ok((true, player_motion_changed));
                     }
                 }
             }
+
+            if is_player && (instance.x, instance.y, instance.hspeed, instance.vspeed) != motion_before {
+                player_motion_changed = true;
+            }
         }
 
-        Ok(false)
+        Ok((false, player_motion_changed))
     }
 
     fn object_event_blocks_by_tag(&self, event_tag: &str) -> HashMap<usize, Vec<String>> {
@@ -144,6 +154,20 @@ impl RuntimeCore {
             .lowered_logic
             .as_ref()
             .and_then(|lowered_logic| lowered_logic.entries.get(*index))
+    }
+
+    pub(crate) fn lowered_script_entries(&self) -> HashMap<String, LoweredLogicEntry> {
+        self.package
+            .scripts
+            .blocks
+            .iter()
+            .filter(|block| block.kind == "script")
+            .filter_map(|block| {
+                self.lowered_logic_entry(&block.id)
+                    .cloned()
+                    .map(|entry| (block.name.clone(), entry))
+            })
+            .collect()
     }
 
     pub(crate) fn apply_statement_to_globals(&mut self, statement: &LoweredLogicStatement) {
@@ -224,6 +248,7 @@ impl RuntimeCore {
 pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     statement: &LoweredLogicStatement,
     instance: &mut RuntimeInstance,
+    script_entries: &HashMap<String, LoweredLogicEntry>,
     globals: &mut HashMap<String, RuntimeValue>,
     pending_room_transition: &mut Option<usize>,
     pending_room_reset: &mut bool,
@@ -245,6 +270,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 apply_runtime_statement(
                     nested,
                     instance,
+                    script_entries,
                     globals,
                     pending_room_transition,
                     pending_room_reset,
@@ -279,7 +305,25 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             "game_restart" => {
                 *pending_room_reset = true;
             }
-            _ => {}
+            _ => {
+                if let Some(entry) = script_entries.get(name) {
+                    for nested in &entry.statements {
+                        apply_runtime_statement(
+                            nested,
+                            instance,
+                            script_entries,
+                            globals,
+                            pending_room_transition,
+                            pending_room_reset,
+                            host,
+                            diagnostics,
+                        );
+                        if *pending_room_reset || pending_room_transition.is_some() {
+                            break;
+                        }
+                    }
+                }
+            }
         },
         _ => {}
     }

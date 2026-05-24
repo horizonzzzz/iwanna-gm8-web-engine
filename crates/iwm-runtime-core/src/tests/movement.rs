@@ -450,3 +450,26 @@ fn core_jump_trace_distinguishes_release_cut_and_landing_reset() {
 
     panic!("player did not land within 32 ticks");
 }
+
+#[test]
+fn core_snapshot_exposes_player_jump_trace_state() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x20),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let snapshot = core.snapshot();
+    let player = snapshot.player.expect("expected player snapshot");
+    assert!(player.jump.active);
+    assert_eq!(player.jump.hold_frames, 1);
+    assert!(!player.jump.cut_applied);
+    assert!(!player.jump.grounded);
+}

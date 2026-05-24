@@ -111,6 +111,14 @@ pub struct RuntimeJumpState {
     pub grounded_last_tick: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeJumpSnapshot {
+    pub grounded: bool,
+    pub active: bool,
+    pub hold_frames: u32,
+    pub cut_applied: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimePackage {
     pub manifest: RuntimeManifest,
@@ -181,6 +189,7 @@ pub struct RuntimePlayerSnapshot {
     pub hspeed: i32,
     pub vspeed: i32,
     pub facing_left: bool,
+    pub jump: RuntimeJumpSnapshot,
 }
 
 #[derive(Debug, Clone)]

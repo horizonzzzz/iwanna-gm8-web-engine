@@ -4,7 +4,7 @@ use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
 
 use super::support::{
     add_alarm_block, add_create_block, add_keyboard_block, add_room_create_block, add_step_block,
-    append_lowered_entry, host, sample_package,
+    add_script_block, append_lowered_entry, host, sample_package,
 };
 use iwm_runtime_model::ObjectEventEntry;
 
@@ -545,4 +545,78 @@ fn core_evaluates_unary_not_in_conditionals() {
         .find(|instance| instance.player_candidate)
         .unwrap();
     assert_eq!(player.vars.get("armed"), Some(&RuntimeValue::Bool(true)));
+}
+
+#[test]
+fn core_executes_zero_arg_script_calls_from_lowered_step_events() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "playerVJump".into(),
+            args: vec![],
+        }],
+    );
+    add_script_block(
+        &mut package,
+        13,
+        "playerVJump",
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("vspeed".into()),
+            value: LoweredLogicExpr::BinaryExpr {
+                op: "*".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("vspeed".into())),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(0.5)),
+            },
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.vspeed = -8;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vspeed, -4);
+}
+
+#[test]
+fn core_preserves_script_applied_vspeed_without_step_player_overwrite() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("vspeed".into()),
+            value: LoweredLogicExpr::LiteralNumber(-4.0),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vspeed, -4);
 }

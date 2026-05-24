@@ -1,10 +1,11 @@
 use iwm_runtime_core::{
-    RuntimeCoreError, RuntimePlayerSnapshot, RuntimeSnapshot, RuntimeStatus,
+    RuntimeCoreError, RuntimeJumpSnapshot, RuntimePlayerSnapshot, RuntimeSnapshot, RuntimeStatus,
 };
 use iwm_runtime_host::{RuntimeDiagnostic, RuntimeDrawCommand};
 
 use crate::{
-    BridgeDrawCommand, BridgeFrameSnapshot, BridgePlayerSnapshot, BridgeSnapshot,
+    BridgeDrawCommand, BridgeFrameSnapshot, BridgeJumpSnapshot, BridgePlayerSnapshot,
+    BridgeSnapshot,
 };
 
 pub fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
@@ -26,6 +27,16 @@ pub fn bridge_player_snapshot(snapshot: RuntimePlayerSnapshot) -> BridgePlayerSn
         hspeed: snapshot.hspeed,
         vspeed: snapshot.vspeed,
         facing_left: snapshot.facing_left,
+        jump: bridge_jump_snapshot(snapshot.jump),
+    }
+}
+
+pub fn bridge_jump_snapshot(snapshot: RuntimeJumpSnapshot) -> BridgeJumpSnapshot {
+    BridgeJumpSnapshot {
+        grounded: snapshot.grounded,
+        active: snapshot.active,
+        hold_frames: snapshot.hold_frames,
+        cut_applied: snapshot.cut_applied,
     }
 }
 

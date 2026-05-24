@@ -52,7 +52,19 @@ describe('wasm bridge loader', () => {
         tick: 3,
         roomId: 1,
         diagnostics: ['runtime-idle:tick advanced'],
-        player: null
+        player: {
+          x: 12,
+          y: 34,
+          hspeed: 0,
+          vspeed: -8,
+          facingLeft: false,
+          jump: {
+            grounded: false,
+            active: true,
+            holdFrames: 1,
+            cutApplied: false
+          }
+        }
       })
     );
     const encodedDiagnostics = new TextEncoder().encode(
@@ -163,6 +175,7 @@ describe('wasm bridge loader', () => {
 
     expect(boot.tick).toBe(3);
     expect((await bridge.snapshot()).roomId).toBe(1);
+    expect((await bridge.snapshot()).player?.jump?.holdFrames).toBe(1);
     expect((await bridge.tick(2)).roomId).toBe(1);
     expect((await bridge.reset()).diagnostics[0]).toContain('runtime-idle');
     expect((await bridge.selectRoom(1)).tick).toBe(3);

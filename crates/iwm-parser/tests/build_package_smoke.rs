@@ -1019,6 +1019,121 @@ fn analysis_warnings_use_actionable_categories() {
 }
 
 #[test]
+fn lowered_logic_file_uses_code_action_args_when_fn_code_is_empty() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
+    use iwm_parser::models::{RawCodeAction, RawLogicEventBinding, RawLogicFile};
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 0,
+            object_name: "player".to_string(),
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".to_string(),
+            collision_object_id: None,
+            block_id: "object:0:event:3:0".to_string(),
+            actions: vec![RawCodeAction {
+                action_id: 603,
+                lib_id: 1,
+                action_kind: 7,
+                execution_type: 2,
+                fn_name: String::new(),
+                fn_code: String::new(),
+                args: vec!["if keyboard_check_pressed(global.jumpbutton) { playerJump(); }".to_string()],
+            }],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+
+    match &statements[0] {
+        LoweredLogicStatement::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            assert!(else_branch.is_empty());
+            assert!(matches!(
+                condition,
+                LoweredLogicExpr::Call { name, args }
+                    if name == "keyboard_check_pressed"
+                    && args.len() == 1
+                    && matches!(
+                        &args[0],
+                        LoweredLogicExpr::MemberAccess { target, member }
+                            if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "global")
+                            && member == "jumpbutton"
+                    )
+            ));
+            assert!(matches!(
+                then_branch.first(),
+                Some(LoweredLogicStatement::FunctionCall { name, args })
+                    if name == "playerJump" && args.is_empty()
+            ));
+        }
+        other => panic!("expected conditional lowered from code action args, got {other:?}"),
+    }
+}
+
+#[test]
+fn built_gold_sample_preserves_player_step_jump_calls_in_lowered_logic() {
+    let sample_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("runtime")
+        .join("public")
+        .join("packages")
+        .join("sample");
+
+    let lowered_path = sample_dir.join("logic.lowered.json");
+    let objects_path = sample_dir.join("objects.json");
+    if !lowered_path.exists() || !objects_path.exists() {
+        return;
+    }
+
+    let lowered: iwm_parser::LoweredLogicFile =
+        serde_json::from_str(&fs::read_to_string(lowered_path).unwrap()).unwrap();
+    let objects: Vec<ObjectDefinition> =
+        serde_json::from_str(&fs::read_to_string(objects_path).unwrap()).unwrap();
+
+    let player = objects
+        .iter()
+        .find(|object| object.name == "player")
+        .expect("expected player object");
+    let step_block_id = player
+        .events
+        .iter()
+        .find(|event| event.event_tag == "step")
+        .map(|event| event.block_id.as_str())
+        .expect("expected player step block");
+
+    let step_entry = lowered
+        .entries
+        .iter()
+        .find(|entry| entry.block_id == step_block_id)
+        .expect("expected lowered step entry");
+
+    assert!(
+        !step_entry.statements.is_empty(),
+        "player step entry should not be empty after lowering"
+    );
+
+    let lowered_json = serde_json::to_string(step_entry).unwrap();
+    assert!(lowered_json.contains("keyboard_check_pressed"));
+    assert!(lowered_json.contains("playerJump"));
+    assert!(lowered_json.contains("keyboard_check_released"));
+    assert!(lowered_json.contains("playerVJump"));
+}
+
+#[test]
 fn logic_and_raw_exports_share_normalized_event_tags_for_gm8_event_ids() {
     use gm8exe::{
         asset::{object::Object, room::Room, CodeAction},

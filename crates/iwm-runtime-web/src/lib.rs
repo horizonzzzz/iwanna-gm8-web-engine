@@ -5,7 +5,8 @@ mod translate;
 mod web_runtime_host;
 
 pub use bridge_types::{
-    BridgeDrawCommand, BridgeFrameSnapshot, BridgePlayerSnapshot, BridgeSnapshot, WebInputState,
+    BridgeDrawCommand, BridgeFrameSnapshot, BridgeJumpSnapshot, BridgePlayerSnapshot,
+    BridgeSnapshot, WebInputState,
 };
 pub use ffi::{
     iwm_alloc, iwm_boot_json, iwm_diagnostics_json, iwm_frame_json, iwm_free,

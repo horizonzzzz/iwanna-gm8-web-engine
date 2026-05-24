@@ -12,6 +12,12 @@ export type WasmRuntimeBridgeSnapshot = {
     hspeed: number;
     vspeed: number;
     facing_left: boolean;
+    jump: {
+      grounded: boolean;
+      active: boolean;
+      holdFrames: number;
+      cutApplied: boolean;
+    };
   } | null;
   diagnostics: string[];
 };

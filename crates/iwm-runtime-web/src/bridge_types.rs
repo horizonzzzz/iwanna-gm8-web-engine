@@ -13,12 +13,22 @@ pub struct WebInputState {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BridgeJumpSnapshot {
+    pub grounded: bool,
+    pub active: bool,
+    pub hold_frames: u32,
+    pub cut_applied: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BridgePlayerSnapshot {
     pub x: i32,
     pub y: i32,
     pub hspeed: i32,
     pub vspeed: i32,
     pub facing_left: bool,
+    pub jump: BridgeJumpSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize)]

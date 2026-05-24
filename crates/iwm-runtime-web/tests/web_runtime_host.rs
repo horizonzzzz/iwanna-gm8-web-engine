@@ -65,6 +65,15 @@ fn web_runtime_host_snapshot_exposes_player_motion_and_reset_state() {
         boot.player.as_ref().map(|player| (player.x, player.y)),
         Some((32, 64))
     );
+    assert_eq!(
+        boot.player.as_ref().map(|player| (
+            player.jump.grounded,
+            player.jump.active,
+            player.jump.hold_frames,
+            player.jump.cut_applied
+        )),
+        Some((true, false, 0, false))
+    );
 
     host.set_input(WebInputState {
         left: false,
@@ -78,6 +87,15 @@ fn web_runtime_host_snapshot_exposes_player_motion_and_reset_state() {
     let after_tick = host.tick(1).unwrap();
     assert_eq!(after_tick.tick, 1);
     assert!(after_tick.player.as_ref().map(|player| player.x).unwrap() > 32);
+    assert_eq!(
+        after_tick.player.as_ref().map(|player| (
+            player.jump.grounded,
+            player.jump.active,
+            player.jump.hold_frames,
+            player.jump.cut_applied
+        )),
+        Some((true, false, 0, false))
+    );
 
     let switched = host.select_room(1).unwrap();
     assert_eq!(switched.room_id, Some(1));
@@ -91,6 +109,41 @@ fn web_runtime_host_snapshot_exposes_player_motion_and_reset_state() {
     assert_eq!(
         reset.player.as_ref().map(|player| (player.x, player.y)),
         Some((32, 64))
+    );
+    assert_eq!(
+        reset.player.as_ref().map(|player| (
+            player.jump.grounded,
+            player.jump.active,
+            player.jump.hold_frames,
+            player.jump.cut_applied
+        )),
+        Some((true, false, 0, false))
+    );
+}
+
+#[test]
+fn web_runtime_host_snapshot_exposes_jump_trace_after_jump_press() {
+    let mut host = WebRuntimeHost::new();
+    host.boot(sample_package()).unwrap();
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: true,
+        jump_pressed: true,
+        jump_released: false,
+        restart: false,
+    });
+
+    let after_tick = host.tick(1).unwrap();
+    assert_eq!(
+        after_tick.player.as_ref().map(|player| (
+            player.jump.grounded,
+            player.jump.active,
+            player.jump.hold_frames,
+            player.jump.cut_applied
+        )),
+        Some((false, true, 1, false))
     );
 }
 

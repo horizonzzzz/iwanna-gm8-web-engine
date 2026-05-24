@@ -235,7 +235,8 @@ function formatRuntimePlayer(snapshot: WasmRuntimeBridgeSnapshot): string {
     return 'Player: unavailable';
   }
 
-  return `Player: x=${snapshot.player.x} y=${snapshot.player.y} hspeed=${snapshot.player.hspeed} vspeed=${snapshot.player.vspeed}`;
+  const jump = snapshot.player.jump;
+  return `Player: x=${snapshot.player.x} y=${snapshot.player.y} hspeed=${snapshot.player.hspeed} vspeed=${snapshot.player.vspeed} grounded=${jump.grounded} jumpActive=${jump.active} hold=${jump.holdFrames} cut=${jump.cutApplied}`;
 }
 
 function renderRuntimeTelemetry(
