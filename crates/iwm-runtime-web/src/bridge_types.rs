@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebInputState {
     pub left: bool,
@@ -9,6 +9,12 @@ pub struct WebInputState {
     pub jump_pressed: bool,
     pub jump_released: bool,
     pub restart: bool,
+    #[serde(default)]
+    pub keys_held: Vec<u16>,
+    #[serde(default)]
+    pub keys_pressed: Vec<u16>,
+    #[serde(default)]
+    pub keys_released: Vec<u16>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -23,10 +29,10 @@ pub struct BridgeJumpSnapshot {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgePlayerSnapshot {
-    pub x: i32,
-    pub y: i32,
-    pub hspeed: i32,
-    pub vspeed: i32,
+    pub x: f64,
+    pub y: f64,
+    pub hspeed: f64,
+    pub vspeed: f64,
     pub facing_left: bool,
     pub jump: BridgeJumpSnapshot,
 }

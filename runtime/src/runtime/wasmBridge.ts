@@ -29,6 +29,9 @@ export type WasmRuntimeInputState = {
   jumpPressed: boolean;
   jumpReleased: boolean;
   restart: boolean;
+  keysHeld?: number[];
+  keysPressed?: number[];
+  keysReleased?: number[];
 };
 
 export type WasmRuntimeFrame = {

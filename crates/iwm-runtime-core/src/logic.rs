@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use iwm_runtime_host::RuntimeHost;
-use iwm_runtime_model::RoomDefinition;
+use iwm_runtime_host::{RuntimeButton, RuntimeHost};
+use iwm_runtime_model::{ObjectDefinition, RoomDefinition};
 
 use crate::helpers::{as_number, parse_room_id, parse_runtime_value, record_host_diagnostic};
 use crate::{
@@ -74,6 +74,15 @@ impl RuntimeCore {
         let mut player_motion_changed = false;
 
         for (index, entries) in dispatches {
+            let button_states = host
+                .active_buttons()
+                .into_iter()
+                .collect::<HashMap<_, _>>();
+            let room_instances = self
+                .current_room
+                .as_ref()
+                .map(|room| room.instances.clone())
+                .ok_or(RuntimeCoreError::NoRooms)?;
             let Some(room) = self.current_room.as_mut() else {
                 return Err(RuntimeCoreError::NoRooms);
             };
@@ -86,6 +95,12 @@ impl RuntimeCore {
             let is_player = crate::helpers::is_player_instance(instance);
             let motion_before = (instance.x, instance.y, instance.hspeed, instance.vspeed);
 
+            let eval_context = RuntimeEvalContext {
+                button_states: &button_states,
+                room_instances: &room_instances,
+                objects: &self.package.objects,
+            };
+
             for entry in &entries {
                 for statement in &entry.statements {
                     apply_runtime_statement(
@@ -97,6 +112,7 @@ impl RuntimeCore {
                         &mut self.pending_room_reset,
                         host,
                         &mut self.diagnostics,
+                        Some(&eval_context),
                     );
                     if self.pending_room_reset || self.pending_room_transition.is_some() {
                         return Ok((true, player_motion_changed));
@@ -174,7 +190,7 @@ impl RuntimeCore {
         match statement {
             LoweredLogicStatement::Assignment { target, value } => {
                 if let Some(key) = assignable_key(target, None) {
-                    if let Some(value) = evaluate_expr(value, None, &self.globals) {
+                    if let Some(value) = evaluate_expr(value, None, &self.globals, None) {
                         self.globals.insert(key, value);
                     }
                 }
@@ -184,7 +200,7 @@ impl RuntimeCore {
                 then_branch,
                 else_branch,
             } => {
-                let condition_value = evaluate_expr(condition, None, &self.globals);
+                let condition_value = evaluate_expr(condition, None, &self.globals, None);
                 let branch = if is_truthy(condition_value) { then_branch } else { else_branch };
                 for nested in branch {
                     self.apply_statement_to_globals(nested);
@@ -213,7 +229,7 @@ impl RuntimeCore {
         match statement {
             LoweredLogicStatement::Assignment { target, value } => {
                 if let Some(key) = assignable_key(target, Some(instance)) {
-                    if let Some(value) = evaluate_expr(value, Some(instance), &self.globals) {
+                    if let Some(value) = evaluate_expr(value, Some(instance), &self.globals, None) {
                         assign_instance_or_global(key, value, instance, &mut self.globals);
                     }
                 }
@@ -223,7 +239,7 @@ impl RuntimeCore {
                 then_branch,
                 else_branch,
             } => {
-                let condition_value = evaluate_expr(condition, Some(instance), &self.globals);
+                let condition_value = evaluate_expr(condition, Some(instance), &self.globals, None);
                 let branch = if is_truthy(condition_value) { then_branch } else { else_branch };
                 for nested in branch {
                     self.apply_statement_to_instance(nested, instance);
@@ -254,17 +270,18 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     pending_room_reset: &mut bool,
     host: &mut H,
     diagnostics: &mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
 ) {
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
             if let Some(key) = assignable_key(target, Some(instance)) {
-                if let Some(value) = evaluate_expr(value, Some(instance), globals) {
+                if let Some(value) = evaluate_expr(value, Some(instance), globals, eval_context) {
                     assign_instance_or_global(key, value, instance, globals);
                 }
             }
         }
         LoweredLogicStatement::Conditional { condition, then_branch, else_branch } => {
-            let condition_value = evaluate_expr(condition, Some(instance), globals);
+            let condition_value = evaluate_expr(condition, Some(instance), globals, eval_context);
             let branch = if is_truthy(condition_value) { then_branch } else { else_branch };
             for nested in branch {
                 apply_runtime_statement(
@@ -276,6 +293,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     pending_room_reset,
                     host,
                     diagnostics,
+                    eval_context,
                 );
             }
         }
@@ -285,7 +303,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             "room_goto" => {
                 if let Some(room_id) = args
                     .first()
-                    .and_then(|arg| evaluate_expr(arg, Some(instance), globals))
+                    .and_then(|arg| evaluate_expr(arg, Some(instance), globals, eval_context))
                     .and_then(|value| runtime_value_to_room_id(&value))
                 {
                     *pending_room_transition = Some(room_id);
@@ -317,6 +335,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             pending_room_reset,
                             host,
                             diagnostics,
+                            eval_context,
                         );
                         if *pending_room_reset || pending_room_transition.is_some() {
                             break;
@@ -355,12 +374,12 @@ fn assign_instance_or_global(
 
 fn assign_number_field(
     value: RuntimeValue,
-    field: &mut i32,
+    field: &mut f64,
     vars: &mut HashMap<String, RuntimeValue>,
     key: String,
 ) {
     if let Some(number) = as_number(&value) {
-        *field = number.round() as i32;
+        *field = number;
     } else {
         vars.insert(key, value);
     }
@@ -401,7 +420,7 @@ fn expr_key_fragment(expr: &LoweredLogicExpr, instance: Option<&RuntimeInstance>
         }),
         LoweredLogicExpr::LiteralBool(flag) => Some(flag.to_string()),
         LoweredLogicExpr::LiteralText(text) => Some(text.clone()),
-        _ => evaluate_expr(expr, instance, &HashMap::new()).map(|value| match value {
+        _ => evaluate_expr(expr, instance, &HashMap::new(), None).map(|value| match value {
             RuntimeValue::Number(number) if number.fract() == 0.0 => format!("{}", number as i64),
             RuntimeValue::Number(number) => number.to_string(),
             RuntimeValue::Bool(flag) => flag.to_string(),
@@ -410,10 +429,17 @@ fn expr_key_fragment(expr: &LoweredLogicExpr, instance: Option<&RuntimeInstance>
     }
 }
 
+pub(crate) struct RuntimeEvalContext<'a> {
+    pub button_states: &'a HashMap<RuntimeButton, iwm_runtime_host::ButtonState>,
+    pub room_instances: &'a [RuntimeInstance],
+    pub objects: &'a [ObjectDefinition],
+}
+
 fn evaluate_expr(
     expr: &LoweredLogicExpr,
     instance: Option<&RuntimeInstance>,
     globals: &HashMap<String, RuntimeValue>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<RuntimeValue> {
     match expr {
         LoweredLogicExpr::Identifier(name) => {
@@ -430,6 +456,10 @@ fn evaluate_expr(
                 }
             }
 
+            if let Some(key_code) = gm_key_code(name) {
+                return Some(RuntimeValue::Number(key_code as f64));
+            }
+
             globals
                 .get(name)
                 .cloned()
@@ -439,7 +469,7 @@ fn evaluate_expr(
         LoweredLogicExpr::LiteralBool(flag) => Some(RuntimeValue::Bool(*flag)),
         LoweredLogicExpr::LiteralText(text) => Some(RuntimeValue::Text(text.clone())),
         LoweredLogicExpr::UnaryExpr { op, child } => {
-            let value = evaluate_expr(child, instance, globals)?;
+            let value = evaluate_expr(child, instance, globals, eval_context)?;
             match op.as_str() {
                 "-" => Some(RuntimeValue::Number(-as_number(&value)?)),
                 "+" => Some(RuntimeValue::Number(as_number(&value)?)),
@@ -450,7 +480,13 @@ fn evaluate_expr(
         LoweredLogicExpr::Call { name, args } => match name.as_str() {
             "room_goto" => args
                 .first()
-                .and_then(|arg| evaluate_expr(arg, instance, globals)),
+                .and_then(|arg| evaluate_expr(arg, instance, globals, eval_context)),
+            "ord" => evaluate_ord_call(args),
+            "keyboard_check" | "keyboard_check_direct" | "keyboard_check_pressed" | "keyboard_check_released" => {
+                evaluate_keyboard_query(name, args, instance, globals, eval_context)
+            }
+            "place_meeting" => evaluate_place_query(args, instance, globals, eval_context, true),
+            "place_free" => evaluate_place_query(args, instance, globals, eval_context, false),
             _ => None,
         },
         LoweredLogicExpr::MemberAccess { target, member } => {
@@ -469,8 +505,26 @@ fn evaluate_expr(
             })
         }
         LoweredLogicExpr::BinaryExpr { op, left, right } => {
-            let left = evaluate_expr(left, instance, globals)?;
-            let right = evaluate_expr(right, instance, globals)?;
+            if op == "&&" {
+                let left = evaluate_expr(left, instance, globals, eval_context)?;
+                if !is_truthy(Some(left)) {
+                    return Some(RuntimeValue::Bool(false));
+                }
+                let right = evaluate_expr(right, instance, globals, eval_context)?;
+                return Some(RuntimeValue::Bool(is_truthy(Some(right))));
+            }
+
+            if op == "||" {
+                let left = evaluate_expr(left, instance, globals, eval_context)?;
+                if is_truthy(Some(left)) {
+                    return Some(RuntimeValue::Bool(true));
+                }
+                let right = evaluate_expr(right, instance, globals, eval_context)?;
+                return Some(RuntimeValue::Bool(is_truthy(Some(right))));
+            }
+
+            let left = evaluate_expr(left, instance, globals, eval_context)?;
+            let right = evaluate_expr(right, instance, globals, eval_context)?;
             eval_binary_expr(op, &left, &right)
         }
         LoweredLogicExpr::Raw { source } => parse_runtime_value(source),
@@ -484,6 +538,7 @@ fn eval_binary_expr(op: &str, left: &RuntimeValue, right: &RuntimeValue) -> Opti
         "*" => Some(RuntimeValue::Number(as_number(left)? * as_number(right)?)),
         "/" => Some(RuntimeValue::Number(as_number(left)? / as_number(right)?)),
         "==" => Some(RuntimeValue::Bool(left == right)),
+        "=" => Some(RuntimeValue::Bool(left == right)),
         "!=" => Some(RuntimeValue::Bool(left != right)),
         ">=" => Some(RuntimeValue::Bool(as_number(left)? >= as_number(right)?)),
         "<=" => Some(RuntimeValue::Bool(as_number(left)? <= as_number(right)?)),
@@ -491,6 +546,97 @@ fn eval_binary_expr(op: &str, left: &RuntimeValue, right: &RuntimeValue) -> Opti
         "<" => Some(RuntimeValue::Bool(as_number(left)? < as_number(right)?)),
         _ => None,
     }
+}
+
+fn gm_key_code(name: &str) -> Option<u16> {
+    match name.to_ascii_lowercase().as_str() {
+        "vk_left" => Some(0x25),
+        "vk_up" => Some(0x26),
+        "vk_right" => Some(0x27),
+        "vk_down" => Some(0x28),
+        "vk_shift" => Some(0x10),
+        "vk_space" => Some(0x20),
+        "vk_enter" => Some(0x0D),
+        "vk_escape" => Some(0x1B),
+        "vk_control" => Some(0x11),
+        "vk_alt" => Some(0x12),
+        _ => None,
+    }
+}
+
+fn evaluate_ord_call(args: &[LoweredLogicExpr]) -> Option<RuntimeValue> {
+    let first = args.first()?;
+    match first {
+        LoweredLogicExpr::LiteralText(text) => text.chars().next().map(|ch| RuntimeValue::Number(ch as u32 as f64)),
+        _ => None,
+    }
+}
+
+fn evaluate_keyboard_query(
+    name: &str,
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let context = eval_context?;
+    let key_code = args
+        .first()
+        .and_then(|arg| evaluate_expr(arg, instance, globals, eval_context))
+        .and_then(|value| as_number(&value))
+        .map(|value| value.round() as u16)?;
+    let state = context
+        .button_states
+        .get(&RuntimeButton::Keyboard(key_code))
+        .copied()
+        .unwrap_or_default();
+    let result = match name {
+        "keyboard_check" | "keyboard_check_direct" => state.pressed,
+        "keyboard_check_pressed" => state.just_pressed,
+        "keyboard_check_released" => state.just_released,
+        _ => return None,
+    };
+    Some(RuntimeValue::Bool(result))
+}
+
+fn evaluate_place_query(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    want_meeting: bool,
+) -> Option<RuntimeValue> {
+    let context = eval_context?;
+    let instance = instance?;
+    let x = args
+        .first()
+        .and_then(|arg| evaluate_expr(arg, Some(instance), globals, eval_context))
+        .and_then(|value| as_number(&value))
+        .map(|value| value.round() as i32)?;
+    let y = args
+        .get(1)
+        .and_then(|arg| evaluate_expr(arg, Some(instance), globals, eval_context))
+        .and_then(|value| as_number(&value))
+        .map(|value| value.round() as i32)?;
+    let object_name = args.get(2).and_then(|arg| match arg {
+        LoweredLogicExpr::Identifier(name) => Some(name.as_str()),
+        _ => None,
+    })?;
+    let target_object_ids = context
+        .objects
+        .iter()
+        .filter(|object| object.name.eq_ignore_ascii_case(object_name))
+        .map(|object| object.id)
+        .collect::<Vec<_>>();
+    let targets = context
+        .room_instances
+        .iter()
+        .filter(|candidate| candidate.alive && target_object_ids.contains(&candidate.object_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let collides = !targets.is_empty()
+        && crate::helpers::collides_at(instance, x as f64, y as f64, &targets, Some(instance.runtime_id));
+    Some(RuntimeValue::Bool(if want_meeting { collides } else { !collides }))
 }
 
 fn runtime_value_to_room_id(value: &RuntimeValue) -> Option<usize> {

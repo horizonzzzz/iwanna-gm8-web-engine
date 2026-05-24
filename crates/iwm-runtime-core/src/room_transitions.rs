@@ -37,12 +37,12 @@ impl RuntimeCore {
             let (x, y) =
                 adjusted_spawn_for_player(&room.instances[player_index], spawn_x, spawn_y, room);
             let player = &mut room.instances[player_index];
-            player.x = x;
-            player.y = y;
-            player.previous_x = x;
-            player.previous_y = y;
-            player.hspeed = 0;
-            player.vspeed = 0;
+            player.x = x as f64;
+            player.y = y as f64;
+            player.previous_x = x as f64;
+            player.previous_y = y as f64;
+            player.hspeed = 0.0;
+            player.vspeed = 0.0;
             player.jump = RuntimeJumpState::default();
         }
     }

@@ -53,12 +53,12 @@ impl RuntimeCore {
                     instance_id: instance.instance_id,
                     object_id: instance.object_id as usize,
                     object_name: object.name.clone(),
-                    x: instance.x,
-                    y: instance.y,
-                    previous_x: instance.x,
-                    previous_y: instance.y,
-                    hspeed: 0,
-                    vspeed: 0,
+                    x: instance.x as f64,
+                    y: instance.y as f64,
+                    previous_x: instance.x as f64,
+                    previous_y: instance.y as f64,
+                    hspeed: 0.0,
+                    vspeed: 0.0,
                     width: metrics.width,
                     height: metrics.height,
                     origin_x: metrics.origin_x,
@@ -100,12 +100,12 @@ impl RuntimeCore {
                     instance_id: -1,
                     object_id: player_object.id,
                     object_name: player_object.name.clone(),
-                    x,
-                    y,
-                    previous_x: x,
-                    previous_y: y,
-                    hspeed: 0,
-                    vspeed: 0,
+                    x: x as f64,
+                    y: y as f64,
+                    previous_x: x as f64,
+                    previous_y: y as f64,
+                    hspeed: 0.0,
+                    vspeed: 0.0,
                     width: metrics.width,
                     height: metrics.height,
                     origin_x: metrics.origin_x,
@@ -150,10 +150,10 @@ impl RuntimeCore {
                     &room_state,
                 );
                 let player = &mut room_state.instances[player_index];
-                player.x = adjusted.0;
-                player.y = adjusted.1;
-                player.previous_x = adjusted.0;
-                player.previous_y = adjusted.1;
+                player.x = adjusted.0 as f64;
+                player.y = adjusted.1 as f64;
+                player.previous_x = adjusted.0 as f64;
+                player.previous_y = adjusted.1 as f64;
             }
         }
         self.apply_create_logic(&mut room_state, &room);

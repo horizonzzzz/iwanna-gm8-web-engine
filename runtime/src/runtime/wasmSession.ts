@@ -12,18 +12,28 @@ const DEFAULT_INPUT: WasmRuntimeInputState = {
   jump: false,
   jumpPressed: false,
   jumpReleased: false,
-  restart: false
+  restart: false,
+  keysHeld: [],
+  keysPressed: [],
+  keysReleased: []
 };
 
 export class WasmRuntimeSession {
   private input: WasmRuntimeInputState = { ...DEFAULT_INPUT };
   private previousJump = false;
+  private previousKeys = new Set<number>();
 
   constructor(private readonly bridge: WasmRuntimeBridge) {}
 
-  setInputState(snapshot: Pick<WasmRuntimeInputState, 'left' | 'right' | 'jump' | 'restart'>): void {
+  setInputState(
+    snapshot: Pick<WasmRuntimeInputState, 'left' | 'right' | 'jump' | 'restart'>
+      & { keysHeld?: number[] }
+  ): void {
     const jumpPressed = snapshot.jump && !this.previousJump;
     const jumpReleased = !snapshot.jump && this.previousJump;
+    const heldKeys = new Set(snapshot.keysHeld ?? []);
+    const keysPressed = [...heldKeys].filter((key) => !this.previousKeys.has(key));
+    const keysReleased = [...this.previousKeys].filter((key) => !heldKeys.has(key));
 
     this.input = {
       left: snapshot.left,
@@ -31,7 +41,10 @@ export class WasmRuntimeSession {
       jump: snapshot.jump,
       jumpPressed,
       jumpReleased,
-      restart: snapshot.restart
+      restart: snapshot.restart,
+      keysHeld: [...heldKeys],
+      keysPressed,
+      keysReleased
     };
   }
 
@@ -42,8 +55,11 @@ export class WasmRuntimeSession {
     const snapshot = await this.bridge.snapshot();
     const frame = await this.bridge.frame();
     this.previousJump = input.jump;
+    this.previousKeys = new Set(input.keysHeld ?? []);
     this.input.jumpPressed = false;
     this.input.jumpReleased = false;
+    this.input.keysPressed = [];
+    this.input.keysReleased = [];
     return { snapshot, frame };
   }
 }

@@ -19,7 +19,9 @@ pub(crate) fn is_player_instance(instance: &RuntimeInstance) -> bool {
     instance.player_candidate && instance.alive && is_preferred_player_name(&instance.object_name)
 }
 
-pub(crate) fn bounds_at(instance: &RuntimeInstance, x: i32, y: i32) -> (i32, i32, i32, i32) {
+pub(crate) fn bounds_at(instance: &RuntimeInstance, x: f64, y: f64) -> (i32, i32, i32, i32) {
+    let x = x.round() as i32;
+    let y = y.round() as i32;
     let left = x - instance.origin_x + instance.bbox_left;
     let top = y - instance.origin_y + instance.bbox_top;
     let right = x - instance.origin_x + instance.bbox_right + 1;
@@ -29,8 +31,8 @@ pub(crate) fn bounds_at(instance: &RuntimeInstance, x: i32, y: i32) -> (i32, i32
 
 pub(crate) fn collides_at(
     instance: &RuntimeInstance,
-    x: i32,
-    y: i32,
+    x: f64,
+    y: f64,
     others: &[RuntimeInstance],
     ignore_runtime_id: Option<usize>,
 ) -> bool {
@@ -51,12 +53,12 @@ pub(crate) fn move_instance_axis(
     solids: &[RuntimeInstance],
     ignore_runtime_id: Option<usize>,
     axis: Axis,
-    delta: i32,
+    delta: f64,
 ) -> bool {
     let step = delta.signum();
     let mut remaining = delta.abs();
 
-    while remaining > 0 {
+    while remaining >= 1.0 {
         let next_x = match axis {
             Axis::Horizontal => instance.x + step,
             Axis::Vertical => instance.x,
@@ -68,15 +70,15 @@ pub(crate) fn move_instance_axis(
 
         if collides_at(instance, next_x, next_y, solids, ignore_runtime_id) {
             match axis {
-                Axis::Horizontal => instance.hspeed = 0,
-                Axis::Vertical => instance.vspeed = 0,
+                Axis::Horizontal => instance.hspeed = 0.0,
+                Axis::Vertical => instance.vspeed = 0.0,
             }
             return true;
         }
 
         instance.x = next_x;
         instance.y = next_y;
-        remaining -= 1;
+        remaining -= 1.0;
     }
 
     false
@@ -104,7 +106,7 @@ pub(crate) fn adjusted_spawn_for_player(
         .cloned()
         .collect::<Vec<_>>();
 
-    if !collides_at(player, spawn_x, spawn_y, &solids, Some(player.runtime_id)) {
+    if !collides_at(player, spawn_x as f64, spawn_y as f64, &solids, Some(player.runtime_id)) {
         return (spawn_x, spawn_y);
     }
 
@@ -113,7 +115,7 @@ pub(crate) fn adjusted_spawn_for_player(
             let x = spawn_x + dx;
             let y = spawn_y + dy;
             if spawn_candidate_is_inside_room(player, x, y, room)
-                && !collides_at(player, x, y, &solids, Some(player.runtime_id))
+                && !collides_at(player, x as f64, y as f64, &solids, Some(player.runtime_id))
             {
                 return (x, y);
             }
@@ -129,7 +131,7 @@ fn spawn_candidate_is_inside_room(
     y: i32,
     room: &RuntimeRoomState,
 ) -> bool {
-    let (left, top, right, bottom) = bounds_at(player, x, y);
+    let (left, top, right, bottom) = bounds_at(player, x as f64, y as f64);
     left >= 0 && top >= 0 && right <= room.width as i32 && bottom <= room.height as i32
 }
 

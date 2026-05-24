@@ -31,6 +31,9 @@ describe('WasmRuntimeSession', () => {
       jumpPressed: true,
       jumpReleased: false,
       restart: false,
+      keysHeld: [],
+      keysPressed: [],
+      keysReleased: [],
     });
     expect(bridge.tick).toHaveBeenCalledWith(1);
     expect(bridge.snapshot).toHaveBeenCalledTimes(1);
@@ -54,6 +57,44 @@ describe('WasmRuntimeSession', () => {
       jumpPressed: false,
       jumpReleased: false,
       restart: false,
+      keysHeld: [],
+      keysPressed: [],
+      keysReleased: [],
+    });
+  });
+
+  it('tracks raw virtual-key hold and edge transitions across steps', async () => {
+    const bridge = makeBridge();
+    const session = new WasmRuntimeSession(bridge);
+    session.setInputState({ left: false, right: false, jump: false, restart: false, keysHeld: [0x10, 0x5A] });
+
+    await session.stepOnce();
+
+    expect(bridge.setInput).toHaveBeenNthCalledWith(1, {
+      left: false,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false,
+      keysHeld: [0x10, 0x5A],
+      keysPressed: [0x10, 0x5A],
+      keysReleased: [],
+    });
+
+    session.setInputState({ left: false, right: false, jump: false, restart: false, keysHeld: [0x10] });
+    await session.stepOnce();
+
+    expect(bridge.setInput).toHaveBeenNthCalledWith(2, {
+      left: false,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false,
+      keysHeld: [0x10],
+      keysPressed: [],
+      keysReleased: [0x5A],
     });
   });
 });

@@ -104,7 +104,7 @@ fn core_resets_player_back_to_spawn() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!((player.x, player.y), (12, 24));
+    assert_eq!((player.x, player.y), (12.0, 24.0));
 }
 
 #[test]
@@ -140,7 +140,7 @@ fn core_only_restarts_on_restart_press_edge() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!((player.x, player.y), (12, 24));
+    assert_eq!((player.x, player.y), (12.0, 24.0));
 
     host.input.replace_button_states([
         (
@@ -168,7 +168,7 @@ fn core_only_restarts_on_restart_press_edge() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert!(player.x > 12);
+    assert!(player.x > 12.0);
 }
 
 #[test]
@@ -205,7 +205,7 @@ fn core_reset_clears_previous_movement_and_input_effects() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!((player.previous_x, player.previous_y), (12, 24));
+    assert_eq!((player.previous_x, player.previous_y), (12.0, 24.0));
 }
 
 #[test]
@@ -257,7 +257,7 @@ fn core_spawn_adjusts_fallback_player_out_of_checkpoint_solid() {
         .unwrap();
 
     assert_eq!(room.spawn_point, Some((12, 40)));
-    assert_eq!((player.x, player.y), (12, 24));
+    assert_eq!((player.x, player.y), (12.0, 24.0));
 
     core.request_room_transition(7);
     core.tick(&mut host()).unwrap();
@@ -267,5 +267,6 @@ fn core_spawn_adjusts_fallback_player_out_of_checkpoint_solid() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!((player.x, player.y), (12, 24));
+    assert_eq!((player.x, player.y), (12.0, 24.0));
 }
+

@@ -9,13 +9,13 @@ use iwm_runtime_model::{
 use crate::helpers::collides_at;
 use crate::{LoweredLogicEntry, LoweredLogicFile, LoweredLogicStatement, RuntimeCore, RuntimePackage};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(super) struct JumpTraceFrame {
     pub tick: u64,
-    pub x: i32,
-    pub y: i32,
-    pub hspeed: i32,
-    pub vspeed: i32,
+    pub x: f64,
+    pub y: f64,
+    pub hspeed: f64,
+    pub vspeed: f64,
     pub grounded: bool,
     pub jump_active: bool,
     pub jump_hold_frames: u32,
@@ -352,7 +352,7 @@ pub(super) fn capture_jump_trace(core: &RuntimeCore) -> JumpTraceFrame {
         y: player.y,
         hspeed: player.hspeed,
         vspeed: player.vspeed,
-        grounded: collides_at(player, player.x, player.y + 1, &solids, Some(player.runtime_id)),
+        grounded: collides_at(player, player.x, player.y + 1.0, &solids, Some(player.runtime_id)),
         jump_active: player.jump.active,
         jump_hold_frames: player.jump.hold_frames,
         jump_cut_applied: player.jump.cut_applied,

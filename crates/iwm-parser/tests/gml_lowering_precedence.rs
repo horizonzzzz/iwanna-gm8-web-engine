@@ -208,3 +208,140 @@ fn lowering_preserves_unary_negative_and_not_expressions() {
         other => panic!("expected conditional with unary condition, got {other:?}"),
     }
 }
+
+#[test]
+fn lowering_splits_top_level_newline_separated_assignments() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 8,
+            script_name: "scr_newlines".to_string(),
+            gml_source: "gravity=0.4\r\nL = keyboard_check_direct(global.leftbutton);\r\nR = keyboard_check_direct(global.rightbutton);\r\n".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+
+    assert_eq!(statements.len(), 3);
+
+    match &statements[0] {
+        LoweredLogicStatement::Assignment { target, value } => {
+            assert!(matches!(target, LoweredLogicExpr::Identifier(name) if name == "gravity"));
+            assert!(matches!(
+                value,
+                LoweredLogicExpr::LiteralNumber(number) if (*number - 0.4).abs() < f64::EPSILON
+            ));
+        }
+        other => panic!("expected gravity assignment, got {other:?}"),
+    }
+
+    for (statement, expected_name, expected_member) in [
+        (&statements[1], "L", "leftbutton"),
+        (&statements[2], "R", "rightbutton"),
+    ] {
+        match statement {
+            LoweredLogicStatement::Assignment { target, value } => {
+                assert!(matches!(target, LoweredLogicExpr::Identifier(name) if name == expected_name));
+                assert!(matches!(
+                    value,
+                    LoweredLogicExpr::Call { name, args }
+                        if name == "keyboard_check_direct"
+                        && args.len() == 1
+                        && matches!(
+                            &args[0],
+                            LoweredLogicExpr::MemberAccess { target, member }
+                                if member == expected_member
+                                && matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "global")
+                        )
+                ));
+            }
+            other => panic!("expected keyboard assignment for {expected_name}, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn lowering_treats_single_equals_as_comparison_and_preserves_decimal_literals() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 9,
+            script_name: "scr_jump_cut".to_string(),
+            gml_source: "if(global.grav=0 && vspeed<0){ vspeed*=0.45; image_speed = 0.5; }".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+
+    match &lowered.entries[0].statements[0] {
+        LoweredLogicStatement::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            assert!(else_branch.is_empty());
+            assert!(matches!(
+                condition,
+                LoweredLogicExpr::BinaryExpr { op, left, right }
+                    if op == "&&"
+                    && matches!(
+                        left.as_ref(),
+                        LoweredLogicExpr::BinaryExpr { op, left, right }
+                            if op == "="
+                            && matches!(
+                                left.as_ref(),
+                                LoweredLogicExpr::MemberAccess { target, member }
+                                    if member == "grav"
+                                    && matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "global")
+                            )
+                            && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 0.0).abs() < f64::EPSILON)
+                    )
+                    && matches!(
+                        right.as_ref(),
+                        LoweredLogicExpr::BinaryExpr { op, left, right }
+                            if op == "<"
+                            && matches!(left.as_ref(), LoweredLogicExpr::Identifier(name) if name == "vspeed")
+                            && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 0.0).abs() < f64::EPSILON)
+                    )
+            ));
+            assert_eq!(then_branch.len(), 2);
+
+            match &then_branch[0] {
+                LoweredLogicStatement::Assignment { target, value } => {
+                    assert!(matches!(target, LoweredLogicExpr::Identifier(name) if name == "vspeed"));
+                    assert!(matches!(
+                        value,
+                        LoweredLogicExpr::BinaryExpr { op, left, right }
+                            if op == "*"
+                            && matches!(left.as_ref(), LoweredLogicExpr::Identifier(name) if name == "vspeed")
+                            && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 0.45).abs() < f64::EPSILON)
+                    ));
+                }
+                other => panic!("expected vspeed compound assignment, got {other:?}"),
+            }
+
+            match &then_branch[1] {
+                LoweredLogicStatement::Assignment { target, value } => {
+                    assert!(matches!(target, LoweredLogicExpr::Identifier(name) if name == "image_speed"));
+                    assert!(matches!(
+                        value,
+                        LoweredLogicExpr::LiteralNumber(number) if (*number - 0.5).abs() < f64::EPSILON
+                    ));
+                }
+                other => panic!("expected image_speed assignment, got {other:?}"),
+            }
+        }
+        other => panic!("expected conditional, got {other:?}"),
+    }
+}

@@ -357,12 +357,12 @@ fn lower_expr(expr: &str) -> LoweredLogicExpr {
         return index;
     }
 
-    if let Some(member) = lower_member_expr(expr) {
-        return member;
-    }
-
     if let Ok(number) = expr.parse::<f64>() {
         return LoweredLogicExpr::LiteralNumber(number);
+    }
+
+    if let Some(member) = lower_member_expr(expr) {
+        return member;
     }
 
     if expr.eq_ignore_ascii_case("true") {
@@ -393,7 +393,7 @@ fn lower_binary_expr(expr: &str) -> Option<LoweredLogicExpr> {
         }
     }
     // Comparison and arithmetic operators
-    for op in ["==", "!=", ">=", "<=", "+", "-", "*", "/", ">", "<"] {
+    for op in ["==", "!=", ">=", "<=", "=", "+", "-", "*", "/", ">", "<"] {
         if let Some((left, right)) = split_top_level_operator(expr, op) {
             return Some(LoweredLogicExpr::BinaryExpr {
                 op: op.to_string(),
@@ -686,6 +686,17 @@ fn split_top_level_statements(source: &str) -> Vec<String> {
                 current.clear();
                 continue;
             }
+            '\n' if paren_depth == 0 && brace_depth == 0 => {
+                let next = source[index + ch.len_utf8()..].trim_start();
+                if should_split_top_level_newline(current.trim(), next) {
+                    let stmt = current.trim();
+                    if !stmt.is_empty() {
+                        statements.push(stmt.to_string());
+                    }
+                    current.clear();
+                    continue;
+                }
+            }
             _ => {}
         }
         current.push(ch);
@@ -791,7 +802,7 @@ fn split_top_level_operator(source: &str, operator: &str) -> Option<(String, Str
 
         if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
             let tail = &source[byte_index..];
-            if tail.starts_with(operator) {
+            if tail.starts_with(operator) && operator_occurrence_is_valid(source, byte_index, operator) {
                 let left = source[..byte_index].trim();
                 let right = source[byte_index + op_len..].trim();
                 if !left.is_empty() && !right.is_empty() {
@@ -804,6 +815,53 @@ fn split_top_level_operator(source: &str, operator: &str) -> Option<(String, Str
     }
 
     None
+}
+
+fn should_split_top_level_newline(current: &str, next: &str) -> bool {
+    if current.is_empty() || next.is_empty() {
+        return false;
+    }
+
+    if current.ends_with('{')
+        || current.ends_with('(')
+        || current.ends_with('[')
+        || current.ends_with(',')
+        || current.ends_with('+')
+        || current.ends_with('-')
+        || current.ends_with('*')
+        || current.ends_with('/')
+        || current.ends_with('=')
+        || current.ends_with("&&")
+        || current.ends_with("||")
+    {
+        return false;
+    }
+
+    let current_lower = current.to_ascii_lowercase();
+    if (current_lower.starts_with("if")
+        || current_lower.starts_with("with")
+        || current_lower.starts_with("repeat")
+        || current_lower.starts_with("while")
+        || current_lower.starts_with("for")
+        || current_lower == "else")
+        && (next.starts_with('{') || next.starts_with("if"))
+    {
+        return false;
+    }
+
+    true
+}
+
+fn operator_occurrence_is_valid(source: &str, byte_index: usize, operator: &str) -> bool {
+    if operator != "=" {
+        return true;
+    }
+
+    let before = source[..byte_index].chars().next_back();
+    let after = source[byte_index + operator.len()..].chars().next();
+
+    !matches!(before, Some('=') | Some('!') | Some('<') | Some('>') | Some('+') | Some('-') | Some('*') | Some('/'))
+        && !matches!(after, Some('='))
 }
 
 fn split_top_level_trailing_index(source: &str) -> Option<(String, String)> {

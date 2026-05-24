@@ -83,8 +83,8 @@ impl RuntimeCore {
                 commands.push(RuntimeDrawCommand::DrawSprite {
                     sprite_id: object.sprite_index as usize,
                     frame_index: 0,
-                    x: instance.x,
-                    y: instance.y,
+                    x: instance.x.round() as i32,
+                    y: instance.y.round() as i32,
                     origin_x: sprite.map(|sprite| sprite.origin_x).unwrap_or(0),
                     origin_y: sprite.map(|sprite| sprite.origin_y).unwrap_or(0),
                     xscale: if instance.facing_left { -1.0 } else { 1.0 },

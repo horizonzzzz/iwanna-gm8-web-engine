@@ -309,6 +309,33 @@ function keyToAction(key: string): 'left' | 'right' | 'jump' | 'restart' | null 
   }
 }
 
+function keyToVirtualKey(key: string): number | null {
+  switch (key) {
+    case 'ArrowLeft':
+      return 0x25;
+    case 'ArrowUp':
+      return 0x26;
+    case 'ArrowRight':
+      return 0x27;
+    case 'ArrowDown':
+      return 0x28;
+    case 'Shift':
+      return 0x10;
+    case ' ':
+    case 'Spacebar':
+      return 0x20;
+    case 'Enter':
+      return 0x0D;
+    case 'Escape':
+      return 0x1B;
+    default:
+      if (key.length === 1) {
+        return key.toUpperCase().charCodeAt(0);
+      }
+      return null;
+  }
+}
+
 export function createRuntimeShell(root: HTMLElement, dependencies: Partial<ShellDependencies> = {}): void {
   const resolved = { ...defaultDependencies, ...dependencies };
   const doc = root.ownerDocument;
@@ -333,6 +360,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     jump: false,
     restart: false
   };
+  const heldVirtualKeys = new Set<number>();
   let autoTickHandle: IntervalHandle | null = null;
   let autoTickRunning = false;
   let autoTickInFlight = false;
@@ -358,12 +386,20 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
     if (action) {
       keyboardState[action] = true;
     }
+    const virtualKey = keyToVirtualKey(event.key);
+    if (virtualKey != null) {
+      heldVirtualKeys.add(virtualKey);
+    }
   });
 
   doc.addEventListener('keyup', (event) => {
     const action = keyToAction(event.key);
     if (action) {
       keyboardState[action] = false;
+    }
+    const virtualKey = keyToVirtualKey(event.key);
+    if (virtualKey != null) {
+      heldVirtualKeys.delete(virtualKey);
     }
   });
 
@@ -417,7 +453,10 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       return null;
     }
 
-    activeBackend.session.setInputState(keyboardState);
+    activeBackend.session.setInputState({
+      ...keyboardState,
+      keysHeld: [...heldVirtualKeys]
+    });
     const { snapshot, frame } = await activeBackend.session.stepOnce();
     await resolved.renderWasmFrame(canvas, frame, loadedPackage.resources, input.value, renderCache);
     renderTextDiagnostics(doc, diagnostics, snapshot.diagnostics);

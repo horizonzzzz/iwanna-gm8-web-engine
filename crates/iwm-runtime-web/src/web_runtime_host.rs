@@ -62,40 +62,78 @@ impl WebRuntimeHost {
         let jump_just_released = !input.jump && self.previous_jump;
         let restart_just_pressed = input.restart && !self.previous_restart;
         let restart_just_released = !input.restart && self.previous_restart;
-        self.host.input.replace_button_states([
-            (
-                RuntimeButton::Keyboard(0x25),
-                ButtonState {
-                    pressed: input.left,
-                    just_pressed: left_just_pressed,
-                    just_released: left_just_released,
-                },
-            ),
-            (
-                RuntimeButton::Keyboard(0x27),
-                ButtonState {
-                    pressed: input.right,
-                    just_pressed: right_just_pressed,
-                    just_released: right_just_released,
-                },
-            ),
-            (
-                RuntimeButton::Keyboard(0x20),
-                ButtonState {
-                    pressed: input.jump,
-                    just_pressed: jump_just_pressed || input.jump_pressed,
-                    just_released: jump_just_released || input.jump_released,
-                },
-            ),
-            (
-                RuntimeButton::Keyboard(0x52),
-                ButtonState {
-                    pressed: input.restart,
-                    just_pressed: restart_just_pressed,
-                    just_released: restart_just_released,
-                },
-            ),
-        ]);
+        let mut states = input
+            .keys_held
+            .iter()
+            .copied()
+            .map(|key| {
+                (
+                    RuntimeButton::Keyboard(key),
+                    ButtonState {
+                        pressed: true,
+                        just_pressed: input.keys_pressed.contains(&key),
+                        just_released: false,
+                    },
+                )
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+
+        for key in &input.keys_pressed {
+            states
+                .entry(RuntimeButton::Keyboard(*key))
+                .and_modify(|state| state.just_pressed = true)
+                .or_insert(ButtonState {
+                    pressed: false,
+                    just_pressed: true,
+                    just_released: false,
+                });
+        }
+
+        for key in &input.keys_released {
+            states
+                .entry(RuntimeButton::Keyboard(*key))
+                .and_modify(|state| state.just_released = true)
+                .or_insert(ButtonState {
+                    pressed: false,
+                    just_pressed: false,
+                    just_released: true,
+                });
+        }
+
+        states.insert(
+            RuntimeButton::Keyboard(0x25),
+            ButtonState {
+                pressed: input.left,
+                just_pressed: left_just_pressed,
+                just_released: left_just_released,
+            },
+        );
+        states.insert(
+            RuntimeButton::Keyboard(0x27),
+            ButtonState {
+                pressed: input.right,
+                just_pressed: right_just_pressed,
+                just_released: right_just_released,
+            },
+        );
+        states.insert(
+            RuntimeButton::Keyboard(0x20),
+            ButtonState {
+                pressed: input.jump,
+                just_pressed: jump_just_pressed || input.jump_pressed,
+                just_released: jump_just_released || input.jump_released,
+            },
+        );
+        states.insert(
+            RuntimeButton::Keyboard(0x52),
+            ButtonState {
+                pressed: input.restart,
+                just_pressed: restart_just_pressed,
+                just_released: restart_just_released,
+            },
+        );
+
+        self.host.input.replace_button_states(states);
         self.previous_left = input.left;
         self.previous_right = input.right;
         self.previous_jump = input.jump;

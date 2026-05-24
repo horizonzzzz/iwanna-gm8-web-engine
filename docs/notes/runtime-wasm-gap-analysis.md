@@ -14,6 +14,8 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - The lowered parser contract now covers common comment stripping, `var` declarations, assignments, returns, calls, member/index access, unary expressions, and common control-flow heads on the current critical path.
 - The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, and it now also dispatches alarm, held-key, key-press, and key-release slices with parent fallback lookup for event dispatch.
 - The runtime core now uses a variable-height jump state machine on the IWanna-critical path, including held jump differentiation, release-cut tracking, ceiling-hit phase clearing, and landing reset state clearing.
+- The runtime core now also evaluates `keyboard_check`, `keyboard_check_direct`, `keyboard_check_pressed`, `keyboard_check_released`, `place_meeting`, `place_free`, `&&`, `||`, and single-`=` GM comparisons on the current lowered path, and player motion state now preserves floating-point `x/y/hspeed/vspeed` instead of rounding assignments back to integers.
+- The browser/input path no longer needs jump to be hardcoded to Space for runtime-core fallback movement; runtime fallback input now prefers package-initialized bindings such as `global.leftbutton`, `global.rightbutton`, and `global.jumpbutton`, while the browser-facing host can also forward raw virtual-key hold/press/release state alongside the shell's semantic controls.
 - The browser-facing host path now treats one-shot controls such as jump/restart as host-boundary input edges and clears edge bits after each tick; the shell now drives those per-tick inputs through a 60 Hz auto-run loop instead of only a manual single-step button. The next runtime blocker is broader OpenGMK semantic coverage, not expanding shell-side gameplay rules.
 - Runtime snapshots and the browser shell now also expose jump-trace telemetry for the current player path: grounded state plus active / hold / cut jump-phase flags. This is a debugging and validation surface, not proof that the underlying jump semantics already match the gold sample.
 
@@ -98,7 +100,7 @@ Missing pieces include:
 
 GM8 distinguishes held state from edge-triggered state.
 
-Current input handling already has a partial edge-triggered basis for `jump` and `restart` through the browser bridge and host button snapshots, but the full GM8 keyboard and mouse event model is still missing.
+Current input handling now has both semantic shell controls and raw-key forwarding through the browser bridge, and runtime-core keyboard queries can resolve against package-initialized GM key bindings. The full GM8 keyboard and mouse event model is still missing.
 
 Missing pieces include:
 
@@ -108,7 +110,8 @@ Missing pieces include:
 Current status:
 
 - held, press, and release dispatch now exists for the current runtime core keyboard slice
-- the remaining gap is broader GM8 input coverage beyond the shell/runtime buttons currently wired in the bridge
+- runtime-core query functions now resolve against host key state instead of only shell-hardcoded jump booleans
+- the remaining gap is broader GM8 input coverage beyond the shell/runtime buttons currently wired in the bridge, plus mouse semantics
 
 ### 6. Lifecycle Event Chain
 
@@ -135,7 +138,7 @@ These do not always block booting, but they block core IWanna fidelity and make 
 
 ### 7. Physics Precision
 
-Current movement still uses some hardcoded defaults such as `RUN_SPEED` and fallback jump values, but jump is no longer a fixed-height placeholder.
+Current movement still uses some hardcoded defaults such as `RUN_SPEED` and fallback jump values, but jump is no longer a fixed-height placeholder, and motion assignments no longer lose GM8 fractional values on write.
 
 The runtime already has a hardcoded player movement baseline and per-instance `hspeed` / `vspeed` fields, plus explicit jump-phase state for hold, cut, and landing-reset behavior, but not a general GM8-style object-driven physics model.
 
@@ -146,6 +149,11 @@ Missing pieces include:
 - per-object `hspeed` / `vspeed`
 - frame-accumulated gravity rather than a single hardcoded motion model
 - numeric jump calibration against the `IWBT_Dife` gold sample instead of only generic hold/cut semantics
+
+Practical current note:
+
+- browser smoke after these changes shows that jump-path blockers have moved from "input and fractional values are dead" to broader lifecycle/runtime coverage; the player can still end up in obviously wrong long-run room states because `rInit`/room-start/world initialization semantics remain incomplete
+- do not treat the new floating-point/input-query support as proof that native IWanna jump feel is solved end to end yet
 
 ### 8. Views And Cameras
 

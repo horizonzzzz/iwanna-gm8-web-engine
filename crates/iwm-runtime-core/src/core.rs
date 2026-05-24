@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use iwm_runtime_host::{RuntimeButton, RuntimeHost};
+use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 
 use crate::event_dispatch::{object_event_block_ids, RuntimeEventSelector};
-use crate::helpers::{collides_at, is_player_instance};
+use crate::helpers::{as_number, collides_at, is_player_instance};
 use crate::{
     LoweredLogicEntry, LoweredLogicStatement, RuntimeCoreError, RuntimePackage,
     RuntimeJumpSnapshot, RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot, RuntimeStatus,
@@ -124,7 +124,7 @@ impl RuntimeCore {
                             grounded: collides_at(
                                 instance,
                                 instance.x,
-                                instance.y + 1,
+                                instance.y + 1.0,
                                 &solids,
                                 Some(instance.runtime_id),
                             ),
@@ -154,9 +154,9 @@ impl RuntimeCore {
             return Err(RuntimeCoreError::NoRooms);
         }
 
-        let left = host.button_state(RuntimeButton::Keyboard(0x25));
-        let right = host.button_state(RuntimeButton::Keyboard(0x27));
-        let jump = host.button_state(RuntimeButton::Keyboard(0x20));
+        let left = self.bound_button_state(host, "global.leftbutton", 0x25);
+        let right = self.bound_button_state(host, "global.rightbutton", 0x27);
+        let jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
         let restart = host.button_state(RuntimeButton::Keyboard(0x52));
 
         self.tick += 1;
@@ -239,6 +239,21 @@ impl RuntimeCore {
         Ok(())
     }
 
+    fn bound_button_state<H: RuntimeHost>(
+        &self,
+        host: &H,
+        binding_key: &str,
+        fallback_key_code: u16,
+    ) -> ButtonState {
+        let key_code = self
+            .globals
+            .get(binding_key)
+            .and_then(as_number)
+            .map(|value| value.round() as u16)
+            .unwrap_or(fallback_key_code);
+        host.button_state(RuntimeButton::Keyboard(key_code))
+    }
+
     pub fn reload_room(&mut self, room_id: usize) -> Result<(), RuntimeCoreError> {
         self.current_room = Some(self.build_room(room_id)?);
         self.status = RuntimeStatus::Ready;
@@ -300,6 +315,21 @@ impl RuntimeCore {
             .flat_map(|entry| entry.statements.clone())
             .collect();
         let script_entries = self.lowered_script_entries();
+        let button_states = host
+            .active_buttons()
+            .into_iter()
+            .collect::<std::collections::HashMap<_, _>>();
+        let room_instances = {
+            let Some(room) = self.current_room.as_ref() else {
+                return;
+            };
+            room.instances.clone()
+        };
+        let eval_context = crate::logic::RuntimeEvalContext {
+            button_states: &button_states,
+            room_instances: &room_instances,
+            objects: &self.package.objects,
+        };
 
         let mut instance = {
             let Some(room) = self.current_room.as_ref() else {
@@ -321,6 +351,7 @@ impl RuntimeCore {
                 &mut self.pending_room_reset,
                 host,
                 &mut self.diagnostics,
+                Some(&eval_context),
             );
             if self.pending_room_reset || self.pending_room_transition.is_some() {
                 break;

@@ -5,10 +5,10 @@ use crate::helpers::{
 };
 use crate::{RuntimeCore, RuntimeCoreError};
 
-const RUN_SPEED: i32 = 4;
-const JUMP_SPEED: i32 = 8;
-const GRAVITY: i32 = 1;
-const MAX_FALL_SPEED: i32 = 8;
+const RUN_SPEED: f64 = 4.0;
+const JUMP_SPEED: f64 = 8.0;
+const GRAVITY: f64 = 1.0;
+const MAX_FALL_SPEED: f64 = 8.0;
 
 impl RuntimeCore {
     pub(crate) fn step_player<H: RuntimeHost>(
@@ -57,20 +57,17 @@ impl RuntimeCore {
             .get("moveSpeed")
             .and_then(as_number)
             .or_else(|| player.vars.get("maxSpeed").and_then(as_number))
-            .unwrap_or(RUN_SPEED as f64)
-            .round() as i32;
+            .unwrap_or(RUN_SPEED);
         let jump_speed = player
             .vars
             .get("jump")
             .and_then(as_number)
-            .unwrap_or(JUMP_SPEED as f64)
-            .round() as i32;
+            .unwrap_or(JUMP_SPEED);
         let jump_cut_speed = player
             .vars
             .get("jump2")
             .and_then(as_number)
-            .unwrap_or((jump_speed - 1).max(1) as f64)
-            .round() as i32;
+            .unwrap_or((jump_speed - 1.0).max(1.0));
         let jump_hold_frames = player
             .vars
             .get("jumpHoldFrames")
@@ -81,14 +78,12 @@ impl RuntimeCore {
             .vars
             .get("gravity")
             .and_then(as_number)
-            .unwrap_or(GRAVITY as f64)
-            .round() as i32;
+            .unwrap_or(GRAVITY);
         let max_fall_speed = player
             .vars
             .get("maxFallSpeed")
             .and_then(as_number)
-            .unwrap_or(MAX_FALL_SPEED as f64)
-            .round() as i32;
+            .unwrap_or(MAX_FALL_SPEED);
 
         player.previous_x = player.x;
         player.previous_y = player.y;
@@ -102,13 +97,13 @@ impl RuntimeCore {
                 player.facing_left = false;
                 run_speed
             }
-            _ => 0,
+            _ => 0.0,
         };
 
         let standing_on_solid = collides_at(
             player,
             player.x,
-            player.y + 1,
+            player.y + 1.0,
             &solids,
             Some(player.runtime_id),
         );
@@ -124,13 +119,13 @@ impl RuntimeCore {
         if player.jump.active
             && jump.pressed
             && player.jump.hold_frames < jump_hold_frames
-            && player.vspeed < 0
+            && player.vspeed < 0.0
         {
             player.vspeed = player.vspeed.min(-jump_speed);
             player.jump.hold_frames += 1;
         }
 
-        if jump.just_released && player.jump.active && player.vspeed < 0 && !player.jump.cut_applied {
+        if jump.just_released && player.jump.active && player.vspeed < 0.0 && !player.jump.cut_applied {
             player.vspeed = player.vspeed.max(-jump_cut_speed);
             player.jump.cut_applied = true;
         }
@@ -159,7 +154,7 @@ impl RuntimeCore {
         let grounded_after = collides_at(
             player,
             player.x,
-            player.y + 1,
+            player.y + 1.0,
             &solids,
             Some(player.runtime_id),
         );

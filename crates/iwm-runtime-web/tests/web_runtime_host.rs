@@ -63,7 +63,7 @@ fn web_runtime_host_snapshot_exposes_player_motion_and_reset_state() {
     let boot = host.boot(sample_package()).unwrap();
     assert_eq!(
         boot.player.as_ref().map(|player| (player.x, player.y)),
-        Some((32, 64))
+        Some((32.0, 64.0))
     );
     assert_eq!(
         boot.player.as_ref().map(|player| (
@@ -82,11 +82,14 @@ fn web_runtime_host_snapshot_exposes_player_motion_and_reset_state() {
         jump_pressed: false,
         jump_released: false,
         restart: false,
+        keys_held: vec![],
+        keys_pressed: vec![],
+        keys_released: vec![],
     });
 
     let after_tick = host.tick(1).unwrap();
     assert_eq!(after_tick.tick, 1);
-    assert!(after_tick.player.as_ref().map(|player| player.x).unwrap() > 32);
+    assert!(after_tick.player.as_ref().map(|player| player.x).unwrap() > 32.0);
     assert_eq!(
         after_tick.player.as_ref().map(|player| (
             player.jump.grounded,
@@ -101,14 +104,14 @@ fn web_runtime_host_snapshot_exposes_player_motion_and_reset_state() {
     assert_eq!(switched.room_id, Some(1));
     assert_eq!(
         switched.player.as_ref().map(|player| (player.x, player.y)),
-        Some((0, 0))
+        Some((0.0, 0.0))
     );
 
     let reset = host.reset().unwrap();
     assert_eq!(reset.room_id, Some(0));
     assert_eq!(
         reset.player.as_ref().map(|player| (player.x, player.y)),
-        Some((32, 64))
+        Some((32.0, 64.0))
     );
     assert_eq!(
         reset.player.as_ref().map(|player| (
@@ -133,6 +136,9 @@ fn web_runtime_host_snapshot_exposes_jump_trace_after_jump_press() {
         jump_pressed: true,
         jump_released: false,
         restart: false,
+        keys_held: vec![],
+        keys_pressed: vec![],
+        keys_released: vec![],
     });
 
     let after_tick = host.tick(1).unwrap();
@@ -145,6 +151,27 @@ fn web_runtime_host_snapshot_exposes_jump_trace_after_jump_press() {
         )),
         Some((false, true, 1, false))
     );
+}
+
+#[test]
+fn web_runtime_host_accepts_raw_virtual_key_input() {
+    let mut host = WebRuntimeHost::new();
+    host.boot(sample_package()).unwrap();
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: false,
+        jump_pressed: false,
+        jump_released: false,
+        restart: false,
+        keys_held: vec![0x10],
+        keys_pressed: vec![0x10],
+        keys_released: vec![],
+    });
+
+    let snapshot = host.tick(1).unwrap();
+    assert_eq!(snapshot.tick, 1);
 }
 
 #[test]
@@ -171,6 +198,9 @@ fn web_runtime_host_accepts_input_and_returns_render_frame_json() {
         jump_pressed: true,
         jump_released: false,
         restart: false,
+        keys_held: vec![],
+        keys_pressed: vec![],
+        keys_released: vec![],
     });
 
     host.tick(1).unwrap();
@@ -193,11 +223,14 @@ fn web_runtime_host_treats_restart_as_a_one_shot_press_edge() {
         jump_pressed: false,
         jump_released: false,
         restart: true,
+        keys_held: vec![],
+        keys_pressed: vec![],
+        keys_released: vec![],
     });
     let reset = host.tick(1).unwrap();
     assert_eq!(
         reset.player.as_ref().map(|player| (player.x, player.y)),
-        Some((32, 64))
+        Some((32.0, 64.0))
     );
 
     host.set_input(WebInputState {
@@ -207,9 +240,12 @@ fn web_runtime_host_treats_restart_as_a_one_shot_press_edge() {
         jump_pressed: false,
         jump_released: false,
         restart: true,
+        keys_held: vec![],
+        keys_pressed: vec![],
+        keys_released: vec![],
     });
     let after_hold = host.tick(1).unwrap();
-    assert!(after_hold.player.as_ref().map(|player| player.x).unwrap() > 32);
+    assert!(after_hold.player.as_ref().map(|player| player.x).unwrap() > 32.0);
 }
 
 #[test]
@@ -224,6 +260,9 @@ fn web_runtime_host_clears_input_edge_bits_after_each_tick() {
         jump_pressed: true,
         jump_released: false,
         restart: true,
+        keys_held: vec![],
+        keys_pressed: vec![],
+        keys_released: vec![],
     });
 
     host.tick(1).unwrap();
@@ -236,6 +275,9 @@ fn web_runtime_host_clears_input_edge_bits_after_each_tick() {
         jump_pressed: false,
         jump_released: false,
         restart: true,
+        keys_held: vec![],
+        keys_pressed: vec![],
+        keys_released: vec![],
     });
     host.tick(1).unwrap();
 
@@ -282,3 +324,5 @@ fn web_runtime_host_frame_snapshot_includes_tiles_and_fallback_player_output() {
         BridgeDrawCommand::DrawSprite { sprite_id: 0, .. }
     )));
 }
+
+

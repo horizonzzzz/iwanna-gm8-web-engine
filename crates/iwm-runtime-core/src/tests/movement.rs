@@ -3,7 +3,8 @@ use iwm_runtime_host::{ButtonState, RuntimeButton};
 use crate::helpers::collides_at;
 use crate::RuntimeCore;
 
-use super::support::{capture_jump_trace, host, sample_package};
+use super::support::{add_room_create_block, capture_jump_trace, host, sample_package};
+use crate::{LoweredLogicExpr, LoweredLogicStatement};
 
 #[test]
 fn core_moves_player_with_left_and_right_input() {
@@ -26,7 +27,7 @@ fn core_moves_player_with_left_and_right_input() {
         .find(|instance| instance.player_candidate)
         .unwrap();
     let right_x = player.x;
-    assert!(right_x > 12);
+    assert!(right_x > 12.0);
 
     host.input.replace_button_states([(
         RuntimeButton::Keyboard(0x25),
@@ -67,7 +68,42 @@ fn core_jumps_when_on_spawn_and_jump_is_pressed() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert!(player.y <= 24);
+    assert!(player.y <= 24.0);
+}
+
+#[test]
+fn core_uses_runtime_bound_jump_key_instead_of_hardcoded_space() {
+    let mut package = sample_package();
+    add_room_create_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "jumpbutton".into(),
+            },
+            value: LoweredLogicExpr::LiteralNumber(0x10 as f64),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert!(player.y <= 24.0);
 }
 
 #[test]
@@ -109,7 +145,7 @@ fn core_stops_player_when_moving_into_a_solid() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!(player.x, 12);
+    assert_eq!(player.x, 12.0);
 }
 
 #[test]
@@ -164,7 +200,7 @@ fn core_updates_previous_position_before_moving_player() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!((player.previous_x, player.previous_y), (12, 24));
+    assert_eq!((player.previous_x, player.previous_y), (12.0, 24.0));
     assert!(player.x > player.previous_x);
 }
 
@@ -183,16 +219,16 @@ fn core_collisions_use_runtime_bbox_instead_of_whole_sprite_extents() {
         .position(|instance| instance.solid)
         .unwrap();
 
-    room.instances[player_index].x = 12;
-    room.instances[player_index].y = 24;
+    room.instances[player_index].x = 12.0;
+    room.instances[player_index].y = 24.0;
     room.instances[player_index].width = 32;
     room.instances[player_index].height = 32;
     room.instances[player_index].bbox_left = 8;
     room.instances[player_index].bbox_right = 23;
     room.instances[player_index].bbox_top = 8;
     room.instances[player_index].bbox_bottom = 23;
-    room.instances[solid_index].x = 12;
-    room.instances[solid_index].y = 48;
+    room.instances[solid_index].x = 12.0;
+    room.instances[solid_index].y = 48.0;
     room.instances[solid_index].width = 32;
     room.instances[solid_index].height = 32;
     room.instances[solid_index].bbox_left = 0;
@@ -291,10 +327,10 @@ fn core_initializes_and_clears_jump_state_on_room_reset() {
 
 #[test]
 fn core_tap_jump_reaches_lower_apex_than_held_jump() {
-    fn run_jump_sequence(held_frames: usize) -> i32 {
+    fn run_jump_sequence(held_frames: usize) -> f64 {
         let mut core = RuntimeCore::load(sample_package()).unwrap();
         let mut host = host();
-        let mut min_y = i32::MAX;
+        let mut min_y = f64::INFINITY;
 
         for frame in 0..12 {
             let pressed = frame < held_frames;
@@ -370,7 +406,7 @@ fn core_ceiling_hit_clears_upward_jump_phase() {
         .find(|instance| instance.player_candidate)
         .unwrap();
     assert!(!player.jump.active);
-    assert!(player.vspeed >= 0);
+    assert!(player.vspeed >= 0.0);
 }
 
 #[test]
@@ -473,3 +509,4 @@ fn core_snapshot_exposes_player_jump_trace_state() {
     assert!(!player.jump.cut_applied);
     assert!(!player.jump.grounded);
 }
+

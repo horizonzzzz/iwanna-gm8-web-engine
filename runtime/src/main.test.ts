@@ -593,7 +593,10 @@ describe('main runtime shell', () => {
       jump: false,
       jumpPressed: false,
       jumpReleased: false,
-      restart: false
+      restart: false,
+      keysHeld: [0x25],
+      keysPressed: [0x25],
+      keysReleased: []
     });
     expect(wasmBridge.tick).toHaveBeenCalledTimes(2);
 

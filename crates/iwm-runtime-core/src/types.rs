@@ -145,12 +145,12 @@ pub struct RuntimeInstance {
     pub instance_id: i32,
     pub object_id: usize,
     pub object_name: String,
-    pub x: i32,
-    pub y: i32,
-    pub previous_x: i32,
-    pub previous_y: i32,
-    pub hspeed: i32,
-    pub vspeed: i32,
+    pub x: f64,
+    pub y: f64,
+    pub previous_x: f64,
+    pub previous_y: f64,
+    pub hspeed: f64,
+    pub vspeed: f64,
     pub width: i32,
     pub height: i32,
     pub origin_x: i32,
@@ -184,10 +184,10 @@ pub struct RuntimeRoomState {
 
 #[derive(Debug, Clone)]
 pub struct RuntimePlayerSnapshot {
-    pub x: i32,
-    pub y: i32,
-    pub hspeed: i32,
-    pub vspeed: i32,
+    pub x: f64,
+    pub y: f64,
+    pub hspeed: f64,
+    pub vspeed: f64,
     pub facing_left: bool,
     pub jump: RuntimeJumpSnapshot,
 }
