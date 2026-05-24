@@ -235,9 +235,16 @@ impl RuntimeCore {
                     self.apply_statement_to_globals(nested);
                 }
             }
+            LoweredLogicStatement::FunctionCall { name, .. } => {
+                let script_entries = self.lowered_script_entries();
+                if let Some(entry) = script_entries.get(name) {
+                    for nested in &entry.statements {
+                        self.apply_statement_to_globals(nested);
+                    }
+                }
+            }
             LoweredLogicStatement::VariableDeclaration { .. }
             | LoweredLogicStatement::Return { .. }
-            | LoweredLogicStatement::FunctionCall { .. }
             | LoweredLogicStatement::Raw { .. } => {}
         }
     }

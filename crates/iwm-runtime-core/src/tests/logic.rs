@@ -1003,3 +1003,34 @@ fn core_skips_builtin_jump_when_step_scripts_own_jump_queries() {
     assert!(player.vspeed > -8.0);
     assert_eq!(player.jump.active, false);
 }
+
+#[test]
+fn core_applies_room_create_script_calls_to_globals_for_control_bootstrap() {
+    let mut package = sample_package();
+    add_room_create_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "defControls".into(),
+            args: vec![],
+        }],
+    );
+    add_script_block(
+        &mut package,
+        16,
+        "defControls",
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "jumpbutton".into(),
+            },
+            value: LoweredLogicExpr::LiteralNumber(0x10 as f64),
+        }],
+    );
+
+    let core = RuntimeCore::load(package).unwrap();
+
+    assert_eq!(
+        core.globals.get("global.jumpbutton"),
+        Some(&RuntimeValue::Number(0x10 as f64))
+    );
+}
