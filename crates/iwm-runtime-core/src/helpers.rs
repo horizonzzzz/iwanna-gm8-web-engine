@@ -52,7 +52,7 @@ pub(crate) fn move_instance_axis(
     ignore_runtime_id: Option<usize>,
     axis: Axis,
     delta: i32,
-) {
+) -> bool {
     let step = delta.signum();
     let mut remaining = delta.abs();
 
@@ -71,13 +71,15 @@ pub(crate) fn move_instance_axis(
                 Axis::Horizontal => instance.hspeed = 0,
                 Axis::Vertical => instance.vspeed = 0,
             }
-            break;
+            return true;
         }
 
         instance.x = next_x;
         instance.y = next_y;
         remaining -= 1;
     }
+
+    false
 }
 
 pub(crate) fn player_out_of_bounds(

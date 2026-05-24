@@ -3,7 +3,7 @@ use iwm_runtime_host::{ButtonState, RuntimeButton};
 use crate::helpers::collides_at;
 use crate::RuntimeCore;
 
-use super::support::{host, sample_package};
+use super::support::{capture_jump_trace, host, sample_package};
 
 #[test]
 fn core_moves_player_with_left_and_right_input() {
@@ -251,4 +251,202 @@ fn core_tracks_left_facing_state_for_player_movement() {
         .find(|instance| instance.player_candidate)
         .unwrap();
     assert!(!player.facing_left);
+}
+
+#[test]
+fn core_initializes_and_clears_jump_state_on_room_reset() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+
+    let initial_player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(initial_player.jump, crate::types::RuntimeJumpState::default());
+
+    let room = core.current_room.as_mut().unwrap();
+    let player = room
+        .instances
+        .iter_mut()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    player.jump.active = true;
+    player.jump.hold_frames = 5;
+    player.jump.cut_applied = true;
+    player.jump.grounded_last_tick = false;
+
+    core.reset_player_to_spawn();
+
+    let reset_player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(reset_player.jump, crate::types::RuntimeJumpState::default());
+}
+
+#[test]
+fn core_tap_jump_reaches_lower_apex_than_held_jump() {
+    fn run_jump_sequence(held_frames: usize) -> i32 {
+        let mut core = RuntimeCore::load(sample_package()).unwrap();
+        let mut host = host();
+        let mut min_y = i32::MAX;
+
+        for frame in 0..12 {
+            let pressed = frame < held_frames;
+            host.input.replace_button_states([(
+                RuntimeButton::Keyboard(0x20),
+                ButtonState {
+                    pressed,
+                    just_pressed: frame == 0,
+                    just_released: frame == held_frames,
+                },
+            )]);
+            core.tick(&mut host).unwrap();
+            let player = core
+                .current_room()
+                .unwrap()
+                .instances
+                .iter()
+                .find(|instance| instance.player_candidate)
+                .unwrap();
+            min_y = min_y.min(player.y);
+            host.input.clear_transitions();
+        }
+
+        min_y
+    }
+
+    let tap_apex = run_jump_sequence(1);
+    let held_apex = run_jump_sequence(4);
+    assert!(held_apex < tap_apex);
+}
+
+#[test]
+fn core_ceiling_hit_clears_upward_jump_phase() {
+    let mut package = sample_package();
+    package.rooms[0]
+        .instances
+        .push(iwm_runtime_model::RoomInstancePlacement {
+            instance_id: 99,
+            object_id: 2,
+            x: 12,
+            y: 0,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: true,
+            is_hazard: false,
+            is_checkpoint: false,
+        });
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x20),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+
+    for _ in 0..6 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+    }
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert!(!player.jump.active);
+    assert!(player.vspeed >= 0);
+}
+
+#[test]
+fn core_jump_release_marks_cut_state_during_upward_motion() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x20),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+    host.input.clear_transitions();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x20),
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: true,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert!(player.jump.cut_applied);
+}
+
+#[test]
+fn core_jump_trace_distinguishes_release_cut_and_landing_reset() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x20),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+    host.input.clear_transitions();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x20),
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: true,
+        },
+    );
+    core.tick(&mut host).unwrap();
+    let after_cut = capture_jump_trace(&core);
+    assert!(after_cut.jump_cut_applied);
+
+    for _ in 0..32 {
+        host.input.clear_transitions();
+        core.tick(&mut host).unwrap();
+        let trace = capture_jump_trace(&core);
+        if trace.grounded {
+            assert!(!trace.jump_active);
+            assert_eq!(trace.jump_hold_frames, 0);
+            return;
+        }
+    }
+
+    panic!("player did not land within 32 ticks");
 }

@@ -1,4 +1,4 @@
-use iwm_runtime_host::RuntimeHost;
+use iwm_runtime_host::{ButtonState, RuntimeHost};
 
 use crate::helpers::{
     as_number, collides_at, is_player_instance, move_instance_axis, player_out_of_bounds, Axis,
@@ -16,7 +16,7 @@ impl RuntimeCore {
         host: &mut H,
         left_pressed: bool,
         right_pressed: bool,
-        jump_just_pressed: bool,
+        jump: ButtonState,
     ) -> Result<(), RuntimeCoreError> {
         let Some(room) = self.current_room.as_ref() else {
             return Err(RuntimeCoreError::NoRooms);
@@ -65,6 +65,18 @@ impl RuntimeCore {
             .and_then(as_number)
             .unwrap_or(JUMP_SPEED as f64)
             .round() as i32;
+        let jump_cut_speed = player
+            .vars
+            .get("jump2")
+            .and_then(as_number)
+            .unwrap_or((jump_speed - 1).max(1) as f64)
+            .round() as i32;
+        let jump_hold_frames = player
+            .vars
+            .get("jumpHoldFrames")
+            .and_then(as_number)
+            .unwrap_or(4.0)
+            .round() as u32;
         let gravity = player
             .vars
             .get("gravity")
@@ -100,8 +112,27 @@ impl RuntimeCore {
             &solids,
             Some(player.runtime_id),
         );
-        if jump_just_pressed && standing_on_solid {
+        player.jump.grounded_last_tick = standing_on_solid;
+
+        if jump.just_pressed && standing_on_solid {
+            player.jump.active = true;
+            player.jump.hold_frames = 0;
+            player.jump.cut_applied = false;
             player.vspeed = -jump_speed;
+        }
+
+        if player.jump.active
+            && jump.pressed
+            && player.jump.hold_frames < jump_hold_frames
+            && player.vspeed < 0
+        {
+            player.vspeed = player.vspeed.min(-jump_speed);
+            player.jump.hold_frames += 1;
+        }
+
+        if jump.just_released && player.jump.active && player.vspeed < 0 && !player.jump.cut_applied {
+            player.vspeed = player.vspeed.max(-jump_cut_speed);
+            player.jump.cut_applied = true;
         }
 
         player.vspeed = (player.vspeed + gravity).min(max_fall_speed);
@@ -113,13 +144,31 @@ impl RuntimeCore {
             Axis::Horizontal,
             player.hspeed,
         );
-        move_instance_axis(
+        let vertical_blocked = move_instance_axis(
             player,
             &solids,
             Some(player.runtime_id),
             Axis::Vertical,
             player.vspeed,
         );
+        if vertical_blocked {
+            player.jump.active = false;
+            player.jump.cut_applied = true;
+        }
+
+        let grounded_after = collides_at(
+            player,
+            player.x,
+            player.y + 1,
+            &solids,
+            Some(player.runtime_id),
+        );
+        if grounded_after {
+            player.jump.active = false;
+            player.jump.hold_frames = 0;
+            player.jump.cut_applied = false;
+        }
+        player.jump.grounded_last_tick = grounded_after;
 
         if collides_at(
             player,

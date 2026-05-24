@@ -172,7 +172,7 @@ impl RuntimeCore {
                 self.render(host)?;
                 return Ok(());
             }
-            self.step_player(host, left.pressed, right.pressed, jump.just_pressed)?;
+            self.step_player(host, left.pressed, right.pressed, jump)?;
         }
 
         // Dispatch alarm events (countdown alarm state)

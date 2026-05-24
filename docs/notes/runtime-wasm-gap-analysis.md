@@ -13,6 +13,7 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - The parser now also emits sprite collision bounds in `resources/index.json` as `bbox_left`, `bbox_right`, `bbox_top`, and `bbox_bottom`, sourced from OpenGMK collision metadata.
 - The lowered parser contract now covers common comment stripping, `var` declarations, assignments, returns, calls, member/index access, unary expressions, and common control-flow heads on the current critical path.
 - The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, and it now also dispatches alarm, held-key, key-press, and key-release slices with parent fallback lookup for event dispatch.
+- The runtime core now uses a variable-height jump state machine on the IWanna-critical path, including held jump differentiation, release-cut tracking, ceiling-hit phase clearing, and landing reset state clearing.
 - The browser-facing host path now treats one-shot controls such as jump/restart as host-boundary input edges and clears edge bits after each tick; the next runtime blocker is broader OpenGMK semantic coverage, not expanding shell-side gameplay rules.
 
 Practical parser note:
@@ -133,9 +134,9 @@ These do not always block booting, but they block core IWanna fidelity and make 
 
 ### 7. Physics Precision
 
-Current movement uses hardcoded constants such as `RUN_SPEED` and `JUMP_SPEED`.
+Current movement still uses some hardcoded defaults such as `RUN_SPEED` and fallback jump values, but jump is no longer a fixed-height placeholder.
 
-The runtime already has a hardcoded player movement baseline and per-instance `hspeed` / `vspeed` fields, but not a general GM8-style object-driven physics model.
+The runtime already has a hardcoded player movement baseline and per-instance `hspeed` / `vspeed` fields, plus explicit jump-phase state for hold, cut, and landing-reset behavior, but not a general GM8-style object-driven physics model.
 
 Missing pieces include:
 
@@ -143,6 +144,7 @@ Missing pieces include:
 - per-object `gravity`
 - per-object `hspeed` / `vspeed`
 - frame-accumulated gravity rather than a single hardcoded motion model
+- numeric jump calibration against the `IWBT_Dife` gold sample instead of only generic hold/cut semantics
 
 ### 8. Views And Cameras
 
@@ -220,6 +222,11 @@ For IWanna-style games, the runtime is only meaningfully playable when it can do
 - support room transitions and deaths as real game events
 
 Current implementation already has a hardcoded baseline for player movement, AABB collision, reset, room switching, frame submission, and browser-hosted telemetry. The missing middle layer is the actual GM8 gameplay semantics: GML execution, variables, lifecycle dispatch, animation, and audio.
+
+Current jump-validation note:
+
+- jump-state trace coverage now exists in crate-local tests for tap vs hold, release cut, ceiling collision phase clearing, and landing reset
+- sample-accurate numeric alignment still requires local `IWBT_Dife` package validation rather than only repository fixtures
 
 Current resource-contract note:
 

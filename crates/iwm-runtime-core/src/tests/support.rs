@@ -6,7 +6,21 @@ use iwm_runtime_model::{
     SoundResource, SpriteResource,
 };
 
-use crate::{LoweredLogicEntry, LoweredLogicFile, LoweredLogicStatement, RuntimePackage};
+use crate::helpers::collides_at;
+use crate::{LoweredLogicEntry, LoweredLogicFile, LoweredLogicStatement, RuntimeCore, RuntimePackage};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct JumpTraceFrame {
+    pub tick: u64,
+    pub x: i32,
+    pub y: i32,
+    pub hspeed: i32,
+    pub vspeed: i32,
+    pub grounded: bool,
+    pub jump_active: bool,
+    pub jump_hold_frames: u32,
+    pub jump_cut_applied: bool,
+}
 
 pub(super) fn sample_package() -> RuntimePackage {
     RuntimePackage {
@@ -316,6 +330,33 @@ pub(super) fn sample_package() -> RuntimePackage {
 
 pub(super) fn host() -> HeadlessHost {
     HeadlessHost::new("sandbox")
+}
+
+pub(super) fn capture_jump_trace(core: &RuntimeCore) -> JumpTraceFrame {
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    let solids = room
+        .instances
+        .iter()
+        .filter(|instance| instance.alive && instance.solid)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    JumpTraceFrame {
+        tick: core.tick_count(),
+        x: player.x,
+        y: player.y,
+        hspeed: player.hspeed,
+        vspeed: player.vspeed,
+        grounded: collides_at(player, player.x, player.y + 1, &solids, Some(player.runtime_id)),
+        jump_active: player.jump.active,
+        jump_hold_frames: player.jump.hold_frames,
+        jump_cut_applied: player.jump.cut_applied,
+    }
 }
 
 pub(super) fn add_step_block(package: &mut RuntimePackage, statements: Vec<LoweredLogicStatement>) {

@@ -1,4 +1,5 @@
 use crate::helpers::{adjusted_spawn_for_player, is_player_instance};
+use crate::types::RuntimeJumpState;
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeStatus};
 
 impl RuntimeCore {
@@ -42,6 +43,7 @@ impl RuntimeCore {
             player.previous_y = y;
             player.hspeed = 0;
             player.vspeed = 0;
+            player.jump = RuntimeJumpState::default();
         }
     }
 }

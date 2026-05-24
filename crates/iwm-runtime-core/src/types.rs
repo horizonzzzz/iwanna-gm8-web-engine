@@ -103,6 +103,14 @@ pub enum RuntimeValue {
     Text(String),
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RuntimeJumpState {
+    pub active: bool,
+    pub hold_frames: u32,
+    pub cut_applied: bool,
+    pub grounded_last_tick: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimePackage {
     pub manifest: RuntimeManifest,
@@ -149,6 +157,7 @@ pub struct RuntimeInstance {
     pub hazard: bool,
     pub checkpoint: bool,
     pub player_candidate: bool,
+    pub jump: RuntimeJumpState,
     pub vars: HashMap<String, RuntimeValue>,
 }
 

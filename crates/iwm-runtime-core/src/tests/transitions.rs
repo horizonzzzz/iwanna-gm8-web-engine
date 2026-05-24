@@ -2,7 +2,7 @@ use iwm_runtime_host::{ButtonState, RuntimeButton};
 
 use crate::{RuntimeCore, RuntimeStatus};
 
-use super::support::{host, sample_package};
+use super::support::{capture_jump_trace, host, sample_package};
 
 #[test]
 fn core_ticks_and_submits_a_frame() {
@@ -188,6 +188,37 @@ fn core_reset_clears_previous_movement_and_input_effects() {
         .find(|instance| instance.player_candidate)
         .unwrap();
     assert_eq!((player.previous_x, player.previous_y), (12, 24));
+}
+
+#[test]
+fn core_restart_resets_jump_state_before_the_next_jump() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x20),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    host.input.replace_button_states([(
+        RuntimeButton::Keyboard(0x52),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    )]);
+    core.tick(&mut host).unwrap();
+
+    let trace = capture_jump_trace(&core);
+    assert!(!trace.jump_active);
+    assert_eq!(trace.jump_hold_frames, 0);
+    assert!(!trace.jump_cut_applied);
 }
 
 #[test]

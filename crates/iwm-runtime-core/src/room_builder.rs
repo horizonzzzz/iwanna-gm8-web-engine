@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use iwm_runtime_model::{ObjectDefinition, SpriteResource};
 
 use crate::helpers::{adjusted_spawn_for_player, is_preferred_player_name};
+use crate::types::RuntimeJumpState;
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState};
 
 impl RuntimeCore {
@@ -72,6 +73,7 @@ impl RuntimeCore {
                     hazard: instance.is_hazard || object.is_hazard.unwrap_or(false),
                     checkpoint: instance.is_checkpoint || object.is_checkpoint.unwrap_or(false),
                     player_candidate: object.is_player,
+                    jump: RuntimeJumpState::default(),
                     vars: HashMap::new(),
                 })
             })
@@ -118,6 +120,7 @@ impl RuntimeCore {
                     hazard: player_object.is_hazard.unwrap_or(false),
                     checkpoint: player_object.is_checkpoint.unwrap_or(false),
                     player_candidate: true,
+                    jump: RuntimeJumpState::default(),
                     vars: HashMap::new(),
                 });
             }
