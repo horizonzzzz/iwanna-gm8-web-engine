@@ -22,6 +22,10 @@ export class WasmRuntimeSession {
   private input: WasmRuntimeInputState = { ...DEFAULT_INPUT };
   private previousJump = false;
   private previousKeys = new Set<number>();
+  private pendingJumpPressed = false;
+  private pendingJumpReleased = false;
+  private pendingKeyPresses = new Set<number>();
+  private pendingKeyReleases = new Set<number>();
 
   constructor(private readonly bridge: WasmRuntimeBridge) {}
 
@@ -35,17 +39,33 @@ export class WasmRuntimeSession {
     const keysPressed = [...heldKeys].filter((key) => !this.previousKeys.has(key));
     const keysReleased = [...this.previousKeys].filter((key) => !heldKeys.has(key));
 
+    if (jumpPressed) {
+      this.pendingJumpPressed = true;
+    }
+    if (jumpReleased) {
+      this.pendingJumpReleased = true;
+    }
+    for (const key of keysPressed) {
+      this.pendingKeyPresses.add(key);
+    }
+    for (const key of keysReleased) {
+      this.pendingKeyReleases.add(key);
+    }
+
     this.input = {
       left: snapshot.left,
       right: snapshot.right,
       jump: snapshot.jump,
-      jumpPressed,
-      jumpReleased,
+      jumpPressed: this.pendingJumpPressed,
+      jumpReleased: this.pendingJumpReleased,
       restart: snapshot.restart,
       keysHeld: [...heldKeys],
-      keysPressed,
-      keysReleased
+      keysPressed: [...this.pendingKeyPresses],
+      keysReleased: [...this.pendingKeyReleases]
     };
+
+    this.previousJump = snapshot.jump;
+    this.previousKeys = heldKeys;
   }
 
   async stepOnce(): Promise<WasmRuntimeStepResult> {
@@ -54,8 +74,10 @@ export class WasmRuntimeSession {
     await this.bridge.tick(1);
     const snapshot = await this.bridge.snapshot();
     const frame = await this.bridge.frame();
-    this.previousJump = input.jump;
-    this.previousKeys = new Set(input.keysHeld ?? []);
+    this.pendingJumpPressed = false;
+    this.pendingJumpReleased = false;
+    this.pendingKeyPresses.clear();
+    this.pendingKeyReleases.clear();
     this.input.jumpPressed = false;
     this.input.jumpReleased = false;
     this.input.keysPressed = [];

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use iwm_runtime_host::{RuntimeButton, RuntimeHost};
 use iwm_runtime_model::{ObjectDefinition, RoomDefinition};
@@ -50,6 +50,7 @@ impl RuntimeCore {
 
         let step_event_blocks = self.object_event_blocks_by_tag("step");
         let script_entries = self.lowered_script_entries();
+        let room_order = self.package.rooms.iter().map(|room| room.id).collect::<Vec<_>>();
         let dispatches = room
             .instances
             .iter()
@@ -94,11 +95,15 @@ impl RuntimeCore {
             }
             let is_player = crate::helpers::is_player_instance(instance);
             let motion_before = (instance.x, instance.y, instance.hspeed, instance.vspeed);
+            let known_files = sample_known_files(host);
 
             let eval_context = RuntimeEvalContext {
+                current_room_id: room.room_id,
                 button_states: &button_states,
                 room_instances: &room_instances,
+                room_order: &room_order,
                 objects: &self.package.objects,
+                known_files: &known_files,
             };
 
             for entry in &entries {
@@ -320,6 +325,22 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     );
                 }
             }
+            "room_goto_next" => {
+                if let Some(room_id) = next_room_id(instance, globals, eval_context) {
+                    *pending_room_transition = Some(room_id);
+                } else {
+                    record_host_diagnostic(
+                        host,
+                        diagnostics,
+                        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                        "runtime-step-room-goto-next-unresolved",
+                        format!(
+                            "could not resolve room_goto_next target for {}",
+                            instance.object_name
+                        ),
+                    );
+                }
+            }
             "game_restart" => {
                 *pending_room_reset = true;
             }
@@ -430,9 +451,12 @@ fn expr_key_fragment(expr: &LoweredLogicExpr, instance: Option<&RuntimeInstance>
 }
 
 pub(crate) struct RuntimeEvalContext<'a> {
+    pub current_room_id: usize,
     pub button_states: &'a HashMap<RuntimeButton, iwm_runtime_host::ButtonState>,
     pub room_instances: &'a [RuntimeInstance],
+    pub room_order: &'a [usize],
     pub objects: &'a [ObjectDefinition],
+    pub known_files: &'a HashSet<String>,
 }
 
 fn evaluate_expr(
@@ -482,6 +506,7 @@ fn evaluate_expr(
                 .first()
                 .and_then(|arg| evaluate_expr(arg, instance, globals, eval_context)),
             "ord" => evaluate_ord_call(args),
+            "file_exists" => evaluate_file_exists(args, instance, globals, eval_context),
             "keyboard_check" | "keyboard_check_direct" | "keyboard_check_pressed" | "keyboard_check_released" => {
                 evaluate_keyboard_query(name, args, instance, globals, eval_context)
             }
@@ -639,6 +664,33 @@ fn evaluate_place_query(
     Some(RuntimeValue::Bool(if want_meeting { collides } else { !collides }))
 }
 
+fn evaluate_file_exists(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let context = eval_context?;
+    let path = args
+        .first()
+        .and_then(|arg| evaluate_expr(arg, instance, globals, eval_context))
+        .and_then(|value| match value {
+            RuntimeValue::Text(text) => Some(text),
+            _ => None,
+        })?;
+    Some(RuntimeValue::Bool(context.known_files.contains(&path)))
+}
+
+pub(crate) fn sample_known_files<H: RuntimeHost>(host: &H) -> HashSet<String> {
+    let mut files = HashSet::new();
+    for candidate in ["temp", "DeathTime", "save1", "save2", "save3"] {
+        if host.read(std::path::Path::new(candidate)).is_ok() {
+            files.insert(candidate.to_string());
+        }
+    }
+    files
+}
+
 fn runtime_value_to_room_id(value: &RuntimeValue) -> Option<usize> {
     match value {
         RuntimeValue::Number(number) => {
@@ -651,4 +703,17 @@ fn runtime_value_to_room_id(value: &RuntimeValue) -> Option<usize> {
         RuntimeValue::Bool(flag) => Some(if *flag { 1 } else { 0 }),
         RuntimeValue::Text(text) => parse_room_id(text),
     }
+}
+
+fn next_room_id(
+    _instance: &RuntimeInstance,
+    _globals: &HashMap<String, RuntimeValue>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<usize> {
+    let context = eval_context?;
+    let current_index = context
+        .room_order
+        .iter()
+        .position(|room_id| *room_id == context.current_room_id)?;
+    context.room_order.get(current_index + 1).copied()
 }

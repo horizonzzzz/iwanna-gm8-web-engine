@@ -97,4 +97,26 @@ describe('WasmRuntimeSession', () => {
       keysReleased: [0x5A],
     });
   });
+
+  it('preserves very short raw key tap edges within a single tick', async () => {
+    const bridge = makeBridge();
+    const session = new WasmRuntimeSession(bridge);
+
+    session.setInputState({ left: false, right: false, jump: false, restart: false, keysHeld: [0x10] });
+    session.setInputState({ left: false, right: false, jump: false, restart: false, keysHeld: [] });
+
+    await session.stepOnce();
+
+    expect(bridge.setInput).toHaveBeenNthCalledWith(1, {
+      left: false,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false,
+      keysHeld: [],
+      keysPressed: [0x10],
+      keysReleased: [0x10],
+    });
+  });
 });

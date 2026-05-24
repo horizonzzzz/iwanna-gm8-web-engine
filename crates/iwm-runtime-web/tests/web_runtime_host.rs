@@ -175,6 +175,54 @@ fn web_runtime_host_accepts_raw_virtual_key_input() {
 }
 
 #[test]
+fn web_runtime_host_preserves_raw_key_edges_when_semantic_jump_is_false() {
+    let mut host = WebRuntimeHost::new();
+    host.boot(sample_package()).unwrap();
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: false,
+        jump_pressed: false,
+        jump_released: false,
+        restart: false,
+        keys_held: vec![0x20],
+        keys_pressed: vec![0x20],
+        keys_released: vec![],
+    });
+
+    let after_press = host.tick(1).unwrap();
+    assert_eq!(
+        after_press.player.as_ref().map(|player| (
+            player.jump.grounded,
+            player.jump.active,
+            player.jump.hold_frames,
+            player.jump.cut_applied
+        )),
+        Some((false, true, 1, false))
+    );
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: false,
+        jump_pressed: false,
+        jump_released: false,
+        restart: false,
+        keys_held: vec![],
+        keys_pressed: vec![],
+        keys_released: vec![0x20],
+    });
+
+    let after_release = host.tick(1).unwrap();
+    assert!(after_release
+        .player
+        .as_ref()
+        .map(|player| player.jump.cut_applied)
+        .unwrap_or(false));
+}
+
+#[test]
 fn web_runtime_host_formats_diagnostics_for_bridge_consumers() {
     let mut host = WebRuntimeHost::new();
     host.boot(sample_package()).unwrap();

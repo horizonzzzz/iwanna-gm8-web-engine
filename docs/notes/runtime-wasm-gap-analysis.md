@@ -16,7 +16,10 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - The runtime core now uses a variable-height jump state machine on the IWanna-critical path, including held jump differentiation, release-cut tracking, ceiling-hit phase clearing, and landing reset state clearing.
 - The runtime core now also evaluates `keyboard_check`, `keyboard_check_direct`, `keyboard_check_pressed`, `keyboard_check_released`, `place_meeting`, `place_free`, `&&`, `||`, and single-`=` GM comparisons on the current lowered path, and player motion state now preserves floating-point `x/y/hspeed/vspeed` instead of rounding assignments back to integers.
 - The browser/input path no longer needs jump to be hardcoded to Space for runtime-core fallback movement; runtime fallback input now prefers package-initialized bindings such as `global.leftbutton`, `global.rightbutton`, and `global.jumpbutton`, while the browser-facing host can also forward raw virtual-key hold/press/release state alongside the shell's semantic controls.
+- The runtime core now also re-resolves the package-bound jump key after lowered `step` logic runs, so a same-tick script update such as `global.jumpbutton = vk_shift` can affect builtin fallback movement on that same frame instead of one frame late.
 - The browser-facing host path now treats one-shot controls such as jump/restart as host-boundary input edges and clears edge bits after each tick; the shell now drives those per-tick inputs through a 60 Hz auto-run loop instead of only a manual single-step button. The next runtime blocker is broader OpenGMK semantic coverage, not expanding shell-side gameplay rules.
+- The browser shell / wasm-session path now also accumulates raw key press/release edges until the next runtime tick instead of deriving edges only from the latest held-key snapshot, so very short taps that start and end within one shell interval are no longer silently lost before reaching the runtime host.
+- The current lowered runtime slice now also resolves `file_exists()` against a small sampled host-file set (`temp`, `DeathTime`, `save1`-`save3`), which is enough to advance more of the `rInit` / save bootstrap path without yet claiming general GM8 file API coverage.
 - Runtime snapshots and the browser shell now also expose jump-trace telemetry for the current player path: grounded state plus active / hold / cut jump-phase flags. This is a debugging and validation surface, not proof that the underlying jump semantics already match the gold sample.
 
 Practical parser note:
@@ -236,6 +239,7 @@ Current jump-validation note:
 
 - jump-state trace coverage now exists in crate-local tests for tap vs hold, release cut, ceiling collision phase clearing, and landing reset
 - the runtime snapshot / wasm bridge / shell telemetry path now surfaces grounded and jump-phase state live during browser execution, so hand-feel debugging no longer depends only on Rust test fixtures
+- same-tick binding changes and within-tick raw key tap edges now have dedicated regression coverage across `runtime-core`, `runtime-web`, and the TS wasm-session bridge
 - sample-accurate numeric alignment still requires local `IWBT_Dife` package validation rather than only repository fixtures
 
 Current resource-contract note:

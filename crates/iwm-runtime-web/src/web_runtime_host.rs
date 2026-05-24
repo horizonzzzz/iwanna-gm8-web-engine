@@ -100,32 +100,36 @@ impl WebRuntimeHost {
                 });
         }
 
-        states.insert(
-            RuntimeButton::Keyboard(0x25),
+        merge_semantic_button_state(
+            &mut states,
+            0x25,
             ButtonState {
                 pressed: input.left,
                 just_pressed: left_just_pressed,
                 just_released: left_just_released,
             },
         );
-        states.insert(
-            RuntimeButton::Keyboard(0x27),
+        merge_semantic_button_state(
+            &mut states,
+            0x27,
             ButtonState {
                 pressed: input.right,
                 just_pressed: right_just_pressed,
                 just_released: right_just_released,
             },
         );
-        states.insert(
-            RuntimeButton::Keyboard(0x20),
+        merge_semantic_button_state(
+            &mut states,
+            0x20,
             ButtonState {
                 pressed: input.jump,
                 just_pressed: jump_just_pressed || input.jump_pressed,
                 just_released: jump_just_released || input.jump_released,
             },
         );
-        states.insert(
-            RuntimeButton::Keyboard(0x52),
+        merge_semantic_button_state(
+            &mut states,
+            0x52,
             ButtonState {
                 pressed: input.restart,
                 just_pressed: restart_just_pressed,
@@ -213,6 +217,21 @@ impl WebRuntimeHost {
     pub fn host_frame_count(&self) -> usize {
         self.host.renderer.submitted_frames.len()
     }
+}
+
+fn merge_semantic_button_state(
+    states: &mut std::collections::HashMap<RuntimeButton, ButtonState>,
+    key: u16,
+    semantic: ButtonState,
+) {
+    states
+        .entry(RuntimeButton::Keyboard(key))
+        .and_modify(|state| {
+            state.pressed |= semantic.pressed;
+            state.just_pressed |= semantic.just_pressed;
+            state.just_released |= semantic.just_released;
+        })
+        .or_insert(semantic);
 }
 
 impl Default for WebRuntimeHost {

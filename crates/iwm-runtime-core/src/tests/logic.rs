@@ -1,4 +1,4 @@
-use iwm_runtime_host::{ButtonState, RuntimeButton};
+use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeFileHost};
 
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
 
@@ -852,4 +852,82 @@ fn core_preserves_fractional_motion_assignments_from_lowered_logic() {
         .unwrap();
     assert!(((player.vspeed as f64) - -8.5).abs() < f64::EPSILON);
     assert!(((player.hspeed as f64) - 3.25).abs() < f64::EPSILON);
+}
+
+#[test]
+fn core_executes_lowered_step_room_goto_next_calls() {
+    let mut package = sample_package();
+    package.rooms.push(iwm_runtime_model::RoomDefinition {
+        id: 11,
+        name: "room11".into(),
+        width: 160,
+        height: 120,
+        speed: 60,
+        persistent: false,
+        backgrounds: vec![],
+        views_enabled: false,
+        views: vec![],
+        tiles: vec![],
+        instances: vec![],
+        creation_block_id: None,
+        playable: true,
+        transition_targets: vec![],
+    });
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "room_goto_next".into(),
+            args: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(core.snapshot().room_id, Some(9));
+}
+
+#[test]
+fn core_evaluates_file_exists_conditions_against_host_files() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: "==".into(),
+                left: Box::new(LoweredLogicExpr::Call {
+                    name: "file_exists".into(),
+                    args: vec![LoweredLogicExpr::LiteralText("temp".into())],
+                }),
+                right: Box::new(LoweredLogicExpr::LiteralBool(true)),
+            },
+            then_branch: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("loaded_temp".into()),
+                value: LoweredLogicExpr::LiteralBool(true),
+            }],
+            else_branch: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("loaded_temp".into()),
+                value: LoweredLogicExpr::LiteralBool(false),
+            }],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.files
+        .write_temp(std::path::Path::new("temp"), b"checkpoint")
+        .unwrap();
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("loaded_temp"), Some(&RuntimeValue::Bool(true)));
 }

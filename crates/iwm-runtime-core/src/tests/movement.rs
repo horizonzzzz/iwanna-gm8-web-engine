@@ -107,6 +107,42 @@ fn core_uses_runtime_bound_jump_key_instead_of_hardcoded_space() {
 }
 
 #[test]
+fn core_uses_same_tick_step_updated_jump_binding_for_builtin_movement() {
+    let mut package = sample_package();
+    super::support::add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "jumpbutton".into(),
+            },
+            value: LoweredLogicExpr::LiteralNumber(0x10 as f64),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert!(player.y < 24.0);
+}
+
+#[test]
 fn core_stops_player_when_moving_into_a_solid() {
     let mut package = sample_package();
     package.rooms[0]

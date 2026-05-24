@@ -156,7 +156,7 @@ impl RuntimeCore {
 
         let left = self.bound_button_state(host, "global.leftbutton", 0x25);
         let right = self.bound_button_state(host, "global.rightbutton", 0x27);
-        let jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
+        let mut jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
         let restart = host.button_state(RuntimeButton::Keyboard(0x52));
 
         self.tick += 1;
@@ -193,6 +193,7 @@ impl RuntimeCore {
                 return Ok(());
             }
             if !player_motion_changed {
+                jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
                 self.step_player(host, left.pressed, right.pressed, jump)?;
             }
         }
@@ -325,10 +326,21 @@ impl RuntimeCore {
             };
             room.instances.clone()
         };
+        let room_order = self.package.rooms.iter().map(|room| room.id).collect::<Vec<_>>();
+        let current_room_id = {
+            let Some(room) = self.current_room.as_ref() else {
+                return;
+            };
+            room.room_id
+        };
+        let known_files = crate::logic::sample_known_files(host);
         let eval_context = crate::logic::RuntimeEvalContext {
+            current_room_id,
             button_states: &button_states,
             room_instances: &room_instances,
+            room_order: &room_order,
             objects: &self.package.objects,
+            known_files: &known_files,
         };
 
         let mut instance = {

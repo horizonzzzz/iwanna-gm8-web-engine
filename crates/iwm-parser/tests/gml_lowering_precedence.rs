@@ -345,3 +345,55 @@ fn lowering_treats_single_equals_as_comparison_and_preserves_decimal_literals() 
         other => panic!("expected conditional, got {other:?}"),
     }
 }
+
+#[test]
+fn lowering_preserves_else_branch_function_calls_after_conditionals() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 10,
+            script_name: "scr_else".to_string(),
+            gml_source: "if(file_exists(\"temp\") == true){ tempExe(); } else { room_goto_next(); }".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+
+    match &lowered.entries[0].statements[0] {
+        LoweredLogicStatement::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            assert!(matches!(
+                condition,
+                LoweredLogicExpr::BinaryExpr { op, left, right }
+                    if op == "=="
+                    && matches!(
+                        left.as_ref(),
+                        LoweredLogicExpr::Call { name, args }
+                            if name == "file_exists"
+                            && args.len() == 1
+                            && matches!(args[0], LoweredLogicExpr::LiteralText(ref text) if text == "temp")
+                    )
+                    && matches!(right.as_ref(), LoweredLogicExpr::LiteralBool(true))
+            ));
+            assert!(matches!(
+                then_branch.as_slice(),
+                [LoweredLogicStatement::FunctionCall { name, args }]
+                    if name == "tempExe" && args.is_empty()
+            ));
+            assert!(matches!(
+                else_branch.as_slice(),
+                [LoweredLogicStatement::FunctionCall { name, args }]
+                    if name == "room_goto_next" && args.is_empty()
+            ));
+        }
+        other => panic!("expected conditional with else branch, got {other:?}"),
+    }
+}
