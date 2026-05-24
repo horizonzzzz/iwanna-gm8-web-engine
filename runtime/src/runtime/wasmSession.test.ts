@@ -126,4 +126,30 @@ describe('WasmRuntimeSession', () => {
       keysReleased: [0x10],
     });
   });
+
+  it('re-emits raw key press edges after a full release cycle', async () => {
+    const bridge = makeBridge();
+    const session = new WasmRuntimeSession(bridge);
+
+    session.setInputState({ left: false, right: false, jump: false, restart: false, keysHeld: [0x10] });
+    await session.stepOnce();
+
+    session.setInputState({ left: false, right: false, jump: false, restart: false, keysHeld: [] });
+    await session.stepOnce();
+
+    session.setInputState({ left: false, right: false, jump: false, restart: false, keysHeld: [0x10] });
+    await session.stepOnce();
+
+    expect(bridge.setInput).toHaveBeenNthCalledWith(3, {
+      left: false,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false,
+      keysHeld: [0x10],
+      keysPressed: [0x10],
+      keysReleased: [],
+    });
+  });
 });

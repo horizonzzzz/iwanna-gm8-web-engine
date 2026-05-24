@@ -6,7 +6,7 @@ use crate::event_dispatch::{object_event_block_ids, RuntimeEventSelector};
 use crate::helpers::{as_number, collides_at, is_player_instance};
 use crate::{
     LoweredLogicEntry, LoweredLogicStatement, RuntimeCoreError, RuntimePackage,
-    RuntimeInputTraceSnapshot, RuntimeJumpSnapshot, RuntimePlayerSnapshot, RuntimeRoomState,
+    RuntimeInputTraceSnapshot, RuntimeInstance, RuntimeJumpSnapshot, RuntimePlayerSnapshot, RuntimeRoomState,
     RuntimeSnapshot, RuntimeStatus, RuntimeValue,
 };
 
@@ -23,6 +23,7 @@ pub struct RuntimeCore {
     pub(crate) pending_room_transition: Option<usize>,
     pub(crate) pending_room_reset: bool,
     pub(crate) globals: HashMap<String, RuntimeValue>,
+    pub(crate) package_bootstrap_globals: HashMap<String, RuntimeValue>,
     pub(crate) last_input_trace: RuntimeInputTraceSnapshot,
 }
 
@@ -69,6 +70,7 @@ impl RuntimeCore {
             pending_room_transition: None,
             pending_room_reset: false,
             globals: HashMap::new(),
+            package_bootstrap_globals: HashMap::new(),
             last_input_trace: RuntimeInputTraceSnapshot {
                 jump_button_key: 0x20,
                 jump_pressed: false,
@@ -78,6 +80,7 @@ impl RuntimeCore {
             },
         };
 
+        core.package_bootstrap_globals = core.collect_package_bootstrap_globals();
         core.boot_default_room()?;
         Ok(core)
     }
@@ -214,6 +217,8 @@ impl RuntimeCore {
             }
         }
 
+        self.dispatch_collision_events(host)?;
+
         // Dispatch alarm events (countdown alarm state)
         self.process_alarm_countdowns(host)?;
 
@@ -272,6 +277,7 @@ impl RuntimeCore {
     }
 
     pub fn reload_room(&mut self, room_id: usize) -> Result<(), RuntimeCoreError> {
+        self.hydrate_missing_package_bootstrap_globals();
         self.current_room = Some(self.build_room(room_id)?);
         self.status = RuntimeStatus::Ready;
         Ok(())
@@ -306,7 +312,7 @@ impl RuntimeCore {
         };
 
         for (instance_idx, block_ids) in block_lookups {
-            self.apply_event_blocks_to_instance(host, instance_idx, &block_ids);
+            self.apply_event_blocks_to_instance(host, instance_idx, &block_ids, None);
             if self.pending_room_reset || self.pending_room_transition.is_some() {
                 break;
             }
@@ -320,6 +326,7 @@ impl RuntimeCore {
         host: &mut H,
         instance_idx: usize,
         block_ids: &[String],
+        other_instance: Option<RuntimeInstance>,
     ) {
         // Clone entries first to avoid borrow conflicts
         let entries: Vec<LoweredLogicEntry> = block_ids
@@ -357,6 +364,7 @@ impl RuntimeCore {
             room_order: &room_order,
             objects: &self.package.objects,
             known_files: &known_files,
+            other_instance: other_instance.as_ref(),
         };
 
         let mut instance = {
@@ -453,7 +461,58 @@ impl RuntimeCore {
                     RuntimeEventSelector::Alarm(slot),
                 )
             };
-            self.apply_event_blocks_to_instance(host, instance_idx, &block_ids);
+            self.apply_event_blocks_to_instance(host, instance_idx, &block_ids, None);
+        }
+
+        Ok(())
+    }
+
+    fn dispatch_collision_events<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+    ) -> Result<(), RuntimeCoreError> {
+        let collisions = {
+            let Some(room) = self.current_room.as_ref() else {
+                return Err(RuntimeCoreError::NoRooms);
+            };
+            let mut hits = Vec::new();
+            for instance in &room.instances {
+                if !instance.alive {
+                    continue;
+                }
+                for other in &room.instances {
+                    if !other.alive || instance.runtime_id == other.runtime_id {
+                        continue;
+                    }
+                    if crate::helpers::collides_at(
+                        instance,
+                        instance.x,
+                        instance.y,
+                        std::slice::from_ref(other),
+                        Some(instance.runtime_id),
+                    ) {
+                        hits.push((instance.runtime_id, other.object_id, other.clone()));
+                    }
+                }
+            }
+            hits
+        };
+
+        for (instance_idx, target_object_id, other_instance) in collisions {
+            let block_ids = {
+                let Some(room) = self.current_room.as_ref() else {
+                    continue;
+                };
+                let Some(instance) = room.instances.get(instance_idx) else {
+                    continue;
+                };
+                object_event_block_ids(
+                    &self.package,
+                    instance.object_id,
+                    RuntimeEventSelector::Collision { target_object_id },
+                )
+            };
+            self.apply_event_blocks_to_instance(host, instance_idx, &block_ids, Some(other_instance));
         }
 
         Ok(())

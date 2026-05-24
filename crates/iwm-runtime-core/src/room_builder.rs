@@ -171,6 +171,48 @@ impl RuntimeCore {
 
         sprite.map(RuntimeSpriteMetrics::from).unwrap_or_default()
     }
+
+    pub(crate) fn instantiate_runtime_object(
+        &self,
+        object_id: usize,
+        runtime_id: usize,
+        x: f64,
+        y: f64,
+    ) -> Option<RuntimeInstance> {
+        let object = self
+            .object_index
+            .get(&object_id)
+            .and_then(|index| self.package.objects.get(*index))?;
+        let metrics = self.sprite_metrics(object);
+        Some(RuntimeInstance {
+            runtime_id,
+            instance_id: -1 - runtime_id as i32,
+            object_id: object.id,
+            object_name: object.name.clone(),
+            x,
+            y,
+            previous_x: x,
+            previous_y: y,
+            hspeed: 0.0,
+            vspeed: 0.0,
+            width: metrics.width,
+            height: metrics.height,
+            origin_x: metrics.origin_x,
+            origin_y: metrics.origin_y,
+            bbox_left: metrics.bbox_left,
+            bbox_right: metrics.bbox_right,
+            bbox_top: metrics.bbox_top,
+            bbox_bottom: metrics.bbox_bottom,
+            facing_left: false,
+            alive: true,
+            solid: object.solid,
+            hazard: object.is_hazard.unwrap_or(false),
+            checkpoint: object.is_checkpoint.unwrap_or(false),
+            player_candidate: object.is_player,
+            jump: RuntimeJumpState::default(),
+            vars: HashMap::new(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

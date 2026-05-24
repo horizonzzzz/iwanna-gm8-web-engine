@@ -5,6 +5,7 @@ use iwm_runtime_model::{
     RoomInstancePlacement, RoomTilePlacement, RoomView, RuntimeManifest, ScriptIrFile,
     SoundResource, SpriteResource,
 };
+use std::path::Path;
 
 use crate::helpers::collides_at;
 use crate::{LoweredLogicEntry, LoweredLogicFile, LoweredLogicStatement, RuntimeCore, RuntimePackage};
@@ -330,6 +331,48 @@ pub(super) fn sample_package() -> RuntimePackage {
 
 pub(super) fn host() -> HeadlessHost {
     HeadlessHost::new("sandbox")
+}
+
+pub(super) fn real_sample_package() -> Option<RuntimePackage> {
+    let package_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("runtime")
+        .join("public")
+        .join("packages")
+        .join("sample");
+
+    let manifest_path = package_root.join("manifest.json");
+    if !manifest_path.exists() {
+        return None;
+    }
+
+    let manifest = serde_json::from_slice(&std::fs::read(manifest_path).ok()?).ok()?;
+    let rooms = serde_json::from_slice(&std::fs::read(package_root.join("rooms.json")).ok()?).ok()?;
+    let objects =
+        serde_json::from_slice(&std::fs::read(package_root.join("objects.json")).ok()?).ok()?;
+    let scripts =
+        serde_json::from_slice(&std::fs::read(package_root.join("scripts.ir.json")).ok()?).ok()?;
+    let analysis =
+        serde_json::from_slice(&std::fs::read(package_root.join("analysis.json")).ok()?).ok()?;
+    let resources = serde_json::from_slice(
+        &std::fs::read(package_root.join("resources").join("index.json")).ok()?,
+    )
+    .ok()?;
+    let lowered_logic = serde_json::from_slice(
+        &std::fs::read(package_root.join("logic.lowered.json")).ok()?,
+    )
+    .ok()?;
+
+    Some(RuntimePackage {
+        manifest,
+        rooms,
+        objects,
+        scripts,
+        lowered_logic: Some(lowered_logic),
+        resources,
+        analysis,
+    })
 }
 
 pub(super) fn capture_jump_trace(core: &RuntimeCore) -> JumpTraceFrame {

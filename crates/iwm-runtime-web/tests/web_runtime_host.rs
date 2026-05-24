@@ -1,10 +1,54 @@
 mod support;
 
+use std::path::Path;
+
 use iwm_runtime_model::ObjectDefinition;
 use iwm_runtime_web::{BridgeDrawCommand, WebInputState, WebRuntimeHost};
 use serde_json::json;
 
 use support::sample_package;
+
+fn load_real_sample_package() -> Option<iwm_runtime_core::RuntimePackage> {
+    let package_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("runtime")
+        .join("public")
+        .join("packages")
+        .join("sample");
+
+    let manifest_path = package_root.join("manifest.json");
+    if !manifest_path.exists() {
+        return None;
+    }
+
+    let manifest = serde_json::from_slice(&std::fs::read(manifest_path).ok()?).ok()?;
+    let rooms = serde_json::from_slice(&std::fs::read(package_root.join("rooms.json")).ok()?).ok()?;
+    let objects =
+        serde_json::from_slice(&std::fs::read(package_root.join("objects.json")).ok()?).ok()?;
+    let scripts =
+        serde_json::from_slice(&std::fs::read(package_root.join("scripts.ir.json")).ok()?).ok()?;
+    let analysis =
+        serde_json::from_slice(&std::fs::read(package_root.join("analysis.json")).ok()?).ok()?;
+    let resources = serde_json::from_slice(
+        &std::fs::read(package_root.join("resources").join("index.json")).ok()?,
+    )
+    .ok()?;
+    let lowered_logic = serde_json::from_slice(
+        &std::fs::read(package_root.join("logic.lowered.json")).ok()?,
+    )
+    .ok()?;
+
+    Some(iwm_runtime_core::RuntimePackage {
+        manifest,
+        rooms,
+        objects,
+        scripts,
+        lowered_logic: Some(lowered_logic),
+        resources,
+        analysis,
+    })
+}
 
 #[test]
 fn web_runtime_host_boots_and_ticks_headless_runtime() {
@@ -380,6 +424,53 @@ fn web_runtime_host_clears_input_edge_bits_after_each_tick() {
 }
 
 #[test]
+fn web_runtime_host_reemits_raw_press_after_release_cycle() {
+    let mut host = WebRuntimeHost::new();
+    host.boot(sample_package()).unwrap();
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: false,
+        jump_pressed: false,
+        jump_released: false,
+        restart: false,
+        keys_held: vec![0x10],
+        keys_pressed: vec![0x10],
+        keys_released: vec![],
+    });
+    let first = host.tick(1).unwrap();
+    assert_eq!(first.input_trace.active_keys, vec!["0x10:p1jp1jr0".to_string()]);
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: false,
+        jump_pressed: false,
+        jump_released: false,
+        restart: false,
+        keys_held: vec![],
+        keys_pressed: vec![],
+        keys_released: vec![0x10],
+    });
+    host.tick(1).unwrap();
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: false,
+        jump_pressed: false,
+        jump_released: false,
+        restart: false,
+        keys_held: vec![0x10],
+        keys_pressed: vec![0x10],
+        keys_released: vec![],
+    });
+    let second = host.tick(1).unwrap();
+    assert_eq!(second.input_trace.active_keys, vec!["0x10:p1jp1jr0".to_string()]);
+}
+
+#[test]
 fn web_runtime_host_frame_snapshot_includes_tiles_and_fallback_player_output() {
     let mut package = sample_package();
     package.rooms[0].instances[0].object_id = 1;
@@ -417,6 +508,161 @@ fn web_runtime_host_frame_snapshot_includes_tiles_and_fallback_player_output() {
         command,
         BridgeDrawCommand::DrawSprite { sprite_id: 0, .. }
     )));
+}
+
+#[test]
+fn real_sample_shift_jump_retriggers_after_landing_in_sampleroom01() {
+    let Some(package) = load_real_sample_package() else {
+        return;
+    };
+
+    let mut host = WebRuntimeHost::new();
+    host.boot(package).unwrap();
+
+    let mut init_snapshot = host.snapshot().unwrap();
+    for _ in 0..120 {
+        if init_snapshot.input_trace.jump_button_key == 0x10 {
+            break;
+        }
+        host.set_input(WebInputState {
+            left: false,
+            right: false,
+            jump: false,
+            jump_pressed: false,
+            jump_released: false,
+            restart: false,
+            keys_held: vec![],
+            keys_pressed: vec![],
+            keys_released: vec![],
+        });
+        init_snapshot = host.tick(1).unwrap();
+    }
+    assert_eq!(
+        init_snapshot.input_trace.jump_button_key,
+        0x10,
+        "sample boot path should initialize jump binding to Shift before room test, snapshot={init_snapshot:?}"
+    );
+
+    host.select_room(143).unwrap();
+
+    let mut settled_start = host.snapshot().unwrap();
+    for _ in 0..120 {
+        if settled_start
+            .player
+            .as_ref()
+            .map(|player| player.jump.grounded)
+            .unwrap_or(false)
+        {
+            break;
+        }
+        host.set_input(WebInputState {
+            left: false,
+            right: false,
+            jump: false,
+            jump_pressed: false,
+            jump_released: false,
+            restart: false,
+            keys_held: vec![],
+            keys_pressed: vec![],
+            keys_released: vec![],
+        });
+        settled_start = host.tick(1).unwrap();
+    }
+    assert!(
+        settled_start
+            .player
+            .as_ref()
+            .map(|player| player.jump.grounded)
+            .unwrap_or(false),
+        "player should settle to grounded before jump test, snapshot={settled_start:?}"
+    );
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: false,
+        jump_pressed: false,
+        jump_released: false,
+        restart: false,
+        keys_held: vec![0x10],
+        keys_pressed: vec![0x10],
+        keys_released: vec![],
+    });
+    let first_jump = host.tick(1).unwrap();
+    assert!(
+        !first_jump
+            .player
+            .as_ref()
+            .map(|player| player.jump.grounded)
+            .unwrap_or(true),
+        "first jump should leave ground, snapshot={first_jump:?}"
+    );
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: false,
+        jump_pressed: false,
+        jump_released: false,
+        restart: false,
+        keys_held: vec![],
+        keys_pressed: vec![],
+        keys_released: vec![0x10],
+    });
+    host.tick(1).unwrap();
+
+    let mut landed = false;
+    let mut last_player = None;
+    for _ in 0..180 {
+        host.set_input(WebInputState {
+            left: false,
+            right: false,
+            jump: false,
+            jump_pressed: false,
+            jump_released: false,
+            restart: false,
+            keys_held: vec![],
+            keys_pressed: vec![],
+            keys_released: vec![],
+        });
+        let snapshot = host.tick(1).unwrap();
+        last_player = snapshot.player.clone();
+        if snapshot
+            .player
+            .as_ref()
+            .map(|player| player.jump.grounded)
+            .unwrap_or(false)
+        {
+            landed = true;
+            break;
+        }
+    }
+    assert!(
+        landed,
+        "player should land again within 180 ticks, last_player={last_player:?}"
+    );
+
+    host.set_input(WebInputState {
+        left: false,
+        right: false,
+        jump: false,
+        jump_pressed: false,
+        jump_released: false,
+        restart: false,
+        keys_held: vec![0x10],
+        keys_pressed: vec![0x10],
+        keys_released: vec![],
+    });
+    let second_jump = host.tick(1).unwrap();
+
+    assert!(
+        !second_jump
+            .player
+            .as_ref()
+            .map(|player| player.jump.grounded)
+            .unwrap_or(true),
+        "second jump should leave ground again, last_player={last_player:?}, second_jump={second_jump:?}"
+    );
 }
 
 

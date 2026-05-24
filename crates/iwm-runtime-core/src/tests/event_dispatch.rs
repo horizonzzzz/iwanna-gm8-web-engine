@@ -268,3 +268,107 @@ fn collision_selector_uses_sub_event_target_object_id() {
 
     assert_eq!(block_ids, vec!["object:0:event:4:1".to_string()]);
 }
+
+#[test]
+fn core_dispatches_collision_event_blocks_when_player_overlaps_target() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[2].name = "block".into();
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("collision_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.y = 48.0;
+        player.previous_y = 48.0;
+        player.vspeed = 8.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("collision_hit"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn collision_event_can_read_other_member_values() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[2].name = "block".into();
+    add_collision_block(
+        &mut package,
+        2,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("other_y_seen".into()),
+                value: LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("other".into())),
+                    member: "y".into(),
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("other_vspeed_seen".into()),
+                value: LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("other".into())),
+                    member: "vspeed".into(),
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.y = 48.0;
+        player.previous_y = 48.0;
+        player.vspeed = 8.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("other_y_seen"),
+        Some(&RuntimeValue::Number(40.0))
+    );
+    assert_eq!(
+        player.vars.get("other_vspeed_seen"),
+        Some(&RuntimeValue::Number(0.0))
+    );
+}

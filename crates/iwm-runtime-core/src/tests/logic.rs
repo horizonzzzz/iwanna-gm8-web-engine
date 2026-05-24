@@ -4,7 +4,7 @@ use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
 
 use super::support::{
     add_alarm_block, add_create_block, add_keyboard_block, add_room_create_block, add_step_block,
-    add_script_block, append_lowered_entry, host, sample_package,
+    add_script_block, append_lowered_entry, host, real_sample_package, sample_package,
 };
 use iwm_runtime_model::{ObjectDefinition, ObjectEventEntry};
 
@@ -1032,5 +1032,910 @@ fn core_applies_room_create_script_calls_to_globals_for_control_bootstrap() {
     assert_eq!(
         core.globals.get("global.jumpbutton"),
         Some(&RuntimeValue::Number(0x10 as f64))
+    );
+}
+
+#[test]
+fn place_meeting_matches_instances_through_parent_object_inheritance() {
+    let mut package = sample_package();
+    package.objects[1].name = "block".into();
+    package.objects[1].parent_index = -1;
+    package.objects.push(ObjectDefinition {
+        id: 4,
+        name: "slipblock".into(),
+        sprite_index: -1,
+        parent_index: 1,
+        depth: 0,
+        persistent: false,
+        visible: false,
+        solid: true,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![],
+    });
+    package.rooms[0].instances.push(iwm_runtime_model::RoomInstancePlacement {
+        instance_id: 16,
+        object_id: 4,
+        x: 12,
+        y: 40,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: true,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::Call {
+                name: "place_meeting".into(),
+                args: vec![
+                    LoweredLogicExpr::Identifier("x".into()),
+                    LoweredLogicExpr::BinaryExpr {
+                        op: "+".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                    },
+                    LoweredLogicExpr::Identifier("block".into()),
+                ],
+            },
+            then_branch: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("inherited_ground".into()),
+                value: LoweredLogicExpr::LiteralBool(true),
+            }],
+            else_branch: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("inherited_ground"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn script_owned_jump_can_retrigger_after_collision_restores_djump() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[2].name = "block".into();
+    add_create_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("jump".into()),
+                value: LoweredLogicExpr::LiteralNumber(8.5),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("jump2".into()),
+                value: LoweredLogicExpr::LiteralNumber(7.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("djump".into()),
+                value: LoweredLogicExpr::LiteralBool(true),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("jump_count".into()),
+                value: LoweredLogicExpr::LiteralNumber(0.0),
+            },
+        ],
+    );
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type: 4,
+        sub_event: 2,
+        event_tag: "collision".into(),
+        block_id: "object:0:event:4:2".into(),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:0:event:4:2".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("djump".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::Call {
+                name: "keyboard_check_pressed".into(),
+                args: vec![LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                    member: "jumpbutton".into(),
+                }],
+            },
+            then_branch: vec![LoweredLogicStatement::FunctionCall {
+                name: "playerJump".into(),
+                args: vec![],
+            }],
+            else_branch: vec![],
+        }],
+    );
+    add_script_block(
+        &mut package,
+        11,
+        "playerJump",
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: "==".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("djump".into())),
+                right: Box::new(LoweredLogicExpr::LiteralBool(true)),
+            },
+            then_branch: vec![
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("djump".into()),
+                    value: LoweredLogicExpr::LiteralBool(false),
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("jump_count".into()),
+                    value: LoweredLogicExpr::BinaryExpr {
+                        op: "+".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("jump_count".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                    },
+                },
+            ],
+            else_branch: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.globals
+        .insert("global.jumpbutton".into(), RuntimeValue::Number(0x10 as f64));
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    {
+        let player = core
+            .current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        assert_eq!(
+            player.vars.get("jump_count"),
+            Some(&RuntimeValue::Number(1.0))
+        );
+        assert_eq!(player.vars.get("djump"), Some(&RuntimeValue::Bool(false)));
+    }
+
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.y = 48.0;
+        player.previous_y = 48.0;
+        player.vspeed = 8.0;
+    }
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    {
+        let player = core
+            .current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        assert_eq!(player.vars.get("djump"), Some(&RuntimeValue::Bool(true)));
+    }
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("jump_count"),
+        Some(&RuntimeValue::Number(2.0))
+    );
+}
+
+#[test]
+fn create_logic_instance_create_bootstraps_world_globals_immediately() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects.push(ObjectDefinition {
+        id: 4,
+        name: "world".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: true,
+        visible: false,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 0,
+            sub_event: 0,
+            event_tag: "create".into(),
+            block_id: "object:4:event:0:0".into(),
+            action_count: 0,
+        }],
+    });
+    add_create_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: "==".into(),
+                left: Box::new(LoweredLogicExpr::Call {
+                    name: "instance_exists".into(),
+                    args: vec![LoweredLogicExpr::Identifier("world".into())],
+                }),
+                right: Box::new(LoweredLogicExpr::LiteralBool(false)),
+            },
+            then_branch: vec![LoweredLogicStatement::FunctionCall {
+                name: "instance_create".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::Identifier("world".into()),
+                ],
+            }],
+            else_branch: vec![],
+        }],
+    );
+    append_lowered_entry(
+        &mut package,
+        "object:4:event:0:0".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "grav".into(),
+            },
+            value: LoweredLogicExpr::LiteralNumber(0.0),
+        }],
+    );
+
+    let core = RuntimeCore::load(package).unwrap();
+
+    assert_eq!(
+        core.globals.get("global.grav"),
+        Some(&RuntimeValue::Number(0.0))
+    );
+    assert!(
+        core.current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .any(|instance| instance.object_name == "world")
+    );
+}
+
+#[test]
+fn script_owned_jump_uses_grounded_branch_after_world_grav_bootstrap() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[2].name = "block".into();
+    package.objects.push(ObjectDefinition {
+        id: 4,
+        name: "world".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: true,
+        visible: false,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 0,
+            sub_event: 0,
+            event_tag: "create".into(),
+            block_id: "object:4:event:0:0".into(),
+            action_count: 0,
+        }],
+    });
+    add_create_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("jump".into()),
+                value: LoweredLogicExpr::LiteralNumber(8.5),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("jump2".into()),
+                value: LoweredLogicExpr::LiteralNumber(7.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("djump".into()),
+                value: LoweredLogicExpr::LiteralBool(true),
+            },
+            LoweredLogicStatement::Conditional {
+                condition: LoweredLogicExpr::BinaryExpr {
+                    op: "==".into(),
+                    left: Box::new(LoweredLogicExpr::Call {
+                        name: "instance_exists".into(),
+                        args: vec![LoweredLogicExpr::Identifier("world".into())],
+                    }),
+                    right: Box::new(LoweredLogicExpr::LiteralBool(false)),
+                },
+                then_branch: vec![LoweredLogicStatement::FunctionCall {
+                    name: "instance_create".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralNumber(0.0),
+                        LoweredLogicExpr::LiteralNumber(0.0),
+                        LoweredLogicExpr::Identifier("world".into()),
+                    ],
+                }],
+                else_branch: vec![],
+            },
+        ],
+    );
+    append_lowered_entry(
+        &mut package,
+        "object:4:event:0:0".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "grav".into(),
+            },
+            value: LoweredLogicExpr::LiteralNumber(0.0),
+        }],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::Call {
+                name: "keyboard_check_pressed".into(),
+                args: vec![LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                    member: "jumpbutton".into(),
+                }],
+            },
+            then_branch: vec![LoweredLogicStatement::FunctionCall {
+                name: "playerJump".into(),
+                args: vec![],
+            }],
+            else_branch: vec![],
+        }],
+    );
+    add_script_block(
+        &mut package,
+        11,
+        "playerJump",
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: "=".into(),
+                left: Box::new(LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                    member: "grav".into(),
+                }),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+            },
+            then_branch: vec![LoweredLogicStatement::Conditional {
+                condition: LoweredLogicExpr::Call {
+                    name: "place_meeting".into(),
+                    args: vec![
+                        LoweredLogicExpr::Identifier("x".into()),
+                        LoweredLogicExpr::BinaryExpr {
+                            op: "+".into(),
+                            left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                            right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                        },
+                        LoweredLogicExpr::Identifier("block".into()),
+                    ],
+                },
+                then_branch: vec![
+                    LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::Identifier("jump_branch".into()),
+                        value: LoweredLogicExpr::LiteralText("ground".into()),
+                    },
+                    LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::Identifier("vspeed".into()),
+                        value: LoweredLogicExpr::UnaryExpr {
+                            op: "-".into(),
+                            child: Box::new(LoweredLogicExpr::Identifier("jump".into())),
+                        },
+                    },
+                ],
+                else_branch: vec![LoweredLogicStatement::Conditional {
+                    condition: LoweredLogicExpr::BinaryExpr {
+                        op: "==".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("djump".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralBool(true)),
+                    },
+                    then_branch: vec![
+                        LoweredLogicStatement::Assignment {
+                            target: LoweredLogicExpr::Identifier("jump_branch".into()),
+                            value: LoweredLogicExpr::LiteralText("air".into()),
+                        },
+                        LoweredLogicStatement::Assignment {
+                            target: LoweredLogicExpr::Identifier("djump".into()),
+                            value: LoweredLogicExpr::LiteralBool(false),
+                        },
+                    ],
+                    else_branch: vec![],
+                }],
+            }],
+            else_branch: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("jump_branch".into()),
+                value: LoweredLogicExpr::LiteralText("reverse".into()),
+            }],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.globals
+        .insert("global.jumpbutton".into(), RuntimeValue::Number(0x10 as f64));
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("jump_branch"),
+        Some(&RuntimeValue::Text("ground".into()))
+    );
+}
+
+#[test]
+fn collision_block_event_restores_djump_after_landing() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[2].name = "block".into();
+    add_create_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("djump".into()),
+            value: LoweredLogicExpr::LiteralBool(false),
+        }],
+    );
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type: 4,
+        sub_event: 2,
+        event_tag: "collision".into(),
+        block_id: "object:0:event:4:2".into(),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:0:event:4:2".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("djump".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.y = 48.0;
+        player.previous_y = 48.0;
+        player.vspeed = 8.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("djump"), Some(&RuntimeValue::Bool(true)));
+}
+
+#[test]
+fn real_sample_second_shift_press_lacks_bootstrap_globals_after_manual_room_reload() {
+    let Some(mut package) = real_sample_package() else {
+        return;
+    };
+
+    if let Some(lowered) = package.lowered_logic.as_mut() {
+        if let Some(step_entry) = lowered
+            .entries
+            .iter_mut()
+            .find(|entry| entry.block_id == "object:0:event:3:0")
+        {
+            if let Some(jump_cond_index) = step_entry.statements.iter().position(|statement| {
+                matches!(
+                    statement,
+                    LoweredLogicStatement::Conditional {
+                        condition: LoweredLogicExpr::Call { name, args },
+                        ..
+                    } if name == "keyboard_check_pressed"
+                        && matches!(
+                            args.first(),
+                            Some(LoweredLogicExpr::MemberAccess { target, member })
+                                if member == "jumpbutton"
+                                    && matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "global")
+                        )
+                )
+            }) {
+                step_entry.statements.insert(
+                    jump_cond_index + 1,
+                    LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::Identifier("debug_after_jump_cond_vspeed".into()),
+                        value: LoweredLogicExpr::Identifier("vspeed".into()),
+                    },
+                );
+            }
+            step_entry.statements.insert(
+                0,
+                LoweredLogicStatement::Conditional {
+                    condition: LoweredLogicExpr::Call {
+                        name: "keyboard_check_pressed".into(),
+                        args: vec![LoweredLogicExpr::MemberAccess {
+                            target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                            member: "jumpbutton".into(),
+                        }],
+                    },
+                    then_branch: vec![LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::Identifier("debug_step_jump_pressed".into()),
+                        value: LoweredLogicExpr::LiteralBool(true),
+                    }],
+                    else_branch: vec![],
+                },
+            );
+        }
+
+        if let Some(player_jump_entry) = lowered
+            .entries
+            .iter_mut()
+            .find(|entry| entry.block_id == "script:11")
+        {
+            player_jump_entry.statements.insert(
+                0,
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("debug_player_jump_called".into()),
+                    value: LoweredLogicExpr::LiteralBool(true),
+                },
+            );
+            player_jump_entry.statements.insert(
+                1,
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("debug_ground_block".into()),
+                    value: LoweredLogicExpr::Call {
+                        name: "place_meeting".into(),
+                        args: vec![
+                            LoweredLogicExpr::Identifier("x".into()),
+                            LoweredLogicExpr::BinaryExpr {
+                                op: "+".into(),
+                                left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                                right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                            },
+                            LoweredLogicExpr::Identifier("block".into()),
+                        ],
+                    },
+                },
+            );
+            player_jump_entry.statements.insert(
+                2,
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("debug_ground_solidblock".into()),
+                    value: LoweredLogicExpr::Call {
+                        name: "place_meeting".into(),
+                        args: vec![
+                            LoweredLogicExpr::Identifier("x".into()),
+                            LoweredLogicExpr::BinaryExpr {
+                                op: "+".into(),
+                                left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                                right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                            },
+                            LoweredLogicExpr::Identifier("solidblock".into()),
+                        ],
+                    },
+                },
+            );
+            player_jump_entry.statements.insert(
+                3,
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("debug_pre_djump".into()),
+                    value: LoweredLogicExpr::Identifier("djump".into()),
+                },
+            );
+            player_jump_entry.statements.insert(
+                4,
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("debug_pre_onPlatform".into()),
+                    value: LoweredLogicExpr::Identifier("onPlatform".into()),
+                },
+            );
+            if let Some(LoweredLogicStatement::Conditional { then_branch, .. }) =
+                player_jump_entry.statements.get_mut(5)
+            {
+                if let Some(LoweredLogicStatement::Conditional {
+                    then_branch: jump_ground_branch,
+                    else_branch: jump_ground_else,
+                    ..
+                }) = then_branch.get_mut(0)
+                {
+                    jump_ground_branch.insert(
+                        0,
+                        LoweredLogicStatement::Assignment {
+                            target: LoweredLogicExpr::Identifier("debug_ground_branch_taken".into()),
+                            value: LoweredLogicExpr::LiteralBool(true),
+                        },
+                    );
+                    if let Some(LoweredLogicStatement::Conditional {
+                        then_branch: jump_air_branch,
+                        ..
+                    }) = jump_ground_else.get_mut(0)
+                    {
+                        jump_air_branch.insert(
+                            0,
+                            LoweredLogicStatement::Assignment {
+                                target: LoweredLogicExpr::Identifier("debug_air_branch_taken".into()),
+                                value: LoweredLogicExpr::LiteralBool(true),
+                            },
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    for _ in 0..120 {
+        core.tick(&mut host).unwrap();
+        if core.snapshot().input_trace.jump_button_key == 0x10 {
+            break;
+        }
+    }
+    assert_eq!(core.snapshot().input_trace.jump_button_key, 0x10);
+
+    core.reload_room(143).unwrap();
+
+    for _ in 0..120 {
+        core.tick(&mut host).unwrap();
+        let snapshot = core.snapshot();
+        if snapshot
+            .player
+            .as_ref()
+            .map(|player| player.jump.grounded)
+            .unwrap_or(false)
+        {
+            break;
+        }
+    }
+    assert!(
+        core.snapshot()
+            .player
+            .as_ref()
+            .map(|player| player.jump.grounded)
+            .unwrap_or(false)
+    );
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: true,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    host.input.clear_transitions();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: false,
+        },
+    );
+    for _ in 0..180 {
+        core.tick(&mut host).unwrap();
+        if core
+            .snapshot()
+            .player
+            .as_ref()
+            .map(|player| player.jump.grounded)
+            .unwrap_or(false)
+        {
+            break;
+        }
+    }
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let after_second = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| crate::helpers::is_player_instance(instance))
+        .unwrap();
+
+    assert_eq!(
+        core.globals.get("global.grav"),
+        Some(&RuntimeValue::Number(0.0))
+    );
+    assert_eq!(
+        after_second.vars.get("debug_step_jump_pressed"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert_eq!(
+        after_second.vars.get("debug_player_jump_called"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert_eq!(
+        after_second.vars.get("debug_ground_block"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert_eq!(
+        after_second.vars.get("debug_ground_branch_taken"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert!(
+        after_second.vspeed < 0.0,
+        "second jump should produce upward vspeed once bootstrap globals exist, got {:?}",
+        after_second.vspeed
+    );
+}
+
+#[test]
+fn real_sample_step_events_alone_show_second_shift_playerjump_effect() {
+    let Some(mut package) = real_sample_package() else {
+        return;
+    };
+
+    if let Some(lowered) = package.lowered_logic.as_mut() {
+        if let Some(player_jump_entry) = lowered
+            .entries
+            .iter_mut()
+            .find(|entry| entry.block_id == "script:11")
+        {
+            player_jump_entry.statements.insert(
+                0,
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("debug_player_jump_called".into()),
+                    value: LoweredLogicExpr::LiteralBool(true),
+                },
+            );
+        }
+    }
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    for _ in 0..120 {
+        core.tick(&mut host).unwrap();
+        if core.snapshot().input_trace.jump_button_key == 0x10 {
+            break;
+        }
+    }
+    assert_eq!(core.snapshot().input_trace.jump_button_key, 0x10);
+
+    core.reload_room(143).unwrap();
+    for _ in 0..120 {
+        core.tick(&mut host).unwrap();
+        if core
+            .snapshot()
+            .player
+            .as_ref()
+            .map(|player| player.jump.grounded)
+            .unwrap_or(false)
+        {
+            break;
+        }
+    }
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x10),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| crate::helpers::is_player_instance(instance))
+        .unwrap();
+
+    assert_eq!(
+        player.vars.get("debug_player_jump_called"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert!(
+        player.vspeed < 0.0,
+        "step events alone should apply upward jump velocity, got {:?}",
+        player.vspeed
     );
 }
