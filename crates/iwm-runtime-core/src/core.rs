@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 
-use crate::event_dispatch::{object_event_block_ids, RuntimeEventSelector};
+use crate::event_dispatch::{
+    collision_event_target_object_ids, object_event_block_ids, RuntimeEventSelector,
+};
 use crate::helpers::{as_number, collides_at, is_player_instance};
 use crate::{
     LoweredLogicEntry, LoweredLogicStatement, RuntimeCoreError, RuntimePackage,
@@ -480,18 +482,27 @@ impl RuntimeCore {
                 if !instance.alive {
                     continue;
                 }
-                for other in &room.instances {
-                    if !other.alive || instance.runtime_id == other.runtime_id {
-                        continue;
-                    }
-                    if crate::helpers::collides_at(
-                        instance,
-                        instance.x,
-                        instance.y,
-                        std::slice::from_ref(other),
-                        Some(instance.runtime_id),
-                    ) {
-                        hits.push((instance.runtime_id, other.object_id, other.clone()));
+                let target_object_ids = collision_event_target_object_ids(&self.package, instance.object_id);
+                if target_object_ids.is_empty() {
+                    continue;
+                }
+                for target_object_id in target_object_ids {
+                    for other in &room.instances {
+                        if !other.alive
+                            || instance.runtime_id == other.runtime_id
+                            || other.object_id != target_object_id
+                        {
+                            continue;
+                        }
+                        if crate::helpers::collides_at(
+                            instance,
+                            instance.x,
+                            instance.y,
+                            std::slice::from_ref(other),
+                            Some(instance.runtime_id),
+                        ) {
+                            hits.push((instance.runtime_id, target_object_id, other.clone()));
+                        }
                     }
                 }
             }

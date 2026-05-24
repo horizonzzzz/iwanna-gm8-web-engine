@@ -62,6 +62,33 @@ pub(crate) fn object_event_block_ids(
     block_ids
 }
 
+pub(crate) fn collision_event_target_object_ids(
+    package: &RuntimePackage,
+    object_id: usize,
+) -> Vec<usize> {
+    let mut current_object_id = Some(object_id);
+    while let Some(id) = current_object_id {
+        let Some(object) = package.objects.iter().find(|object| object.id == id) else {
+            break;
+        };
+
+        let target_ids = object
+            .events
+            .iter()
+            .filter(|event| event.event_type == 4 && event.event_tag == "collision")
+            .map(|event| event.sub_event as usize)
+            .collect::<Vec<_>>();
+
+        if !target_ids.is_empty() {
+            return target_ids;
+        }
+
+        current_object_id = object.parent_index.try_into().ok();
+    }
+
+    Vec::new()
+}
+
 fn format_key_name(sub_event: u16) -> String {
     let key = sub_event as u8 as char;
     if key.is_ascii_alphanumeric() {

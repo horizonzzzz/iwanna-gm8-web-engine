@@ -67,6 +67,7 @@ impl RuntimeCore {
         let step_event_blocks = self.object_event_blocks_by_tag("step");
         let script_entries = self.lowered_script_entries();
         let room_order = self.package.rooms.iter().map(|room| room.id).collect::<Vec<_>>();
+        let room_instances_snapshot = room.instances.clone();
         let dispatches = room
             .instances
             .iter()
@@ -96,11 +97,6 @@ impl RuntimeCore {
                 .active_buttons()
                 .into_iter()
                 .collect::<HashMap<_, _>>();
-            let room_instances = self
-                .current_room
-                .as_ref()
-                .map(|room| room.instances.clone())
-                .ok_or(RuntimeCoreError::NoRooms)?;
             let Some(room) = self.current_room.as_mut() else {
                 return Err(RuntimeCoreError::NoRooms);
             };
@@ -124,7 +120,7 @@ impl RuntimeCore {
             let eval_context = RuntimeEvalContext {
                 current_room_id: room.room_id,
                 button_states: &button_states,
-                room_instances: &room_instances,
+                room_instances: &room_instances_snapshot,
                 room_order: &room_order,
                 objects: &self.package.objects,
                 known_files: &known_files,

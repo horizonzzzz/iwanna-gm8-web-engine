@@ -13,6 +13,18 @@ impl RuntimeCore {
             .get(&room.room_id)
             .and_then(|index| self.package.rooms.get(*index))
             .ok_or(RuntimeCoreError::RoomMissing(room.room_id))?;
+        let active_view = source_room
+            .views_enabled
+            .then(|| source_room.views.iter().find(|view| view.visible))
+            .flatten()
+            .map(|view| {
+                (
+                    view.source_x,
+                    view.source_y,
+                    view.source_x + view.source_w as i32,
+                    view.source_y + view.source_h as i32,
+                )
+            });
 
         let mut commands = vec![RuntimeDrawCommand::Clear {
             colour: Rgba8 {
@@ -46,6 +58,20 @@ impl RuntimeCore {
                 .tiles
                 .iter()
                 .filter(|tile| tile.source_bg >= 0)
+                .filter(|tile| {
+                    active_view.is_none_or(|(left, top, right, bottom)| {
+                        rect_intersects_view(
+                            tile.x,
+                            tile.y,
+                            tile.x + tile.width as i32,
+                            tile.y + tile.height as i32,
+                            left,
+                            top,
+                            right,
+                            bottom,
+                        )
+                    })
+                })
                 .map(|tile| RuntimeDrawCommand::DrawTile {
                     background_id: tile.source_bg as usize,
                     x: tile.x,
@@ -79,7 +105,28 @@ impl RuntimeCore {
                     .sprites
                     .iter()
                     .find(|sprite| sprite.id == object.sprite_index as usize);
-
+                let sprite_width = sprite.map(|sprite| sprite.width as i32).unwrap_or(16);
+                let sprite_height = sprite.map(|sprite| sprite.height as i32).unwrap_or(16);
+                if let Some((left, top, right, bottom)) = active_view {
+                    if !rect_intersects_view(
+                        instance.x.round() as i32,
+                        instance.y.round() as i32,
+                        instance.x.round() as i32 + sprite_width,
+                        instance.y.round() as i32 + sprite_height,
+                        left,
+                        top,
+                        right,
+                        bottom,
+                    ) {
+                        continue;
+                    }
+                }
+                let sprite = self
+                    .package
+                    .resources
+                    .sprites
+                    .iter()
+                    .find(|sprite| sprite.id == object.sprite_index as usize);
                 commands.push(RuntimeDrawCommand::DrawSprite {
                     sprite_id: object.sprite_index as usize,
                     frame_index: 0,
@@ -122,4 +169,17 @@ impl RuntimeCore {
             commands,
         })
     }
+}
+
+fn rect_intersects_view(
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+    view_left: i32,
+    view_top: i32,
+    view_right: i32,
+    view_bottom: i32,
+) -> bool {
+    left < view_right && right > view_left && top < view_bottom && bottom > view_top
 }

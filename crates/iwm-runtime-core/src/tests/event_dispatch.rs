@@ -5,7 +5,9 @@ use super::support::{
     add_alarm_block, add_collision_block, add_create_block, add_keyboard_block,
     add_keyboard_press_block, add_keyboard_release_block, host, sample_package,
 };
-use crate::event_dispatch::{object_event_block_ids, RuntimeEventSelector};
+use crate::event_dispatch::{
+    collision_event_target_object_ids, object_event_block_ids, RuntimeEventSelector,
+};
 
 #[test]
 fn core_dispatches_held_keyboard_event_blocks() {
@@ -267,6 +269,41 @@ fn collision_selector_uses_sub_event_target_object_id() {
     );
 
     assert_eq!(block_ids, vec!["object:0:event:4:1".to_string()]);
+}
+
+#[test]
+fn collision_target_object_ids_return_declared_targets() {
+    let mut package = sample_package();
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("collision_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let target_ids = collision_event_target_object_ids(&package, 0);
+
+    assert_eq!(target_ids, vec![2]);
+}
+
+#[test]
+fn collision_target_object_ids_fall_back_through_parent_inheritance() {
+    let mut package = sample_package();
+    package.objects[1].parent_index = 0;
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("collision_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let target_ids = collision_event_target_object_ids(&package, 1);
+
+    assert_eq!(target_ids, vec![2]);
 }
 
 #[test]
