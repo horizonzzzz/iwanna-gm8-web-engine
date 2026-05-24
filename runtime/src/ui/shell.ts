@@ -236,7 +236,14 @@ function formatRuntimePlayer(snapshot: WasmRuntimeBridgeSnapshot): string {
   }
 
   const jump = snapshot.player.jump;
-  return `Player: x=${snapshot.player.x} y=${snapshot.player.y} hspeed=${snapshot.player.hspeed} vspeed=${snapshot.player.vspeed} grounded=${jump.grounded} jumpActive=${jump.active} hold=${jump.holdFrames} cut=${jump.cutApplied}`;
+  const trace = snapshot.inputTrace ?? {
+    jumpButtonKey: 0x20,
+    jumpPressed: false,
+    jumpJustPressed: false,
+    jumpJustReleased: false,
+    activeKeys: []
+  };
+  return `Player: x=${snapshot.player.x} y=${snapshot.player.y} hspeed=${snapshot.player.hspeed} vspeed=${snapshot.player.vspeed} grounded=${jump.grounded} jumpActive=${jump.active} hold=${jump.holdFrames} cut=${jump.cutApplied} jumpKey=0x${trace.jumpButtonKey.toString(16)} jp=${trace.jumpPressed} jjp=${trace.jumpJustPressed} jjr=${trace.jumpJustReleased} keys=[${trace.activeKeys.join(',')}]`;
 }
 
 function renderRuntimeTelemetry(

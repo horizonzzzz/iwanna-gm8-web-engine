@@ -1268,7 +1268,8 @@ fn logic_and_raw_exports_share_normalized_event_tags_for_gm8_event_ids() {
 
     for (event_type, sub_event, expected_tag, expected_collision_id) in cases {
         let assets = sample_assets_for_event(event_type, sub_event);
-        let (room_defs, object_defs, _) = export_rooms_and_logic(&assets.rooms, &assets.objects);
+        let (room_defs, object_defs, _) =
+            export_rooms_and_logic(&assets.rooms, &assets.objects, &assets.scripts);
         assert!(room_defs.is_empty() || room_defs.iter().all(|room| room.transition_targets.is_empty()));
 
         let logic_event = &object_defs[0].events[0];
@@ -1447,7 +1448,8 @@ fn export_rooms_and_logic_assigns_transition_targets_to_the_source_room() {
         })),
     ];
 
-    let (room_defs, _, _) = export_rooms_and_logic(&rooms, &objects);
+    let empty_scripts = Vec::new();
+    let (room_defs, _, _) = export_rooms_and_logic(&rooms, &objects, &empty_scripts);
 
     assert_eq!(room_defs[0].transition_targets, vec![1]);
     assert!(room_defs[1].transition_targets.is_empty());
@@ -1477,7 +1479,133 @@ fn export_rooms_and_logic_uses_readable_keyboard_event_tags() {
     }))];
     let rooms: AssetList<Room> = Vec::new();
 
-    let (_, object_defs, _) = export_rooms_and_logic(&rooms, &objects);
+    let empty_scripts = Vec::new();
+    let (_, object_defs, _) = export_rooms_and_logic(&rooms, &objects, &empty_scripts);
 
     assert_eq!(object_defs[0].events[0].event_tag, "keyboard:a");
+}
+
+#[test]
+fn export_rooms_and_logic_includes_script_resources_in_script_ir() {
+    use gm8exe::{
+        asset::{room::Room, script::Script},
+        settings::{GameHelpDialog, Settings},
+        GameAssets, GameVersion,
+    };
+    use iwm_parser::logic_export::export_rooms_and_logic;
+
+    let assets = GameAssets {
+        triggers: vec![],
+        constants: vec![],
+        extensions: vec![],
+        sprites: vec![],
+        sounds: vec![],
+        backgrounds: vec![],
+        paths: vec![],
+        scripts: vec![Some(Box::new(Script {
+            name: "defControls".into(),
+            source: "global.jumpbutton=vk_shift;".into(),
+        }))],
+        fonts: vec![],
+        timelines: vec![],
+        objects: vec![],
+        rooms: vec![Some(Box::new(Room {
+            name: "rm_init".into(),
+            caption: "".into(),
+            width: 320,
+            height: 240,
+            speed: 30,
+            persistent: false,
+            bg_colour: 0.into(),
+            clear_screen: true,
+            clear_region: true,
+            creation_code: "".into(),
+            backgrounds: vec![],
+            views_enabled: false,
+            views: vec![],
+            instances: vec![],
+            tiles: vec![],
+            uses_810_features: false,
+            uses_811_features: false,
+        }))],
+        included_files: vec![],
+        version: GameVersion::GameMaker8_0,
+        dx_dll: vec![],
+        ico_file_raw: None,
+        help_dialog: GameHelpDialog {
+            bg_colour: 0u32.into(),
+            new_window: false,
+            caption: "".into(),
+            left: 0,
+            top: 0,
+            width: 0,
+            height: 0,
+            border: false,
+            resizable: false,
+            window_on_top: false,
+            freeze_game: false,
+            info: "".into(),
+        },
+        last_instance_id: 0,
+        last_tile_id: 0,
+        library_init_strings: vec![],
+        room_order: vec![],
+        settings: Settings {
+            fullscreen: false,
+            scaling: 0,
+            interpolate_pixels: false,
+            clear_colour: 0,
+            allow_resize: false,
+            window_on_top: false,
+            dont_draw_border: false,
+            dont_show_buttons: false,
+            display_cursor: false,
+            freeze_on_lose_focus: false,
+            disable_screensaver: false,
+            force_cpu_render: false,
+            set_resolution: false,
+            colour_depth: 0,
+            resolution: 0,
+            frequency: 0,
+            vsync: false,
+            esc_close_game: false,
+            treat_close_as_esc: false,
+            f1_help_menu: false,
+            f4_fullscreen_toggle: false,
+            f5_save_f6_load: false,
+            f9_screenshot: false,
+            priority: 0,
+            custom_load_image: None,
+            transparent: false,
+            translucency: 0,
+            loading_bar: 0,
+            backdata: None,
+            frontdata: None,
+            scale_progress_bar: false,
+            show_error_messages: false,
+            log_errors: false,
+            always_abort: false,
+            zero_uninitialized_vars: false,
+            error_on_uninitialized_args: false,
+            swap_creation_events: false,
+        },
+        game_id: 0,
+        guid: [0; 4],
+    };
+
+    let (_, _, script_ir) = export_rooms_and_logic(&assets.rooms, &assets.objects, &assets.scripts);
+    let script_block = script_ir
+        .blocks
+        .iter()
+        .find(|block| block.id == "script:0")
+        .expect("expected exported script block");
+
+    assert_eq!(script_block.name, "defControls");
+    assert_eq!(script_block.kind, "script");
+    assert_eq!(script_block.support, "source-only");
+    assert!(matches!(
+        script_block.ops.as_slice(),
+        [iwm_parser::models::LogicOp::SourceSnippet { code }]
+            if code == "global.jumpbutton=vk_shift;"
+    ));
 }

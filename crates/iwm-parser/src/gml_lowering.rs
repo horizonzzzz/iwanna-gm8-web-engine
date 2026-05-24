@@ -822,6 +822,11 @@ fn should_split_top_level_newline(current: &str, next: &str) -> bool {
         return false;
     }
 
+    let next_lower = next.to_ascii_lowercase();
+    if next_lower.starts_with("else") {
+        return false;
+    }
+
     if current.ends_with('{')
         || current.ends_with('(')
         || current.ends_with('[')

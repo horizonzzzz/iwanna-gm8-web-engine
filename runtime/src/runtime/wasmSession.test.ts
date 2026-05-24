@@ -3,15 +3,22 @@ import { WasmRuntimeSession } from './wasmSession';
 import type { WasmRuntimeBridge } from './wasmBridge';
 
 function makeBridge(): WasmRuntimeBridge {
+  const inputTrace = {
+    jumpButtonKey: 0x20,
+    jumpPressed: false,
+    jumpJustPressed: false,
+    jumpJustReleased: false,
+    activeKeys: []
+  };
   return {
     backend: 'opengmk-wasm',
-    boot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [] })),
-    snapshot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [] })),
+    boot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
+    snapshot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
     frame: vi.fn(async () => ({ tick: 1, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] })),
-    setInput: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [] })),
-    tick: vi.fn(async () => ({ tick: 1, roomId: 0, diagnostics: [] })),
-    reset: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [] })),
-    selectRoom: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [] })),
+    setInput: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
+    tick: vi.fn(async () => ({ tick: 1, roomId: 0, diagnostics: [], inputTrace })),
+    reset: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
+    selectRoom: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
     diagnostics: vi.fn(async () => []),
   };
 }

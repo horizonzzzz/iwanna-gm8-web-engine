@@ -397,3 +397,44 @@ fn lowering_preserves_else_branch_function_calls_after_conditionals() {
         other => panic!("expected conditional with else branch, got {other:?}"),
     }
 }
+
+#[test]
+fn lowering_preserves_else_branch_when_else_starts_on_next_line() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 11,
+            script_name: "scr_else_newline".to_string(),
+            gml_source:
+                "if(file_exists(\"temp\") == true){\r\n  tempExe();\r\n}\r\nelse{\r\n  room_goto_next();\r\n}\r\n"
+                    .to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+
+    match &lowered.entries[0].statements[0] {
+        LoweredLogicStatement::Conditional {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            assert!(matches!(
+                then_branch.as_slice(),
+                [LoweredLogicStatement::FunctionCall { name, args }]
+                    if name == "tempExe" && args.is_empty()
+            ));
+            assert!(matches!(
+                else_branch.as_slice(),
+                [LoweredLogicStatement::FunctionCall { name, args }]
+                    if name == "room_goto_next" && args.is_empty()
+            ));
+        }
+        other => panic!("expected conditional with newline else branch, got {other:?}"),
+    }
+}

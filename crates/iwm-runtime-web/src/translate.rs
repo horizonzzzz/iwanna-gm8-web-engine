@@ -1,11 +1,12 @@
 use iwm_runtime_core::{
-    RuntimeCoreError, RuntimeJumpSnapshot, RuntimePlayerSnapshot, RuntimeSnapshot, RuntimeStatus,
+    RuntimeCoreError, RuntimeInputTraceSnapshot, RuntimeJumpSnapshot, RuntimePlayerSnapshot,
+    RuntimeSnapshot, RuntimeStatus,
 };
 use iwm_runtime_host::{RuntimeDiagnostic, RuntimeDrawCommand};
 
 use crate::{
-    BridgeDrawCommand, BridgeFrameSnapshot, BridgeJumpSnapshot, BridgePlayerSnapshot,
-    BridgeSnapshot,
+    BridgeDrawCommand, BridgeFrameSnapshot, BridgeInputTraceSnapshot, BridgeJumpSnapshot,
+    BridgePlayerSnapshot, BridgeSnapshot,
 };
 
 pub fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
@@ -16,6 +17,7 @@ pub fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
         room_name: snapshot.room_name,
         instance_count: snapshot.instance_count,
         player: snapshot.player.map(bridge_player_snapshot),
+        input_trace: bridge_input_trace_snapshot(snapshot.input_trace),
         diagnostics: format_diagnostics(&snapshot.diagnostics),
     }
 }
@@ -37,6 +39,16 @@ pub fn bridge_jump_snapshot(snapshot: RuntimeJumpSnapshot) -> BridgeJumpSnapshot
         active: snapshot.active,
         hold_frames: snapshot.hold_frames,
         cut_applied: snapshot.cut_applied,
+    }
+}
+
+pub fn bridge_input_trace_snapshot(snapshot: RuntimeInputTraceSnapshot) -> BridgeInputTraceSnapshot {
+    BridgeInputTraceSnapshot {
+        jump_button_key: snapshot.jump_button_key,
+        jump_pressed: snapshot.jump_pressed,
+        jump_just_pressed: snapshot.jump_just_pressed,
+        jump_just_released: snapshot.jump_just_released,
+        active_keys: snapshot.active_keys,
     }
 }
 

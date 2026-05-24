@@ -8,15 +8,22 @@ import {
 } from './wasmBridge';
 
 function makeBridge(): WasmRuntimeBridge {
+  const inputTrace = {
+    jumpButtonKey: 0x20,
+    jumpPressed: false,
+    jumpJustPressed: false,
+    jumpJustReleased: false,
+    activeKeys: []
+  };
   return {
     backend: 'opengmk-wasm',
-    boot: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null }),
-    snapshot: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null }),
+    boot: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null, inputTrace }),
+    snapshot: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null, inputTrace }),
     frame: async () => ({ tick: 0, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] }),
-    setInput: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null }),
-    tick: async (frames = 1) => ({ tick: frames, roomId: 0, diagnostics: [], player: null }),
-    reset: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null }),
-    selectRoom: async (roomId: number) => ({ tick: 0, roomId, diagnostics: [], player: null }),
+    setInput: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null, inputTrace }),
+    tick: async (frames = 1) => ({ tick: frames, roomId: 0, diagnostics: [], player: null, inputTrace }),
+    reset: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null, inputTrace }),
+    selectRoom: async (roomId: number) => ({ tick: 0, roomId, diagnostics: [], player: null, inputTrace }),
     diagnostics: async () => [],
   };
 }
@@ -52,6 +59,13 @@ describe('wasm bridge loader', () => {
         tick: 3,
         roomId: 1,
         diagnostics: ['runtime-idle:tick advanced'],
+        inputTrace: {
+          jumpButtonKey: 16,
+          jumpPressed: true,
+          jumpJustPressed: true,
+          jumpJustReleased: false,
+          activeKeys: ['0x10:p1jp1jr0']
+        },
         player: {
           x: 12,
           y: 34,
@@ -188,6 +202,13 @@ describe('wasm bridge loader', () => {
         tick: 0,
         roomId: 0,
         diagnostics: [],
+        inputTrace: {
+          jumpButtonKey: 32,
+          jumpPressed: false,
+          jumpJustPressed: false,
+          jumpJustReleased: false,
+          activeKeys: []
+        },
         player: null
       })
     );

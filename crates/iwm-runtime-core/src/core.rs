@@ -6,8 +6,8 @@ use crate::event_dispatch::{object_event_block_ids, RuntimeEventSelector};
 use crate::helpers::{as_number, collides_at, is_player_instance};
 use crate::{
     LoweredLogicEntry, LoweredLogicStatement, RuntimeCoreError, RuntimePackage,
-    RuntimeJumpSnapshot, RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot, RuntimeStatus,
-    RuntimeValue,
+    RuntimeInputTraceSnapshot, RuntimeJumpSnapshot, RuntimePlayerSnapshot, RuntimeRoomState,
+    RuntimeSnapshot, RuntimeStatus, RuntimeValue,
 };
 
 #[derive(Debug)]
@@ -23,6 +23,7 @@ pub struct RuntimeCore {
     pub(crate) pending_room_transition: Option<usize>,
     pub(crate) pending_room_reset: bool,
     pub(crate) globals: HashMap<String, RuntimeValue>,
+    pub(crate) last_input_trace: RuntimeInputTraceSnapshot,
 }
 
 impl RuntimeCore {
@@ -68,6 +69,13 @@ impl RuntimeCore {
             pending_room_transition: None,
             pending_room_reset: false,
             globals: HashMap::new(),
+            last_input_trace: RuntimeInputTraceSnapshot {
+                jump_button_key: 0x20,
+                jump_pressed: false,
+                jump_just_pressed: false,
+                jump_just_released: false,
+                active_keys: Vec::new(),
+            },
         };
 
         core.boot_default_room()?;
@@ -134,6 +142,7 @@ impl RuntimeCore {
                         },
                     })
             }),
+            input_trace: self.last_input_trace.clone(),
             diagnostics: self.diagnostics.clone(),
         }
     }
@@ -158,6 +167,7 @@ impl RuntimeCore {
         let right = self.bound_button_state(host, "global.rightbutton", 0x27);
         let mut jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
         let restart = host.button_state(RuntimeButton::Keyboard(0x52));
+        self.record_jump_input_diagnostic(host, jump);
 
         self.tick += 1;
         self.status = RuntimeStatus::Running;

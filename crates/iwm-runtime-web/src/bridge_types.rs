@@ -39,6 +39,16 @@ pub struct BridgePlayerSnapshot {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BridgeInputTraceSnapshot {
+    pub jump_button_key: u16,
+    pub jump_pressed: bool,
+    pub jump_just_pressed: bool,
+    pub jump_just_released: bool,
+    pub active_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BridgeSnapshot {
     pub status: String,
     pub tick: u64,
@@ -46,6 +56,7 @@ pub struct BridgeSnapshot {
     pub room_name: Option<String>,
     pub instance_count: usize,
     pub player: Option<BridgePlayerSnapshot>,
+    pub input_trace: BridgeInputTraceSnapshot,
     pub diagnostics: Vec<String>,
 }
 

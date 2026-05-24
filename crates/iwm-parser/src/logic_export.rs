@@ -4,13 +4,14 @@ use crate::models::{
     RoomInstancePlacement, RoomTilePlacement, RoomView, ScriptIrFile,
 };
 use gm8exe::{
-    asset::{CodeAction, Object, Room},
+    asset::{CodeAction, Object, Room, Script},
     AssetList,
 };
 
 pub fn export_rooms_and_logic(
     rooms: &AssetList<Room>,
     objects: &AssetList<Object>,
+    scripts: &AssetList<Script>,
 ) -> (Vec<RoomDefinition>, Vec<ObjectDefinition>, ScriptIrFile) {
     let mut blocks = Vec::new();
 
@@ -254,6 +255,23 @@ pub fn export_rooms_and_logic(
         transition_targets.sort_unstable();
         transition_targets.dedup();
         room.transition_targets = transition_targets;
+    }
+
+    for (script_id, script) in scripts
+        .iter()
+        .enumerate()
+        .filter_map(|(id, script)| script.as_ref().map(|script| (id, script)))
+    {
+        blocks.push(LogicBlock {
+            id: format!("script:{script_id}"),
+            name: script.name.to_string(),
+            kind: "script".into(),
+            support: "source-only".into(),
+            executable_action_count: 0,
+            ops: vec![LogicOp::SourceSnippet {
+                code: script.source.to_string(),
+            }],
+        });
     }
 
     (

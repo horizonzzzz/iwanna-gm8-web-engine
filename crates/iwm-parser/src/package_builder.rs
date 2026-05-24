@@ -24,7 +24,8 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     };
 
     let resource_index = export_resources(&assets, output_dir)?;
-    let (rooms, objects, script_ir) = export_rooms_and_logic(&assets.rooms, &assets.objects);
+    let (rooms, objects, script_ir) =
+        export_rooms_and_logic(&assets.rooms, &assets.objects, &assets.scripts);
     let raw_logic: RawLogicFile = export_raw_logic(&assets);
     let lowered_logic = lower_raw_logic_file(&raw_logic);
 

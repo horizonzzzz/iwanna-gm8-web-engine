@@ -353,6 +353,13 @@ class FakeIntervalScheduler {
 
 describe('main runtime shell', () => {
   let doc: FakeDocument;
+  const defaultInputTrace = {
+    jumpButtonKey: 0x20,
+    jumpPressed: false,
+    jumpJustPressed: false,
+    jumpJustReleased: false,
+    activeKeys: []
+  };
 
   beforeEach(() => {
     doc = new FakeDocument();
@@ -458,6 +465,7 @@ describe('main runtime shell', () => {
         roomId: currentRoomId,
         roomName: currentRoomName,
         diagnostics: currentDiagnostics,
+        inputTrace: defaultInputTrace,
         player: currentPlayer
       })),
       snapshot: vi.fn(async () => ({
@@ -465,6 +473,7 @@ describe('main runtime shell', () => {
         roomId: currentRoomId,
         roomName: currentRoomName,
         diagnostics: currentDiagnostics,
+        inputTrace: defaultInputTrace,
         player: currentPlayer
       })),
       frame: vi.fn(async () => ({
@@ -479,6 +488,7 @@ describe('main runtime shell', () => {
         roomId: currentRoomId,
         roomName: currentRoomName,
         diagnostics: ['input ok'],
+        inputTrace: defaultInputTrace,
         player: { ...currentPlayer, x: currentPlayer.x + 1 }
       })),
       tick: vi.fn(async (frames = 1) => ({
@@ -486,6 +496,7 @@ describe('main runtime shell', () => {
         roomId: currentRoomId,
         roomName: currentRoomName,
         diagnostics: (currentDiagnostics = ['tick ok']),
+        inputTrace: defaultInputTrace,
         player: currentPlayer
       })),
       reset: vi.fn(async () => ({
@@ -493,6 +504,7 @@ describe('main runtime shell', () => {
         roomId: (currentRoomId = 0),
         roomName: (currentRoomName = 'Room 1'),
         diagnostics: (currentDiagnostics = ['reset ok']),
+        inputTrace: defaultInputTrace,
         player: (currentPlayer = {
           x: 12,
           y: 34,
@@ -507,6 +519,7 @@ describe('main runtime shell', () => {
         roomId: (currentRoomId = roomId),
         roomName: (currentRoomName = roomId === 1 ? 'Room 2' : 'Room 1'),
         diagnostics: (currentDiagnostics = ['select ok']),
+        inputTrace: defaultInputTrace,
         player: (currentPlayer = roomId === 1
           ? null
           : {
@@ -630,6 +643,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -644,6 +658,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -665,6 +680,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -679,6 +695,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -693,6 +710,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -707,6 +725,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -804,6 +823,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -818,6 +838,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -839,6 +860,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -853,6 +875,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -867,6 +890,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -881,6 +905,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: [],
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -939,6 +964,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: currentDiagnostics,
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -953,6 +979,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: currentDiagnostics,
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -974,6 +1001,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: currentDiagnostics,
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -988,6 +1016,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: (currentDiagnostics = Array.from({ length: currentTick }, (_, index) => `diag-${index + 1}`)),
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -1002,6 +1031,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: (currentDiagnostics = ['reset ok']),
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,
@@ -1016,6 +1046,7 @@ describe('main runtime shell', () => {
         roomId: 0,
         roomName: 'Room 1',
         diagnostics: currentDiagnostics,
+        inputTrace: defaultInputTrace,
         player: {
           x: 12,
           y: 34,

@@ -19,6 +19,13 @@ export type WasmRuntimeBridgeSnapshot = {
       cutApplied: boolean;
     };
   } | null;
+  inputTrace: {
+    jumpButtonKey: number;
+    jumpPressed: boolean;
+    jumpJustPressed: boolean;
+    jumpJustReleased: boolean;
+    activeKeys: string[];
+  };
   diagnostics: string[];
 };
 

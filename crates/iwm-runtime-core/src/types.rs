@@ -193,6 +193,15 @@ pub struct RuntimePlayerSnapshot {
 }
 
 #[derive(Debug, Clone)]
+pub struct RuntimeInputTraceSnapshot {
+    pub jump_button_key: u16,
+    pub jump_pressed: bool,
+    pub jump_just_pressed: bool,
+    pub jump_just_released: bool,
+    pub active_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct RuntimeSnapshot {
     pub status: RuntimeStatus,
     pub tick: u64,
@@ -200,6 +209,7 @@ pub struct RuntimeSnapshot {
     pub room_name: Option<String>,
     pub instance_count: usize,
     pub player: Option<RuntimePlayerSnapshot>,
+    pub input_trace: RuntimeInputTraceSnapshot,
     pub diagnostics: Vec<RuntimeDiagnostic>,
 }
 

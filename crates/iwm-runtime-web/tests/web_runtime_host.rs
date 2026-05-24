@@ -276,6 +276,7 @@ fn web_runtime_host_formats_diagnostics_for_bridge_consumers() {
     let diagnostics = host.diagnostics();
 
     assert!(diagnostics.iter().any(|entry| entry.contains("runtime-idle")));
+    assert!(diagnostics.iter().any(|entry| entry.contains("runtime-jump-input")));
     assert!(json!(diagnostics).is_array());
 }
 
