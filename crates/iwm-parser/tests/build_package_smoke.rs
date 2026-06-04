@@ -85,7 +85,10 @@ fn exported_sprite_resources_include_collision_bounding_box_fields() {
                 bbox_right: 14,
                 bbox_top: 2,
                 bbox_bottom: 13,
-                data: vec![false; 16 * 16].into_boxed_slice(),
+                data: (0..16 * 16)
+                    .map(|index| index == 2 * 16 + 1 || index == 13 * 16 + 14)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
             }],
             per_frame_colliders: false,
         }))],
@@ -171,6 +174,19 @@ fn exported_sprite_resources_include_collision_bounding_box_fields() {
     assert_eq!(sprite["bbox_right"], 14);
     assert_eq!(sprite["bbox_top"], 2);
     assert_eq!(sprite["bbox_bottom"], 13);
+    assert_eq!(sprite["per_frame_collision_masks"], false);
+
+    let mask = &sprite["collision_masks"][0];
+    assert_eq!(mask["width"], 16);
+    assert_eq!(mask["height"], 16);
+    assert_eq!(mask["bbox_left"], 1);
+    assert_eq!(mask["bbox_right"], 14);
+    assert_eq!(mask["bbox_top"], 2);
+    assert_eq!(mask["bbox_bottom"], 13);
+    assert_eq!(mask["data"].as_array().unwrap().len(), 16 * 16);
+    assert_eq!(mask["data"][2 * 16 + 1], true);
+    assert_eq!(mask["data"][13 * 16 + 14], true);
+    assert_eq!(mask["data"][2 * 16 + 2], false);
 }
 
 #[test]

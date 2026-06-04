@@ -10,7 +10,7 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 
 - The browser shell can load packages, boot the WASM bridge, auto-run it at a shell-driven 60 Hz tick, pause/resume that loop, reset, select rooms, and show telemetry.
 - The parser now preserves raw logic in `logic.raw.json` and emits a structured lowered contract in `logic.lowered.json` for the current IWanna-critical subset.
-- The parser now also emits sprite collision bounds in `resources/index.json` as `bbox_left`, `bbox_right`, `bbox_top`, and `bbox_bottom`, sourced from OpenGMK collision metadata.
+- The parser now also emits sprite collision bounds in `resources/index.json` as `bbox_left`, `bbox_right`, `bbox_top`, and `bbox_bottom`, plus optional `collision_masks` sourced from OpenGMK collision metadata.
 - The lowered parser contract now covers common comment stripping, `var` declarations, assignments, returns, calls, member/index access, unary expressions, and common control-flow heads on the current critical path.
 - The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, and it now also dispatches alarm, held-key, key-press, and key-release slices with parent fallback lookup for event dispatch.
 - The runtime core now uses a variable-height jump state machine on the IWanna-critical path, including held jump differentiation, release-cut tracking, ceiling-hit phase clearing, and landing reset state clearing.
@@ -218,7 +218,7 @@ These are real GM8 features, but they do not need to block the first playable ru
 - timelines
 - surface rendering
 - save / load
-- pixel-perfect collision masks
+- advanced collision transforms such as scaled / rotated precise masks
 - D&D action execution for non-GML-heavy games
 - external DLL semantics
 - advanced drawing APIs
@@ -236,7 +236,7 @@ For IWanna-style games, the runtime is only meaningfully playable when it can do
 - play audio
 - support room transitions and deaths as real game events
 
-Current implementation already has a hardcoded baseline for player movement, AABB collision, reset, room switching, frame submission, and browser-hosted telemetry. The missing middle layer is the actual GM8 gameplay semantics: GML execution, variables, lifecycle dispatch, animation, and audio.
+Current implementation already has a hardcoded baseline for player movement, bbox broad-phase plus sprite-mask pixel collision, reset, room switching, frame submission, and browser-hosted telemetry. The missing middle layer is the actual GM8 gameplay semantics: GML execution, variables, lifecycle dispatch, animation, and audio.
 
 Current jump-validation note:
 
@@ -247,7 +247,7 @@ Current jump-validation note:
 
 Current resource-contract note:
 
-- sprite collision bounds are currently exported as one aggregated rectangle per sprite, derived from the gm8exe collision maps; the package does not yet expose per-frame collision rectangles as separate runtime resources
+- sprite collision bounds are exported as an aggregated rectangle per sprite, and `collision_masks` preserve the gm8exe bool maps for runtime pixel collision. The current runtime consumes the first available mask for each sprite; full `image_index` / animated per-frame mask selection is still deferred.
 
 ## Immediate Priority Order
 

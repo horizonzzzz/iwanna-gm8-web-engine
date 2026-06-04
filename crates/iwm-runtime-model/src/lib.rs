@@ -47,6 +47,21 @@ pub struct SpriteResource {
     pub bbox_right: u32,
     pub bbox_top: u32,
     pub bbox_bottom: u32,
+    #[serde(default)]
+    pub collision_masks: Vec<SpriteCollisionMask>,
+    #[serde(default)]
+    pub per_frame_collision_masks: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpriteCollisionMask {
+    pub width: u32,
+    pub height: u32,
+    pub bbox_left: u32,
+    pub bbox_right: u32,
+    pub bbox_top: u32,
+    pub bbox_bottom: u32,
+    pub data: Vec<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

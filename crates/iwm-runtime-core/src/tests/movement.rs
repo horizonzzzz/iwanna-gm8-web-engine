@@ -1,4 +1,5 @@
 use iwm_runtime_host::{ButtonState, RuntimeButton};
+use iwm_runtime_model::{RoomInstancePlacement, SpriteCollisionMask};
 
 use crate::helpers::collides_at;
 use crate::RuntimeCore;
@@ -213,6 +214,72 @@ fn core_emits_hazard_diagnostic_and_requests_reset() {
         .iter()
         .any(|diagnostic| diagnostic.code == "runtime-player-died"));
     assert_eq!(core.snapshot().status, crate::RuntimeStatus::Ready);
+}
+
+#[test]
+fn core_hazard_collision_uses_sprite_masks_after_bbox_overlap() {
+    let mut package = sample_package();
+    package.objects[1].sprite_index = 1;
+    package.objects[1].is_hazard = Some(true);
+    package.resources.sprites[0].collision_masks = vec![filled_mask(16, 16)];
+    package.resources.sprites[1].collision_masks = vec![single_pixel_mask(16, 16, 15, 15)];
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 16,
+        object_id: 1,
+        x: 24,
+        y: 24,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: true,
+        is_checkpoint: false,
+    });
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert!(!core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-player-died"));
+}
+
+#[test]
+fn core_hazard_collision_triggers_when_sprite_mask_pixels_overlap() {
+    let mut package = sample_package();
+    package.objects[1].sprite_index = 1;
+    package.objects[1].is_hazard = Some(true);
+    package.resources.sprites[0].collision_masks = vec![filled_mask(16, 16)];
+    package.resources.sprites[1].collision_masks = vec![single_pixel_mask(16, 16, 15, 15)];
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 16,
+        object_id: 1,
+        x: 12,
+        y: 24,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: true,
+        is_checkpoint: false,
+    });
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert!(core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-player-died"));
 }
 
 #[test]
@@ -544,5 +611,31 @@ fn core_snapshot_exposes_player_jump_trace_state() {
     assert_eq!(player.jump.hold_frames, 1);
     assert!(!player.jump.cut_applied);
     assert!(!player.jump.grounded);
+}
+
+fn filled_mask(width: u32, height: u32) -> SpriteCollisionMask {
+    SpriteCollisionMask {
+        width,
+        height,
+        bbox_left: 0,
+        bbox_right: width - 1,
+        bbox_top: 0,
+        bbox_bottom: height - 1,
+        data: vec![true; (width * height) as usize],
+    }
+}
+
+fn single_pixel_mask(width: u32, height: u32, x: u32, y: u32) -> SpriteCollisionMask {
+    let mut data = vec![false; (width * height) as usize];
+    data[(y * width + x) as usize] = true;
+    SpriteCollisionMask {
+        width,
+        height,
+        bbox_left: x,
+        bbox_right: x,
+        bbox_top: y,
+        bbox_bottom: y,
+        data,
+    }
 }
 

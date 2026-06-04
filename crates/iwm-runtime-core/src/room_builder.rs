@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use iwm_runtime_model::{ObjectDefinition, SpriteResource};
 
 use crate::helpers::{adjusted_spawn_for_player, is_preferred_player_name};
-use crate::types::RuntimeJumpState;
+use crate::types::{RuntimeCollisionMask, RuntimeJumpState};
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState};
 
 impl RuntimeCore {
@@ -67,6 +67,8 @@ impl RuntimeCore {
                     bbox_right: metrics.bbox_right,
                     bbox_top: metrics.bbox_top,
                     bbox_bottom: metrics.bbox_bottom,
+                    collision_masks: metrics.collision_masks.clone(),
+                    per_frame_collision_masks: metrics.per_frame_collision_masks,
                     facing_left: false,
                     alive: true,
                     solid: instance.is_solid || object.solid,
@@ -114,6 +116,8 @@ impl RuntimeCore {
                     bbox_right: metrics.bbox_right,
                     bbox_top: metrics.bbox_top,
                     bbox_bottom: metrics.bbox_bottom,
+                    collision_masks: metrics.collision_masks.clone(),
+                    per_frame_collision_masks: metrics.per_frame_collision_masks,
                     facing_left: false,
                     alive: true,
                     solid: player_object.solid,
@@ -203,6 +207,8 @@ impl RuntimeCore {
             bbox_right: metrics.bbox_right,
             bbox_top: metrics.bbox_top,
             bbox_bottom: metrics.bbox_bottom,
+            collision_masks: metrics.collision_masks,
+            per_frame_collision_masks: metrics.per_frame_collision_masks,
             facing_left: false,
             alive: true,
             solid: object.solid,
@@ -215,7 +221,7 @@ impl RuntimeCore {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct RuntimeSpriteMetrics {
     pub width: i32,
     pub height: i32,
@@ -225,6 +231,8 @@ pub(crate) struct RuntimeSpriteMetrics {
     pub bbox_right: i32,
     pub bbox_top: i32,
     pub bbox_bottom: i32,
+    pub collision_masks: Vec<RuntimeCollisionMask>,
+    pub per_frame_collision_masks: bool,
 }
 
 impl Default for RuntimeSpriteMetrics {
@@ -238,6 +246,8 @@ impl Default for RuntimeSpriteMetrics {
             bbox_right: 15,
             bbox_top: 0,
             bbox_bottom: 15,
+            collision_masks: Vec::new(),
+            per_frame_collision_masks: false,
         }
     }
 }
@@ -255,6 +265,20 @@ impl From<&SpriteResource> for RuntimeSpriteMetrics {
             bbox_right: sprite.bbox_right as i32,
             bbox_top: sprite.bbox_top as i32,
             bbox_bottom: sprite.bbox_bottom as i32,
+            collision_masks: sprite
+                .collision_masks
+                .iter()
+                .map(|mask| RuntimeCollisionMask {
+                    width: mask.width,
+                    height: mask.height,
+                    bbox_left: mask.bbox_left as i32,
+                    bbox_right: mask.bbox_right as i32,
+                    bbox_top: mask.bbox_top as i32,
+                    bbox_bottom: mask.bbox_bottom as i32,
+                    data: mask.data.clone(),
+                })
+                .collect(),
+            per_frame_collision_masks: sprite.per_frame_collision_masks,
         }
     }
 }

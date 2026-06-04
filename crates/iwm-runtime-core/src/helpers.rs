@@ -1,6 +1,6 @@
 use iwm_runtime_host::{RuntimeDiagnostic, RuntimeDiagnosticLevel, RuntimeHost};
 
-use crate::{RuntimeInstance, RuntimeRoomState, RuntimeValue};
+use crate::{RuntimeCollisionMask, RuntimeInstance, RuntimeRoomState, RuntimeValue};
 
 #[derive(Clone, Copy)]
 pub(crate) enum Axis {
@@ -44,8 +44,86 @@ pub(crate) fn collides_at(
         }
 
         let (other_left, other_top, other_right, other_bottom) = bounds_at(other, other.x, other.y);
-        left < other_right && right > other_left && top < other_bottom && bottom > other_top
+        if !(left < other_right && right > other_left && top < other_bottom && bottom > other_top) {
+            return false;
+        }
+
+        match (
+            active_collision_mask(instance),
+            active_collision_mask(other),
+        ) {
+            (Some(mask), Some(other_mask)) => masks_overlap(
+                instance,
+                mask,
+                x,
+                y,
+                other,
+                other_mask,
+                (
+                    left.max(other_left),
+                    top.max(other_top),
+                    right.min(other_right),
+                    bottom.min(other_bottom),
+                ),
+            ),
+            _ => true,
+        }
     })
+}
+
+fn active_collision_mask(instance: &RuntimeInstance) -> Option<&RuntimeCollisionMask> {
+    instance.collision_masks.first().filter(|mask| {
+        let expected_len = mask.width.checked_mul(mask.height).unwrap_or(0) as usize;
+        mask.width > 0 && mask.height > 0 && expected_len > 0 && mask.data.len() >= expected_len
+    })
+}
+
+fn masks_overlap(
+    instance: &RuntimeInstance,
+    mask: &RuntimeCollisionMask,
+    x: f64,
+    y: f64,
+    other: &RuntimeInstance,
+    other_mask: &RuntimeCollisionMask,
+    intersection: (i32, i32, i32, i32),
+) -> bool {
+    let (left, top, right, bottom) = intersection;
+    for world_y in top..bottom {
+        for world_x in left..right {
+            if mask_contains_world_pixel(instance, mask, x, y, world_x, world_y)
+                && mask_contains_world_pixel(other, other_mask, other.x, other.y, world_x, world_y)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn mask_contains_world_pixel(
+    instance: &RuntimeInstance,
+    mask: &RuntimeCollisionMask,
+    x: f64,
+    y: f64,
+    world_x: i32,
+    world_y: i32,
+) -> bool {
+    let local_x = world_x - x.round() as i32 + instance.origin_x;
+    let local_y = world_y - y.round() as i32 + instance.origin_y;
+    if local_x < mask.bbox_left
+        || local_x > mask.bbox_right
+        || local_y < mask.bbox_top
+        || local_y > mask.bbox_bottom
+        || local_x < 0
+        || local_y < 0
+        || local_x >= mask.width as i32
+        || local_y >= mask.height as i32
+    {
+        return false;
+    }
+
+    let index = local_y as usize * mask.width as usize + local_x as usize;
+    mask.data.get(index).copied().unwrap_or(false)
 }
 
 pub(crate) fn move_instance_axis(

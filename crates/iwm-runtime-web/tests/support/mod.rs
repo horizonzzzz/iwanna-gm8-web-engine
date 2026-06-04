@@ -188,6 +188,8 @@ pub fn sample_package() -> RuntimePackage {
                 bbox_right: 15,
                 bbox_top: 0,
                 bbox_bottom: 15,
+                collision_masks: vec![],
+                per_frame_collision_masks: false,
             }],
             backgrounds: vec![BackgroundResource {
                 id: 0,

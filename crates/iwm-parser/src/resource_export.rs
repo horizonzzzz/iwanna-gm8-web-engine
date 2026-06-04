@@ -1,5 +1,5 @@
 use crate::models::{
-    BackgroundResource, ResourceIndex, SoundResource, SpriteResource,
+    BackgroundResource, ResourceIndex, SoundResource, SpriteCollisionMask, SpriteResource,
 };
 use anyhow::{Context, Result};
 use gm8exe::GameAssets;
@@ -69,6 +69,20 @@ pub fn export_resources(assets: &GameAssets, output_dir: &Path) -> Result<Resour
                     .map(|collider| collider.bbox_bottom)
                     .max()
                     .unwrap_or(height.saturating_sub(1)),
+                collision_masks: sprite
+                    .colliders
+                    .iter()
+                    .map(|collider| SpriteCollisionMask {
+                        width: collider.width,
+                        height: collider.height,
+                        bbox_left: collider.bbox_left,
+                        bbox_right: collider.bbox_right,
+                        bbox_top: collider.bbox_top,
+                        bbox_bottom: collider.bbox_bottom,
+                        data: collider.data.iter().copied().collect(),
+                    })
+                    .collect(),
+                per_frame_collision_masks: sprite.per_frame_colliders,
             })
         })
         .collect::<Result<Vec<_>>>()?;

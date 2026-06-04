@@ -59,7 +59,7 @@ Important validation note:
 - Player appears: not repo-proven on a tracked artifact
 - Movement works: not yet verified as a dedicated browser assertion
 - First blocking warning or missing behavior: not yet narrowed on a tracked gold-sample artifact; use `docs/notes/runtime-wasm-gap-analysis.md` plus local sample evidence to decide the next blocker
-- Sprite collision metadata is now present in the parser-emitted package contract, but only as one aggregated bbox rectangle per sprite
+- Sprite collision metadata is now present in the parser-emitted package contract as aggregated bbox bounds plus gm8exe-derived `collision_masks`; current runtime pixel checks use the first available sprite mask, while animated per-frame mask selection remains deferred
 
 Critical-path `runtime-missing-source-lowering:*` warnings:
 

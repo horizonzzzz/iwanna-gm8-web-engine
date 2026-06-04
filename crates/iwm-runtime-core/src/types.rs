@@ -159,6 +159,8 @@ pub struct RuntimeInstance {
     pub bbox_right: i32,
     pub bbox_top: i32,
     pub bbox_bottom: i32,
+    pub collision_masks: Vec<RuntimeCollisionMask>,
+    pub per_frame_collision_masks: bool,
     pub facing_left: bool,
     pub alive: bool,
     pub solid: bool,
@@ -167,6 +169,17 @@ pub struct RuntimeInstance {
     pub player_candidate: bool,
     pub jump: RuntimeJumpState,
     pub vars: HashMap<String, RuntimeValue>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimeCollisionMask {
+    pub width: u32,
+    pub height: u32,
+    pub bbox_left: i32,
+    pub bbox_right: i32,
+    pub bbox_top: i32,
+    pub bbox_bottom: i32,
+    pub data: Vec<bool>,
 }
 
 #[derive(Debug, Clone)]

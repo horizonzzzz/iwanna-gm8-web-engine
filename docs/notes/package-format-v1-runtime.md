@@ -32,7 +32,7 @@ Important direction note:
 Included in this phase:
 
 - browser-ready sprite exports
-- sprite exports now include `bbox_left`, `bbox_right`, `bbox_top`, and `bbox_bottom` collision bounds sourced from the parser's OpenGMK sprite collision metadata
+- sprite exports now include `bbox_left`, `bbox_right`, `bbox_top`, and `bbox_bottom` collision bounds plus optional `collision_masks` sourced from the parser's OpenGMK sprite collision metadata
 - browser-ready background exports
 - audio file exports
 - normalized room instance placements with runtime categorization hints
@@ -86,7 +86,7 @@ Important current invariants:
 - `rooms[*].instances[*].object_id` refers to `objects[*].id`, not to the array position of an object entry
 - `objects[*].sprite_index` refers to `resources.index.json -> sprites[*].id` when non-negative
 - room background and tile references refer to `resources.index.json -> backgrounds[*].id`
-- sprite resource collision bounds are emitted in `resources/index.json` for each sprite record; the parser currently stores one aggregated rectangle per sprite, derived from the source sprite collision maps
+- sprite resource collision bounds are emitted in `resources/index.json` for each sprite record; the parser also emits `collision_masks` and `per_frame_collision_masks` from gm8exe collision maps so runtime consumers can perform pixel-level checks after bbox broad-phase filtering
 - runtime consumers should validate cross-file references explicitly instead of silently assuming contiguous ids
 
 This matters because normalized package ids may remain sparse even when the emitted JSON arrays are dense. Runtime code must resolve identities by `id` rather than by array offset.
@@ -151,7 +151,7 @@ The current browser-hosted runtime flow is:
 - Particle systems, surfaces, and advanced drawing
 - Menu systems and save/load functionality
 - DLL semantics and external function calls
-- Complex collision masks and advanced physics
+- Advanced physics beyond the current bbox broad-phase plus sprite-mask pixel collision path
 - high-fidelity continuous browser host timing and play-loop controls
 
 ## Route Decision Implication

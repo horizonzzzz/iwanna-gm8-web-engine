@@ -31,6 +31,16 @@ export type ResourceIndex = {
     bbox_right: number;
     bbox_top: number;
     bbox_bottom: number;
+    collision_masks?: Array<{
+      width: number;
+      height: number;
+      bbox_left: number;
+      bbox_right: number;
+      bbox_top: number;
+      bbox_bottom: number;
+      data: boolean[];
+    }>;
+    per_frame_collision_masks?: boolean;
   }>;
   backgrounds: Array<{
     id: number;
