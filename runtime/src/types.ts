@@ -8,6 +8,7 @@ export type RuntimeManifest = {
   engine_family: string;
   compatibility: CompatibilityLevel;
   default_room_id: number | null;
+  room_order?: number[];
   room_count: number;
   object_count: number;
   script_block_count: number;

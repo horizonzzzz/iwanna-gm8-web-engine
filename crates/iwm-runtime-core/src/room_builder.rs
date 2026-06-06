@@ -38,7 +38,7 @@ impl RuntimeCore {
             .or_else(|| room.instances.first())
             .map(|instance| (instance.x, instance.y));
 
-        let mut instances = room
+        let instances = room
             .instances
             .iter()
             .enumerate()
@@ -81,55 +81,6 @@ impl RuntimeCore {
             })
             .collect::<Vec<_>>();
 
-        let has_player = instances.iter().any(|instance| {
-            instance.player_candidate
-                && instance.alive
-                && is_preferred_player_name(&instance.object_name)
-        });
-        if !has_player {
-            let preferred_player = self
-                .package
-                .objects
-                .iter()
-                .find(|object| object.is_player && is_preferred_player_name(&object.name))
-                .or_else(|| self.package.objects.iter().find(|object| object.is_player));
-
-            if let Some(player_object) = preferred_player {
-                let metrics = self.sprite_metrics(player_object);
-                let (x, y) = spawn_point.unwrap_or((0, 0));
-                instances.push(RuntimeInstance {
-                    runtime_id: instances.len(),
-                    instance_id: -1,
-                    object_id: player_object.id,
-                    object_name: player_object.name.clone(),
-                    x: x as f64,
-                    y: y as f64,
-                    previous_x: x as f64,
-                    previous_y: y as f64,
-                    hspeed: 0.0,
-                    vspeed: 0.0,
-                    width: metrics.width,
-                    height: metrics.height,
-                    origin_x: metrics.origin_x,
-                    origin_y: metrics.origin_y,
-                    bbox_left: metrics.bbox_left,
-                    bbox_right: metrics.bbox_right,
-                    bbox_top: metrics.bbox_top,
-                    bbox_bottom: metrics.bbox_bottom,
-                    collision_masks: metrics.collision_masks.clone(),
-                    per_frame_collision_masks: metrics.per_frame_collision_masks,
-                    facing_left: false,
-                    alive: true,
-                    solid: player_object.solid,
-                    hazard: player_object.is_hazard.unwrap_or(false),
-                    checkpoint: player_object.is_checkpoint.unwrap_or(false),
-                    player_candidate: true,
-                    jump: RuntimeJumpState::default(),
-                    vars: HashMap::new(),
-                });
-            }
-        }
-
         let mut room_state = RuntimeRoomState {
             room_id: room.id,
             room_name: room.name.clone(),
@@ -161,6 +112,7 @@ impl RuntimeCore {
             }
         }
         self.apply_create_logic(&mut room_state, &room);
+        self.apply_room_start_logic(&mut room_state);
         Ok(room_state)
     }
 

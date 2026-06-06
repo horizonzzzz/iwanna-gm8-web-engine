@@ -36,6 +36,7 @@ Included in this phase:
 - browser-ready background exports
 - audio file exports
 - normalized room instance placements with runtime categorization hints
+- parser-normalized GM room order in `manifest.room_order`
 - normalized object event table with event tags and collision target ids for dispatch
 - logic envelope in `scripts.ir.json` with executable/source-only distinction
 - raw parser-owned GML preservation in `logic.raw.json`
@@ -75,7 +76,7 @@ The execution notes below describe the current package contract and shell/runtim
 - Object-level `is_hazard`, `is_checkpoint`, `is_player` hints
 - Event entries with normalized `event_tag` for runtime dispatch
 - Resource index with paths to browser-loadable assets
-- Manifest with default room and compatibility metadata
+- Manifest with default room, source room order, and compatibility metadata
 
 ### Runtime Contract Invariants
 
@@ -86,6 +87,7 @@ Important current invariants:
 - `rooms[*].instances[*].object_id` refers to `objects[*].id`, not to the array position of an object entry
 - `objects[*].sprite_index` refers to `resources.index.json -> sprites[*].id` when non-negative
 - room background and tile references refer to `resources.index.json -> backgrounds[*].id`
+- `manifest.room_order` is optional for older packages, but when present each room id must resolve to `rooms[*].id`; parser-built packages use this order for `default_room_id` and runtime `room_goto_next()` semantics
 - room, instance, and object event block ids should resolve consistently across `scripts.ir.json`, `logic.raw.json`, and `logic.lowered.json`
 - sprite resource collision bounds are emitted in `resources/index.json` for each sprite record; the parser also emits `collision_masks` and `per_frame_collision_masks` from gm8exe collision maps so runtime consumers can perform pixel-level checks after bbox broad-phase filtering
 - runtime consumers should validate cross-file references explicitly instead of silently assuming contiguous ids
@@ -99,6 +101,7 @@ cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sampl
 ```
 
 The validator is contract-oriented, not semantic. It checks package shape and cross-file references before browser smoke, while runtime behavior validation remains in `iwm-runtime-core`, `iwm-runtime-web`, and browser tests.
+Room background resource validation follows the current runtime drawing contract: visible room background layers and all tiles must resolve to exported background resources; hidden room background layers are preserved but do not currently block validation because neither runtime-core nor the browser static renderer draws them.
 
 ### Currently Executable Action-List Subset
 
@@ -133,6 +136,7 @@ The current `iwm-runtime-web` bridge can now:
 - advance deterministic ticks
 - reset the runtime
 - switch rooms by room id
+- follow parser-provided `manifest.room_order` for package boot and `room_goto_next()`
 - return formatted diagnostics
 - clear host edge bits after each tick so one-shot keyboard input does not repeat across bridge frames
 

@@ -1,6 +1,6 @@
 use crate::gm8_adapter::read_gm8_assets;
-use crate::logic_export::export_rooms_and_logic;
 use crate::gml_lowering::lower_raw_logic_file;
+use crate::logic_export::export_rooms_and_logic;
 use crate::models::{AnalysisReport, CompatibilityLevel, LogicOp, RawLogicFile, RuntimeManifest};
 use crate::raw_logic_export::export_raw_logic;
 use crate::resource_export::export_resources;
@@ -24,8 +24,10 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     };
 
     let resource_index = export_resources(&assets, output_dir)?;
-    let (rooms, objects, script_ir) =
+    let (mut rooms, objects, script_ir) =
         export_rooms_and_logic(&assets.rooms, &assets.objects, &assets.scripts);
+    let room_order = normalized_room_order(&assets.room_order, &rooms);
+    sort_rooms_by_order(&mut rooms, &room_order);
     let raw_logic: RawLogicFile = export_raw_logic(&assets);
     let lowered_logic = lower_raw_logic_file(&raw_logic);
 
@@ -72,12 +74,17 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
 
     // Check for unsupported actions
     let mut seen_actions: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let unsupported_action_prefixes = ["game_", "file_", "sound_", "window_", "os_", "http_", "shopify_", "steam_"];
+    let unsupported_action_prefixes = [
+        "game_", "file_", "sound_", "window_", "os_", "http_", "shopify_", "steam_",
+    ];
     for block in &script_ir.blocks {
         for op in &block.ops {
             if let LogicOp::ActionCall { fn_name, .. } = op {
                 let lower = fn_name.to_lowercase();
-                if unsupported_action_prefixes.iter().any(|p| lower.starts_with(p)) {
+                if unsupported_action_prefixes
+                    .iter()
+                    .any(|p| lower.starts_with(p))
+                {
                     if !seen_actions.contains(&lower) {
                         seen_actions.insert(lower.clone());
                         warnings.push(format!("runtime-unsupported-action:{}", fn_name));
@@ -96,7 +103,9 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
         .count();
 
     if raw_statement_count > 0 {
-        warnings.push(format!("runtime-lowered-raw-fallback-count:{raw_statement_count}"));
+        warnings.push(format!(
+            "runtime-lowered-raw-fallback-count:{raw_statement_count}"
+        ));
     }
 
     // Add a note about partial execution support
@@ -126,7 +135,11 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
         source_hash,
         engine_family: "gm8".into(),
         compatibility: CompatibilityLevel::Partial,
-        default_room_id: rooms.first().map(|room| room.id),
+        default_room_id: room_order
+            .first()
+            .copied()
+            .or_else(|| rooms.first().map(|room| room.id)),
+        room_order,
         room_count: rooms.len(),
         object_count: objects.len(),
         script_block_count: script_ir.blocks.len(),
@@ -150,6 +163,39 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     )?;
 
     Ok(())
+}
+
+fn normalized_room_order(
+    source_order: &[i32],
+    rooms: &[crate::models::RoomDefinition],
+) -> Vec<usize> {
+    let room_ids = rooms
+        .iter()
+        .map(|room| room.id)
+        .collect::<std::collections::HashSet<_>>();
+    let mut order = source_order
+        .iter()
+        .filter_map(|room_id| usize::try_from(*room_id).ok())
+        .filter(|room_id| room_ids.contains(room_id))
+        .collect::<Vec<_>>();
+
+    for room in rooms {
+        if !order.contains(&room.id) {
+            order.push(room.id);
+        }
+    }
+
+    order
+}
+
+fn sort_rooms_by_order(rooms: &mut [crate::models::RoomDefinition], room_order: &[usize]) {
+    let order_index = room_order
+        .iter()
+        .enumerate()
+        .map(|(index, room_id)| (*room_id, index))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    rooms.sort_by_key(|room| order_index.get(&room.id).copied().unwrap_or(usize::MAX));
 }
 
 fn write_json<T: Serialize>(path: impl AsRef<Path>, value: &T) -> Result<()> {

@@ -472,7 +472,9 @@ fn core_initializes_and_clears_jump_state_on_room_reset() {
 #[test]
 fn core_tap_jump_reaches_lower_apex_than_held_jump() {
     fn run_jump_sequence(held_frames: usize) -> f64 {
-        let mut core = RuntimeCore::load(sample_package()).unwrap();
+        let mut package = sample_package();
+        package.rooms[0].transition_targets.clear();
+        let mut core = RuntimeCore::load(package).unwrap();
         let mut host = host();
         let mut min_y = f64::INFINITY;
 

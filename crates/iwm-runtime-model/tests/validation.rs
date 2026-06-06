@@ -17,6 +17,7 @@ fn valid_sparse_package() -> RuntimePackageContract {
             engine_family: "gm8".into(),
             compatibility: CompatibilityLevel::Partial,
             default_room_id: Some(300),
+            room_order: vec![300],
             room_count: 1,
             object_count: 1,
             script_block_count: 3,
@@ -230,6 +231,35 @@ fn accepts_valid_sparse_identity_references() {
 
     assert!(report.valid, "expected no errors, got {report:?}");
     assert!(report.errors.is_empty());
+}
+
+#[test]
+fn accepts_hidden_room_background_layers_that_reference_missing_resources() {
+    let mut package = valid_sparse_package();
+    package.rooms[0].backgrounds[0].visible_on_start = false;
+    package.rooms[0].backgrounds[0].source_bg = 901;
+
+    let report = validate_runtime_package(&package);
+
+    assert!(
+        report.valid,
+        "expected hidden layer to be ignored, got {report:?}"
+    );
+    assert!(report.errors.is_empty());
+}
+
+#[test]
+fn rejects_room_order_entries_that_reference_missing_rooms() {
+    let mut package = valid_sparse_package();
+    package.manifest.room_order = vec![300, 404];
+
+    let report = validate_runtime_package(&package);
+
+    assert!(!report.valid);
+    assert_eq!(
+        report.errors,
+        vec![RuntimePackageValidationError::MissingRoomOrderRoom { room_id: 404 }]
+    );
 }
 
 #[test]

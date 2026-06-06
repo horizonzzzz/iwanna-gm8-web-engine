@@ -33,6 +33,7 @@ pub(super) fn sample_package() -> RuntimePackage {
             engine_family: "gm8".into(),
             compatibility: CompatibilityLevel::Partial,
             default_room_id: Some(7),
+            room_order: vec![7, 9],
             room_count: 2,
             object_count: 5,
             script_block_count: 1,

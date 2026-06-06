@@ -23,6 +23,8 @@ pub struct RuntimeManifest {
     pub engine_family: String,
     pub compatibility: CompatibilityLevel,
     pub default_room_id: Option<usize>,
+    #[serde(default)]
+    pub room_order: Vec<usize>,
     pub room_count: usize,
     pub object_count: usize,
     pub script_block_count: usize,

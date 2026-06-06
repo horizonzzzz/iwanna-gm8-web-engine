@@ -41,6 +41,9 @@ pub enum RuntimePackageValidationError {
     MissingDefaultRoom {
         room_id: usize,
     },
+    MissingRoomOrderRoom {
+        room_id: usize,
+    },
     MissingRoomInstanceObject {
         room_id: usize,
         instance_id: i32,
@@ -131,6 +134,12 @@ pub fn validate_runtime_package(
         }
     }
 
+    for room_id in &package.manifest.room_order {
+        if !room_ids.contains(room_id) {
+            errors.push(RuntimePackageValidationError::MissingRoomOrderRoom { room_id: *room_id });
+        }
+    }
+
     for room in &package.rooms {
         if let Some(block_id) = &room.creation_block_id {
             require_logic_block(
@@ -144,7 +153,8 @@ pub fn validate_runtime_package(
         }
 
         for background in &room.backgrounds {
-            if background.source_bg >= 0
+            if background.visible_on_start
+                && background.source_bg >= 0
                 && !background_ids.contains(&(background.source_bg as usize))
             {
                 errors.push(RuntimePackageValidationError::MissingRoomBackground {

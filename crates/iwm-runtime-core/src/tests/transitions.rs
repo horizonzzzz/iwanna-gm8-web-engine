@@ -240,13 +240,11 @@ fn core_restart_resets_jump_state_before_the_next_jump() {
 }
 
 #[test]
-fn core_spawn_adjusts_fallback_player_out_of_checkpoint_solid() {
+fn core_spawn_adjusts_explicit_player_out_of_checkpoint_solid() {
     let mut package = sample_package();
-    package.rooms[0]
-        .instances
-        .retain(|instance| instance.object_id != 0);
     package.rooms[0].instances[0].is_checkpoint = false;
-    package.rooms[0].instances[1].is_checkpoint = true;
+    package.rooms[0].instances[1].is_checkpoint = false;
+    package.rooms[0].instances[2].is_checkpoint = true;
 
     let mut core = RuntimeCore::load(package).unwrap();
     let room = core.current_room().unwrap();

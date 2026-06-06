@@ -3,8 +3,8 @@ use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeFileHost};
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
 
 use super::support::{
-    add_alarm_block, add_create_block, add_keyboard_block, add_room_create_block, add_step_block,
-    add_script_block, append_lowered_entry, host, real_sample_package, sample_package,
+    add_alarm_block, add_create_block, add_keyboard_block, add_room_create_block, add_script_block,
+    add_step_block, append_lowered_entry, host, real_sample_package, sample_package,
 };
 use iwm_runtime_model::{ObjectDefinition, ObjectEventEntry};
 
@@ -50,7 +50,10 @@ fn core_applies_lowered_create_assignments_to_player_vars_and_movement() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!(player.vars.get("moveSpeed"), Some(&RuntimeValue::Number(6.0)));
+    assert_eq!(
+        player.vars.get("moveSpeed"),
+        Some(&RuntimeValue::Number(6.0))
+    );
     assert_eq!(player.vars.get("jump"), Some(&RuntimeValue::Number(11.0)));
     assert_eq!(player.hspeed, 6.0);
     assert!(player.vspeed >= 0.0);
@@ -141,7 +144,10 @@ fn core_applies_lowered_step_assignments_before_player_movement() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!(player.vars.get("moveSpeed"), Some(&RuntimeValue::Number(6.0)));
+    assert_eq!(
+        player.vars.get("moveSpeed"),
+        Some(&RuntimeValue::Number(6.0))
+    );
     assert_eq!(player.hspeed, 6.0);
 }
 
@@ -337,7 +343,10 @@ fn core_dispatches_alarm_events_for_nonzero_alarm_slots() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!(player.vars.get("alarm_fired"), Some(&RuntimeValue::Bool(true)));
+    assert_eq!(
+        player.vars.get("alarm_fired"),
+        Some(&RuntimeValue::Bool(true))
+    );
 }
 
 #[test]
@@ -374,7 +383,10 @@ fn core_preserves_instance_field_assignments_from_create_blocks() {
         .find(|instance| instance.player_candidate)
         .unwrap();
 
-    assert_eq!((player.x, player.y, player.hspeed, player.vspeed), (99.0, 77.0, 5.0, -2.0));
+    assert_eq!(
+        (player.x, player.y, player.hspeed, player.vspeed),
+        (99.0, 77.0, 5.0, -2.0)
+    );
 }
 
 #[test]
@@ -443,7 +455,10 @@ fn core_dispatches_keyboard_and_alarm_blocks_through_shared_event_path() {
         .find(|instance| instance.player_candidate)
         .unwrap();
     assert_eq!(player.vars.get("armed"), Some(&RuntimeValue::Bool(true)));
-    assert_eq!(player.vars.get("alarm_fired"), Some(&RuntimeValue::Bool(true)));
+    assert_eq!(
+        player.vars.get("alarm_fired"),
+        Some(&RuntimeValue::Bool(true))
+    );
 }
 
 #[test]
@@ -754,20 +769,22 @@ fn core_evaluates_place_queries_and_boolean_operators_inside_conditions() {
         is_player: false,
         events: vec![],
     });
-    package.rooms[0].instances.push(iwm_runtime_model::RoomInstancePlacement {
-        instance_id: 16,
-        object_id: 4,
-        x: 12,
-        y: 40,
-        xscale: 1.0,
-        yscale: 1.0,
-        angle: 0.0,
-        blend: 0x00ff_ffff,
-        creation_block_id: None,
-        is_solid: true,
-        is_hazard: false,
-        is_checkpoint: false,
-    });
+    package.rooms[0]
+        .instances
+        .push(iwm_runtime_model::RoomInstancePlacement {
+            instance_id: 16,
+            object_id: 4,
+            x: 12,
+            y: 40,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: true,
+            is_hazard: false,
+            is_checkpoint: false,
+        });
     add_step_block(
         &mut package,
         vec![LoweredLogicStatement::Conditional {
@@ -890,6 +907,42 @@ fn core_executes_lowered_step_room_goto_next_calls() {
 }
 
 #[test]
+fn core_executes_room_goto_next_using_manifest_room_order() {
+    let mut package = sample_package();
+    package.manifest.room_order = vec![7, 11, 9];
+    package.rooms.push(iwm_runtime_model::RoomDefinition {
+        id: 11,
+        name: "room11".into(),
+        width: 160,
+        height: 120,
+        speed: 60,
+        persistent: false,
+        backgrounds: vec![],
+        views_enabled: false,
+        views: vec![],
+        tiles: vec![],
+        instances: vec![],
+        creation_block_id: None,
+        playable: true,
+        transition_targets: vec![],
+    });
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "room_goto_next".into(),
+            args: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(core.snapshot().room_id, Some(11));
+}
+
+#[test]
 fn core_evaluates_file_exists_conditions_against_host_files() {
     let mut package = sample_package();
     add_step_block(
@@ -929,7 +982,98 @@ fn core_evaluates_file_exists_conditions_against_host_files() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!(player.vars.get("loaded_temp"), Some(&RuntimeValue::Bool(true)));
+    assert_eq!(
+        player.vars.get("loaded_temp"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn core_does_not_inject_player_into_rooms_without_spawn_logic() {
+    let mut package = sample_package();
+    package.manifest.default_room_id = Some(11);
+    package.rooms.push(iwm_runtime_model::RoomDefinition {
+        id: 11,
+        name: "menu_like_room".into(),
+        width: 320,
+        height: 240,
+        speed: 60,
+        persistent: false,
+        backgrounds: vec![],
+        views_enabled: false,
+        views: vec![],
+        tiles: vec![],
+        instances: vec![iwm_runtime_model::RoomInstancePlacement {
+            instance_id: 99,
+            object_id: 1,
+            x: 120,
+            y: 80,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: false,
+            is_hazard: false,
+            is_checkpoint: false,
+        }],
+        creation_block_id: None,
+        playable: false,
+        transition_targets: vec![],
+    });
+
+    let core = RuntimeCore::load(package).unwrap();
+
+    assert!(core.snapshot().player.is_none());
+}
+
+#[test]
+fn core_dispatches_room_start_events_after_room_build() {
+    let mut package = sample_package();
+    package.rooms[0]
+        .instances
+        .retain(|instance| instance.object_id != 0);
+    package.objects[1]
+        .events
+        .push(iwm_runtime_model::ObjectEventEntry {
+            event_type: 7,
+            sub_event: 4,
+            event_tag: "other:room-start".into(),
+            block_id: "object:1:event:7:4".into(),
+            action_count: 1,
+        });
+    package.scripts.blocks.push(iwm_runtime_model::LogicBlock {
+        id: "object:1:event:7:4".into(),
+        name: "marker room start".into(),
+        kind: "object-event".into(),
+        support: "source-only".into(),
+        executable_action_count: 0,
+        ops: vec![],
+    });
+    package.lowered_logic = Some(crate::LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![crate::LoweredLogicEntry {
+            block_id: "object:1:event:7:4".into(),
+            statements: vec![LoweredLogicStatement::FunctionCall {
+                name: "instance_create".into(),
+                args: vec![
+                    LoweredLogicExpr::Identifier("x".into()),
+                    LoweredLogicExpr::Identifier("y".into()),
+                    LoweredLogicExpr::Identifier("obj_player".into()),
+                ],
+            }],
+        }],
+    });
+
+    let core = RuntimeCore::load(package).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "obj_player")
+        .expect("room-start event should create player");
+    assert_eq!((player.x, player.y), (48.0, 64.0));
 }
 
 #[test]
@@ -937,27 +1081,29 @@ fn core_skips_builtin_jump_when_step_scripts_own_jump_queries() {
     let mut package = sample_package();
     add_step_block(
         &mut package,
-        vec![LoweredLogicStatement::Assignment {
-            target: LoweredLogicExpr::MemberAccess {
-                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
-                member: "jumpbutton".into(),
-            },
-            value: LoweredLogicExpr::LiteralNumber(0x10 as f64),
-        },
-        LoweredLogicStatement::Conditional {
-            condition: LoweredLogicExpr::Call {
-                name: "keyboard_check_pressed".into(),
-                args: vec![LoweredLogicExpr::MemberAccess {
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::MemberAccess {
                     target: Box::new(LoweredLogicExpr::Identifier("global".into())),
                     member: "jumpbutton".into(),
-                }],
+                },
+                value: LoweredLogicExpr::LiteralNumber(0x10 as f64),
             },
-            then_branch: vec![LoweredLogicStatement::FunctionCall {
-                name: "playerJump".into(),
-                args: vec![],
-            }],
-            else_branch: vec![],
-        }],
+            LoweredLogicStatement::Conditional {
+                condition: LoweredLogicExpr::Call {
+                    name: "keyboard_check_pressed".into(),
+                    args: vec![LoweredLogicExpr::MemberAccess {
+                        target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                        member: "jumpbutton".into(),
+                    }],
+                },
+                then_branch: vec![LoweredLogicStatement::FunctionCall {
+                    name: "playerJump".into(),
+                    args: vec![],
+                }],
+                else_branch: vec![],
+            },
+        ],
     );
     add_script_block(
         &mut package,
@@ -1055,20 +1201,22 @@ fn place_meeting_matches_instances_through_parent_object_inheritance() {
         is_player: false,
         events: vec![],
     });
-    package.rooms[0].instances.push(iwm_runtime_model::RoomInstancePlacement {
-        instance_id: 16,
-        object_id: 4,
-        x: 12,
-        y: 40,
-        xscale: 1.0,
-        yscale: 1.0,
-        angle: 0.0,
-        blend: 0x00ff_ffff,
-        creation_block_id: None,
-        is_solid: true,
-        is_hazard: false,
-        is_checkpoint: false,
-    });
+    package.rooms[0]
+        .instances
+        .push(iwm_runtime_model::RoomInstancePlacement {
+            instance_id: 16,
+            object_id: 4,
+            x: 12,
+            y: 40,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: true,
+            is_hazard: false,
+            is_checkpoint: false,
+        });
     add_step_block(
         &mut package,
         vec![LoweredLogicStatement::Conditional {
@@ -1198,8 +1346,10 @@ fn script_owned_jump_can_retrigger_after_collision_restores_djump() {
 
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();
-    core.globals
-        .insert("global.jumpbutton".into(), RuntimeValue::Number(0x10 as f64));
+    core.globals.insert(
+        "global.jumpbutton".into(),
+        RuntimeValue::Number(0x10 as f64),
+    );
 
     host.input.set_button_state(
         RuntimeButton::Keyboard(0x10),
@@ -1347,13 +1497,12 @@ fn create_logic_instance_create_bootstraps_world_globals_immediately() {
         core.globals.get("global.grav"),
         Some(&RuntimeValue::Number(0.0))
     );
-    assert!(
-        core.current_room()
-            .unwrap()
-            .instances
-            .iter()
-            .any(|instance| instance.object_name == "world")
-    );
+    assert!(core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .any(|instance| instance.object_name == "world"));
 }
 
 #[test]
@@ -1513,8 +1662,10 @@ fn script_owned_jump_uses_grounded_branch_after_world_grav_bootstrap() {
 
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();
-    core.globals
-        .insert("global.jumpbutton".into(), RuntimeValue::Number(0x10 as f64));
+    core.globals.insert(
+        "global.jumpbutton".into(),
+        RuntimeValue::Number(0x10 as f64),
+    );
     host.input.set_button_state(
         RuntimeButton::Keyboard(0x10),
         ButtonState {
@@ -1722,7 +1873,9 @@ fn real_sample_second_shift_press_lacks_bootstrap_globals_after_manual_room_relo
                     jump_ground_branch.insert(
                         0,
                         LoweredLogicStatement::Assignment {
-                            target: LoweredLogicExpr::Identifier("debug_ground_branch_taken".into()),
+                            target: LoweredLogicExpr::Identifier(
+                                "debug_ground_branch_taken".into(),
+                            ),
                             value: LoweredLogicExpr::LiteralBool(true),
                         },
                     );
@@ -1734,7 +1887,9 @@ fn real_sample_second_shift_press_lacks_bootstrap_globals_after_manual_room_relo
                         jump_air_branch.insert(
                             0,
                             LoweredLogicStatement::Assignment {
-                                target: LoweredLogicExpr::Identifier("debug_air_branch_taken".into()),
+                                target: LoweredLogicExpr::Identifier(
+                                    "debug_air_branch_taken".into(),
+                                ),
                                 value: LoweredLogicExpr::LiteralBool(true),
                             },
                         );
@@ -1769,13 +1924,12 @@ fn real_sample_second_shift_press_lacks_bootstrap_globals_after_manual_room_relo
             break;
         }
     }
-    assert!(
-        core.snapshot()
-            .player
-            .as_ref()
-            .map(|player| player.jump.grounded)
-            .unwrap_or(false)
-    );
+    assert!(core
+        .snapshot()
+        .player
+        .as_ref()
+        .map(|player| player.jump.grounded)
+        .unwrap_or(false));
 
     host.input.set_button_state(
         RuntimeButton::Keyboard(0x10),

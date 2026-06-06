@@ -22,7 +22,10 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - The browser-facing host path now treats one-shot controls such as jump/restart as host-boundary input edges and clears edge bits after each tick; the shell now drives those per-tick inputs through a 60 Hz auto-run loop instead of only a manual single-step button. The next runtime blocker is broader OpenGMK semantic coverage, not expanding shell-side gameplay rules.
 - The browser shell / wasm-session path now also accumulates raw key press/release edges until the next runtime tick instead of deriving edges only from the latest held-key snapshot, so very short taps that start and end within one shell interval are no longer silently lost before reaching the runtime host.
 - The current lowered runtime slice now also resolves `file_exists()` against a small sampled host-file set (`temp`, `DeathTime`, `save1`-`save3`), which is enough to advance more of the `rInit` / save bootstrap path without yet claiming general GM8 file API coverage.
+- Parser-built packages now preserve GM room order as `manifest.room_order`; runtime boot and `room_goto_next()` use that order, so title/menu/select rooms can follow the original room chain instead of the previous JSON-array ordering.
+- Runtime room construction no longer injects a fallback player into rooms without explicit spawn state. Player creation must come from a room instance or currently supported spawn logic, and runtime-core now dispatches `other:room-start` blocks during room build so `playerStart`-style spawn objects can create the player through original room-start logic.
 - The runtime core now also hydrates missing package bootstrap globals before shell-driven manual `select_room` / `reload_room` jumps, using parser-lowered room-instance create blocks that assign `global.*`. This specifically fixes sample-package hand testing where direct entry into a playable room previously skipped required globals such as `global.grav`, making second jumps fail even though `Shift` press/release edges and `playerJump()` dispatch were already correct.
+- Package validation now accepts hidden room background layers that reference non-exported resources, matching the current renderer contract, while visible room backgrounds and tile backgrounds remain hard references.
 - Runtime snapshots and the browser shell now also expose jump-trace telemetry for the current player path: grounded state plus active / hold / cut jump-phase flags. This is a debugging and validation surface, not proof that the underlying jump semantics already match the gold sample.
 
 Practical parser note:
@@ -134,10 +137,11 @@ Missing pieces include:
 - collision event dispatch beyond selector and lookup coverage
 - `instance_destroy()` -> `Destroy`
 - `Clean Up`
-- room creation code execution
-- instance creation code execution
+- full room creation code execution beyond the currently lowered bootstrap subset
+- full instance creation code execution beyond the currently lowered bootstrap subset
+- full Other-event coverage beyond the current `other:room-start` spawn path
 
-For current planning purposes, `keyboard`, `collision`, and `alarm` handling should be treated as part of the first IWanna-critical lifecycle slice rather than as optional polish. Keyboard and alarm dispatch now exist in the current runtime slice; collision lookup is wired for selection and test coverage, but full runtime collision dispatch remains deferred.
+For current planning purposes, `keyboard`, `collision`, `alarm`, and room-start handling should be treated as part of the first IWanna-critical lifecycle slice rather than as optional polish. Keyboard, alarm, and room-start dispatch now exist in the current runtime slice; collision lookup is wired for selection and test coverage, but full runtime collision dispatch remains deferred.
 
 ## Important Missing
 
@@ -224,7 +228,7 @@ These are real GM8 features, but they do not need to block the first playable ru
 - D&D action execution for non-GML-heavy games
 - external DLL semantics
 - advanced drawing APIs
-- menu systems
+- full menu/save-select systems beyond basic room-order and room-start transitions
 
 ## Minimum Playable Runtime
 
@@ -239,6 +243,7 @@ For IWanna-style games, the runtime is only meaningfully playable when it can do
 - support room transitions and deaths as real game events
 
 Current implementation already has a hardcoded baseline for player movement, bbox broad-phase plus sprite-mask pixel collision, reset, room switching, frame submission, and browser-hosted telemetry. The missing middle layer is the actual GM8 gameplay semantics: GML execution, variables, lifecycle dispatch, animation, and audio.
+The browser can now start from the original `rInit` order and advance toward title/menu/select rooms through lowered room logic, but full playability still depends on Draw-event text/sprite behavior, file/save APIs such as `file_bin_*`, and broader menu object logic.
 
 Current jump-validation note:
 

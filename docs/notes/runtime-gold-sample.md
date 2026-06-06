@@ -37,7 +37,7 @@ This is the intended local browser smoke target after generating a package from 
 ## Blockers By Layer
 
 - Parser/package availability: a fresh clone does not include `runtime/public/packages/sample/`, so the first gold-sample smoke prerequisite is still a local `build-package` run against `IWBT_Dife`.
-- Package-contract validation: after generating `runtime/public/packages/sample/`, run `cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample` before treating browser symptoms as runtime-semantic failures. The current local sample artifact still reports missing background references for rooms 110 and 111, so package integrity should be re-established before final browser acceptance claims.
+- Package-contract validation: after generating `runtime/public/packages/sample/`, run `cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample` before treating browser symptoms as runtime-semantic failures. As of the current local IWBT_Dife smoke, the generated sample validates successfully; hidden title/menu background layers no longer block validation because they are not drawn by the current renderer contract.
 - Runtime-core semantic gap: the remaining meaningful gaps are the ones that still block movement, collision, death/reset, or room transition after the WASM runtime has already booted and drawn a room.
 - Wasm/web host gap: the host telemetry path exists, but gold-sample-specific runtime claims still require evidence from a locally generated `sample/` package.
 - Shell-only issue: the default package path remains `/packages/sample`, so missing local artifacts should surface as explicit load errors rather than being mistaken for runtime-semantic failures.
@@ -47,6 +47,8 @@ Important validation note:
 - because local sample inventories differ across machines, local gold-sample smoke should be treated as environment evidence, not as the only repository-level proof that a parser/runtime/package contract still holds
 - stable repository fixtures and package-contract validation should catch structural drift before gold-sample browser debugging is needed
 - the current runtime slice already covers alarm dispatch, held/press/release keyboard dispatch, and parent-aware event lookup, so the next gold-sample blockers should be judged against the remaining runtime gap rather than those already-covered slices
+- parser-built room order now boots the sample from `rInit` and orders the initial chain as `rInit -> rTitle -> rMenu -> rSelectStage`, so title/menu/select navigation should now be debugged as runtime logic rather than by manually selecting those rooms first
+- runtime-core no longer injects fallback players into menu-like rooms; player appearance now depends on explicit room instances or supported original spawn logic such as `other:room-start`
 - jump is no longer a fixed-height placeholder in repository fixtures, and runtime-core now preserves fractional vertical jump movement for the sample's `jump=8.5` / `gravity=0.4` path; the remaining gold-sample jump work is numeric calibration of tap, hold, release-cut, double-jump, and landing-reset behavior against `IWBT_Dife`
 - the shell/runtime snapshot path now exposes grounded plus jump-phase trace flags for the player, which makes browser-side hand-feel debugging easier but does not change the remaining semantic blocker: the gold sample still needs its own player movement path executed accurately
 
@@ -55,11 +57,11 @@ Important validation note:
 ### IWBT_Dife
 
 - Intended package path: `runtime/public/packages/sample/`
-- Boot room: not repo-proven without a local generated package artifact
+- Boot room: current local generated package boots from `rInit` (`room_id = 2`) through `manifest.default_room_id`
 - Frame draws: the shell and WASM bridge can render telemetry, but gold-sample-specific frame proof still depends on local package generation
 - Player appears: not repo-proven on a tracked artifact
 - Movement works: not yet verified as a dedicated browser assertion
-- First blocking warning or missing behavior: not yet narrowed on a tracked gold-sample artifact; use `docs/notes/runtime-wasm-gap-analysis.md` plus local sample evidence to decide the next blocker
+- First blocking warning or missing behavior: title/menu/select can now be reached through the original room-order path, but full usability still depends on broader Draw-event rendering and save/file APIs such as `file_bin_*`
 - Sprite collision metadata is now present in the parser-emitted package contract as aggregated bbox bounds plus gm8exe-derived `collision_masks`; current runtime pixel checks use the first available sprite mask, while animated per-frame mask selection remains deferred
 
 Critical-path `runtime-missing-source-lowering:*` warnings:

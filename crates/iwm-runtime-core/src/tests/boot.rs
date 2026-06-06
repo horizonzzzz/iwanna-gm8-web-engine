@@ -2,6 +2,7 @@ use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicFile, LoweredLogicStatement, RuntimeCore,
     RuntimeCoreError, RuntimeStatus,
 };
+use crate::helpers::is_player_instance;
 
 use super::support::sample_package;
 
@@ -37,7 +38,7 @@ fn core_reports_missing_room() {
 }
 
 #[test]
-fn core_spawns_a_fallback_player_when_room_has_checkpoint_but_no_player_instance() {
+fn core_does_not_spawn_fallback_player_when_room_has_checkpoint_but_no_spawn_logic() {
     let mut package = sample_package();
     package.rooms[0]
         .instances
@@ -47,15 +48,15 @@ fn core_spawns_a_fallback_player_when_room_has_checkpoint_but_no_player_instance
     let core = RuntimeCore::load(package).unwrap();
     let room = core.current_room().unwrap();
 
-    assert!(room.instances.iter().any(|instance| instance.player_candidate));
-    assert!(room
+    assert!(!room.instances.iter().any(is_player_instance));
+    assert!(!room
         .instances
         .iter()
-        .any(|instance| instance.player_candidate && instance.instance_id == -1));
+        .any(|instance| instance.object_id == 0));
 }
 
 #[test]
-fn core_ignores_player_start_markers_when_deciding_whether_a_room_has_a_player() {
+fn core_does_not_treat_player_start_markers_as_spawned_players() {
     let mut package = sample_package();
     package.rooms[0]
         .instances
@@ -96,8 +97,9 @@ fn core_ignores_player_start_markers_when_deciding_whether_a_room_has_a_player()
     let core = RuntimeCore::load(package).unwrap();
     let room = core.current_room().unwrap();
 
+    assert!(!room.instances.iter().any(is_player_instance));
     assert!(room.instances.iter().any(|instance| {
-        instance.instance_id == -1 && instance.object_id == 0 && instance.player_candidate
+        instance.object_name == "playerStart" && instance.player_candidate
     }));
 }
 

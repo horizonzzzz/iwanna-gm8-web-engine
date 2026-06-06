@@ -10,15 +10,15 @@ test('sample package boots through the wasm path and exposes runtime telemetry',
   await loadPackage(page, '/packages/sample');
 
   await expect(page.locator('#runtime-status')).toContainText('WASM runtime active');
-  await expect(page.locator('#runtime-room')).toContainText(/2: rInit|107: rMegaman01/);
-  await expect(page.locator('#runtime-player')).toContainText('Player: x=');
+  await expect(page.locator('#runtime-room')).toContainText(/2: rInit|111: rTitle|110: rMenu|109: rSelectStage/);
+  await expect(page.locator('#runtime-player')).toHaveText(/Player: (unavailable|x=)/);
   await expect.poll(async () => {
     const text = await page.locator('#runtime-tick').textContent();
     return Number(text?.replace('Tick: ', '') ?? '0');
   }).toBeGreaterThan(0);
   await expect(page.locator('#runtime-diagnostics')).toContainText('Diagnostics:');
-  await expect(page.locator('select[name="roomSelect"]')).toHaveValue(/^(2|107)$/);
-  await expect(page.locator('#runtime-status')).toContainText(/rInit|rMegaman01/);
+  await expect(page.locator('select[name="roomSelect"]')).toHaveValue(/^(2|111|110|109)$/);
+  await expect(page.locator('#runtime-status')).toContainText(/rInit|rTitle|rMenu|rSelectStage/);
 });
 
 test('sample package can switch to rStage01 and keep wasm telemetry visible', async ({ page }) => {

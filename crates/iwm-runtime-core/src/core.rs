@@ -351,7 +351,7 @@ impl RuntimeCore {
             };
             room.instances.clone()
         };
-        let room_order = self.package.rooms.iter().map(|room| room.id).collect::<Vec<_>>();
+        let room_order = self.runtime_room_order();
         let current_room_id = {
             let Some(room) = self.current_room.as_ref() else {
                 return;
