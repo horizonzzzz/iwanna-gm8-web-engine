@@ -157,6 +157,7 @@ impl RuntimeCore {
     }
 
     pub fn render<H: RuntimeHost>(&mut self, host: &mut H) -> Result<(), RuntimeCoreError> {
+        self.sync_current_room_views_from_globals();
         let frame = self.build_render_frame()?;
         host.submit_frame(frame)?;
         Ok(())
@@ -202,6 +203,7 @@ impl RuntimeCore {
             );
         } else {
             let step_result = self.execute_lowered_step_events(host)?;
+            self.sync_current_room_views_from_globals();
             if step_result.interrupted {
                 self.apply_pending_room_change()?;
                 self.render(host)?;
@@ -261,6 +263,12 @@ impl RuntimeCore {
 
         self.render(host)?;
         Ok(())
+    }
+
+    fn sync_current_room_views_from_globals(&mut self) {
+        if let Some(room) = self.current_room.as_mut() {
+            crate::logic::apply_view_globals_to_room(room, &self.globals);
+        }
     }
 
     fn bound_button_state<H: RuntimeHost>(

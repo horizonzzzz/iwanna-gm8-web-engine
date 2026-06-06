@@ -639,7 +639,7 @@ fn assign_instance_or_global(
     instance: &mut RuntimeInstance,
     globals: &mut HashMap<String, RuntimeValue>,
 ) {
-    if key.starts_with("global.") {
+    if key.starts_with("global.") || is_view_variable_key(&key) {
         globals.insert(key, value);
         return;
     }
@@ -659,6 +659,20 @@ fn assign_instance_or_global(
             instance.vars.insert(key, value);
         }
     }
+}
+
+fn is_view_variable_key(key: &str) -> bool {
+    matches!(
+        key,
+        "view_xview"
+            | "view_yview"
+            | "view_wview"
+            | "view_hview"
+            | "view_xview[0]"
+            | "view_yview[0]"
+            | "view_wview[0]"
+            | "view_hview[0]"
+    )
 }
 
 fn assign_number_field(
@@ -732,6 +746,48 @@ pub(crate) struct RuntimeEvalContext<'a> {
     pub objects: &'a [ObjectDefinition],
     pub known_files: &'a HashSet<String>,
     pub other_instance: Option<&'a RuntimeInstance>,
+}
+
+pub(crate) fn apply_view_globals_to_room(
+    room: &mut RuntimeRoomState,
+    globals: &HashMap<String, RuntimeValue>,
+) {
+    let Some(view) = room.views.iter_mut().find(|view| view.visible) else {
+        return;
+    };
+
+    if let Some(value) = globals
+        .get("view_xview[0]")
+        .or_else(|| globals.get("view_xview"))
+        .and_then(as_number)
+    {
+        view.source_x = value.round() as i32;
+    }
+    if let Some(value) = globals
+        .get("view_yview[0]")
+        .or_else(|| globals.get("view_yview"))
+        .and_then(as_number)
+    {
+        view.source_y = value.round() as i32;
+    }
+    if let Some(value) = globals
+        .get("view_wview[0]")
+        .or_else(|| globals.get("view_wview"))
+        .and_then(as_number)
+    {
+        if value > 0.0 {
+            view.source_w = value.round() as u32;
+        }
+    }
+    if let Some(value) = globals
+        .get("view_hview[0]")
+        .or_else(|| globals.get("view_hview"))
+        .and_then(as_number)
+    {
+        if value > 0.0 {
+            view.source_h = value.round() as u32;
+        }
+    }
 }
 
 fn apply_statement_to_globals_map(
@@ -860,6 +916,11 @@ fn evaluate_expr(
                 .first()
                 .and_then(|arg| evaluate_expr(arg, instance, globals, eval_context)),
             "ord" => evaluate_ord_call(args),
+            "floor" => args
+                .first()
+                .and_then(|arg| evaluate_expr(arg, instance, globals, eval_context))
+                .and_then(|value| as_number(&value))
+                .map(|value| RuntimeValue::Number(value.floor())),
             "file_exists" => evaluate_file_exists(args, instance, globals, eval_context),
             "instance_exists" => evaluate_instance_exists(args, eval_context),
             "keyboard_check"
@@ -882,6 +943,26 @@ fn evaluate_expr(
                     "vspeed" => Some(RuntimeValue::Number(other.vspeed)),
                     _ => other.vars.get(member).cloned(),
                 };
+            }
+            if let LoweredLogicExpr::Identifier(object_name) = target.as_ref() {
+                if object_name != "global" {
+                    if let Some(context) = eval_context {
+                        if let Some(target_instance) =
+                            context.room_instances.iter().find(|candidate| {
+                                candidate.alive
+                                    && candidate.object_name.eq_ignore_ascii_case(object_name)
+                            })
+                        {
+                            return match member.as_str() {
+                                "x" => Some(RuntimeValue::Number(target_instance.x)),
+                                "y" => Some(RuntimeValue::Number(target_instance.y)),
+                                "hspeed" => Some(RuntimeValue::Number(target_instance.hspeed)),
+                                "vspeed" => Some(RuntimeValue::Number(target_instance.vspeed)),
+                                _ => target_instance.vars.get(member).cloned(),
+                            };
+                        }
+                    }
+                }
             }
             let base = assignable_key(target, instance)?;
             let key = format!("{base}.{member}");

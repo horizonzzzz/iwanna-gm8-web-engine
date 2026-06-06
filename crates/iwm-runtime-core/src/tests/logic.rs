@@ -152,6 +152,86 @@ fn core_applies_lowered_step_assignments_before_player_movement() {
 }
 
 #[test]
+fn core_updates_active_view_from_lowered_camera_step() {
+    let mut package = sample_package();
+    package.rooms[0].width = 2400;
+    package.rooms[0].height = 1824;
+    package.rooms[0].views_enabled = true;
+    package.rooms[0].views[0].visible = true;
+    package.rooms[0].views[0].source_w = 800;
+    package.rooms[0].views[0].source_h = 600;
+    package.rooms[0].views[0].port_w = 800;
+    package.rooms[0].views[0].port_h = 600;
+    package.rooms[0].instances[0].x = 812;
+    package.rooms[0].instances[0].y = 624;
+    for instance in &mut package.rooms[0].instances {
+        instance.is_checkpoint = false;
+    }
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("view_xview".into()),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "*".into(),
+                    left: Box::new(LoweredLogicExpr::Call {
+                        name: "floor".into(),
+                        args: vec![LoweredLogicExpr::BinaryExpr {
+                            op: "/".into(),
+                            left: Box::new(LoweredLogicExpr::MemberAccess {
+                                target: Box::new(LoweredLogicExpr::Identifier("obj_player".into())),
+                                member: "x".into(),
+                            }),
+                            right: Box::new(LoweredLogicExpr::LiteralNumber(800.0)),
+                        }],
+                    }),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(800.0)),
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("view_yview".into()),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "*".into(),
+                    left: Box::new(LoweredLogicExpr::Call {
+                        name: "floor".into(),
+                        args: vec![LoweredLogicExpr::BinaryExpr {
+                            op: "/".into(),
+                            left: Box::new(LoweredLogicExpr::MemberAccess {
+                                target: Box::new(LoweredLogicExpr::Identifier("obj_player".into())),
+                                member: "y".into(),
+                            }),
+                            right: Box::new(LoweredLogicExpr::LiteralNumber(608.0)),
+                        }],
+                    }),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(608.0)),
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    assert_eq!(room.views[0].source_x, 800);
+    assert_eq!(room.views[0].source_y, 608);
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert_eq!(frame.width, 800);
+    assert_eq!(frame.height, 600);
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        iwm_runtime_host::RuntimeDrawCommand::DrawSprite {
+            sprite_id: 0,
+            x: 12,
+            y: 17,
+            ..
+        }
+    )));
+}
+
+#[test]
 fn core_executes_lowered_step_game_restart_calls() {
     let mut package = sample_package();
     add_step_block(
