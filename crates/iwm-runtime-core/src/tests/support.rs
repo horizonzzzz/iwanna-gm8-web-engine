@@ -75,6 +75,10 @@ pub(super) fn sample_package() -> RuntimePackage {
                     port_w: 320,
                     port_h: 240,
                     target: -1,
+                    hborder: 32,
+                    vborder: 32,
+                    hspeed: -1,
+                    vspeed: -1,
                 }],
                 tiles: vec![RoomTilePlacement {
                     tile_id: 21,

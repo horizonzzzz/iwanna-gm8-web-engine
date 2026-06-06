@@ -137,6 +137,10 @@ pub fn export_rooms_and_logic(
                         port_w: view.port_w,
                         port_h: view.port_h,
                         target: view.following.target,
+                        hborder: view.following.hborder,
+                        vborder: view.following.vborder,
+                        hspeed: view.following.hspeed,
+                        vspeed: view.following.vspeed,
                     })
                     .collect(),
                 tiles: room

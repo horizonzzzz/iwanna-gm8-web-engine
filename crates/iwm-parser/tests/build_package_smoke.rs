@@ -913,6 +913,35 @@ fn room_definition_includes_playability_metadata() {
 }
 
 #[test]
+fn room_view_includes_gm8_follow_metadata() {
+    use iwm_parser::models::RoomView;
+
+    let view = RoomView {
+        visible: true,
+        source_x: 800,
+        source_y: 608,
+        source_w: 800,
+        source_h: 600,
+        port_x: 0,
+        port_y: 0,
+        port_w: 800,
+        port_h: 600,
+        target: 259,
+        hborder: 32,
+        vborder: 48,
+        hspeed: -1,
+        vspeed: 8,
+    };
+
+    let json = serde_json::to_value(&view).unwrap();
+    assert_eq!(json["target"], 259);
+    assert_eq!(json["hborder"], 32);
+    assert_eq!(json["vborder"], 48);
+    assert_eq!(json["hspeed"], -1);
+    assert_eq!(json["vspeed"], 8);
+}
+
+#[test]
 fn room_tile_placement_includes_runtime_fields() {
     use iwm_parser::models::RoomTilePlacement;
 

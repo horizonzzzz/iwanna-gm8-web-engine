@@ -134,6 +134,14 @@ pub struct RoomView {
     pub port_w: u32,
     pub port_h: u32,
     pub target: i32,
+    #[serde(default)]
+    pub hborder: i32,
+    #[serde(default)]
+    pub vborder: i32,
+    #[serde(default)]
+    pub hspeed: i32,
+    #[serde(default)]
+    pub vspeed: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
