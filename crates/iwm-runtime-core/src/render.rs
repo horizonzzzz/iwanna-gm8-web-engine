@@ -1,6 +1,68 @@
 use iwm_runtime_host::{Rgba8, RuntimeDrawCommand, RuntimeRenderFrame};
 
-use crate::{RuntimeCore, RuntimeCoreError};
+use crate::{RuntimeCore, RuntimeCoreError, RuntimeRoomState};
+
+#[derive(Debug, Clone, Copy)]
+struct ActiveView {
+    source_x: i32,
+    source_y: i32,
+    source_w: u32,
+    source_h: u32,
+    port_x: i32,
+    port_y: i32,
+    port_w: u32,
+    port_h: u32,
+}
+
+impl ActiveView {
+    fn source_bounds(self) -> (i32, i32, i32, i32) {
+        (
+            self.source_x,
+            self.source_y,
+            self.source_x + self.source_w as i32,
+            self.source_y + self.source_h as i32,
+        )
+    }
+
+    fn frame_width(self) -> u32 {
+        (self.port_x.max(0) as u32 + self.port_w).max(1)
+    }
+
+    fn frame_height(self) -> u32 {
+        (self.port_y.max(0) as u32 + self.port_h).max(1)
+    }
+
+    fn translate_x(self, x: i32) -> i32 {
+        x - self.source_x + self.port_x
+    }
+
+    fn translate_y(self, y: i32) -> i32 {
+        y - self.source_y + self.port_y
+    }
+}
+
+fn active_view_for_room(room: &RuntimeRoomState) -> Option<ActiveView> {
+    if !room.views_enabled {
+        return None;
+    }
+
+    room.views.iter().find(|view| view.visible).and_then(|view| {
+        if view.source_w == 0 || view.source_h == 0 || view.port_w == 0 || view.port_h == 0 {
+            None
+        } else {
+            Some(ActiveView {
+                source_x: view.source_x,
+                source_y: view.source_y,
+                source_w: view.source_w,
+                source_h: view.source_h,
+                port_x: view.port_x,
+                port_y: view.port_y,
+                port_w: view.port_w,
+                port_h: view.port_h,
+            })
+        }
+    })
+}
 
 impl RuntimeCore {
     pub(crate) fn build_render_frame(&self) -> Result<RuntimeRenderFrame, RuntimeCoreError> {
@@ -13,18 +75,10 @@ impl RuntimeCore {
             .get(&room.room_id)
             .and_then(|index| self.package.rooms.get(*index))
             .ok_or(RuntimeCoreError::RoomMissing(room.room_id))?;
-        let active_view = source_room
-            .views_enabled
-            .then(|| source_room.views.iter().find(|view| view.visible))
-            .flatten()
-            .map(|view| {
-                (
-                    view.source_x,
-                    view.source_y,
-                    view.source_x + view.source_w as i32,
-                    view.source_y + view.source_h as i32,
-                )
-            });
+        let active_view = active_view_for_room(room);
+        let active_bounds = active_view.map(ActiveView::source_bounds);
+        let frame_width = active_view.map(ActiveView::frame_width).unwrap_or(room.width);
+        let frame_height = active_view.map(ActiveView::frame_height).unwrap_or(room.height);
 
         let mut commands = vec![RuntimeDrawCommand::Clear {
             colour: Rgba8 {
@@ -44,8 +98,12 @@ impl RuntimeCore {
                 })
                 .map(|layer| RuntimeDrawCommand::DrawBackground {
                     background_id: layer.source_bg as usize,
-                    x: layer.xoffset,
-                    y: layer.yoffset,
+                    x: active_view
+                        .map(|view| view.translate_x(layer.xoffset))
+                        .unwrap_or(layer.xoffset),
+                    y: active_view
+                        .map(|view| view.translate_y(layer.yoffset))
+                        .unwrap_or(layer.yoffset),
                     stretch: layer.stretch,
                     tile_horz: layer.tile_horz,
                     tile_vert: layer.tile_vert,
@@ -59,7 +117,7 @@ impl RuntimeCore {
                 .iter()
                 .filter(|tile| tile.source_bg >= 0)
                 .filter(|tile| {
-                    active_view.is_none_or(|(left, top, right, bottom)| {
+                    active_bounds.is_none_or(|(left, top, right, bottom)| {
                         rect_intersects_view(
                             tile.x,
                             tile.y,
@@ -74,8 +132,12 @@ impl RuntimeCore {
                 })
                 .map(|tile| RuntimeDrawCommand::DrawTile {
                     background_id: tile.source_bg as usize,
-                    x: tile.x,
-                    y: tile.y,
+                    x: active_view
+                        .map(|view| view.translate_x(tile.x))
+                        .unwrap_or(tile.x),
+                    y: active_view
+                        .map(|view| view.translate_y(tile.y))
+                        .unwrap_or(tile.y),
                     tile_x: tile.tile_x,
                     tile_y: tile.tile_y,
                     width: tile.width,
@@ -107,7 +169,7 @@ impl RuntimeCore {
                     .find(|sprite| sprite.id == object.sprite_index as usize);
                 let sprite_width = sprite.map(|sprite| sprite.width as i32).unwrap_or(16);
                 let sprite_height = sprite.map(|sprite| sprite.height as i32).unwrap_or(16);
-                if let Some((left, top, right, bottom)) = active_view {
+                if let Some((left, top, right, bottom)) = active_bounds {
                     if !rect_intersects_view(
                         instance.x.round() as i32,
                         instance.y.round() as i32,
@@ -130,8 +192,12 @@ impl RuntimeCore {
                 commands.push(RuntimeDrawCommand::DrawSprite {
                     sprite_id: object.sprite_index as usize,
                     frame_index: 0,
-                    x: instance.x.round() as i32,
-                    y: instance.y.round() as i32,
+                    x: active_view
+                        .map(|view| view.translate_x(instance.x.round() as i32))
+                        .unwrap_or(instance.x.round() as i32),
+                    y: active_view
+                        .map(|view| view.translate_y(instance.y.round() as i32))
+                        .unwrap_or(instance.y.round() as i32),
                     origin_x: sprite.map(|sprite| sprite.origin_x).unwrap_or(0),
                     origin_y: sprite.map(|sprite| sprite.origin_y).unwrap_or(0),
                     xscale: if instance.facing_left { -1.0 } else { 1.0 },
@@ -150,8 +216,12 @@ impl RuntimeCore {
                 })
                 .map(|layer| RuntimeDrawCommand::DrawBackground {
                     background_id: layer.source_bg as usize,
-                    x: layer.xoffset,
-                    y: layer.yoffset,
+                    x: active_view
+                        .map(|view| view.translate_x(layer.xoffset))
+                        .unwrap_or(layer.xoffset),
+                    y: active_view
+                        .map(|view| view.translate_y(layer.yoffset))
+                        .unwrap_or(layer.yoffset),
                     stretch: layer.stretch,
                     tile_horz: layer.tile_horz,
                     tile_vert: layer.tile_vert,
@@ -164,8 +234,8 @@ impl RuntimeCore {
         Ok(RuntimeRenderFrame {
             tick: self.tick,
             room_id: Some(room.room_id),
-            width: room.width,
-            height: room.height,
+            width: frame_width,
+            height: frame_height,
             commands,
         })
     }

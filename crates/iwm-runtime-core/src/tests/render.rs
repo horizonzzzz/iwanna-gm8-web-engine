@@ -66,33 +66,32 @@ fn runtime_core_mirrors_player_sprite_when_facing_left() {
 }
 
 #[test]
-fn runtime_core_culls_tiles_and_sprites_outside_active_view() {
+fn runtime_core_renders_visible_view_as_canvas_frame() {
     let mut package = sample_package();
+    package.rooms[0].width = 2400;
+    package.rooms[0].height = 1824;
     package.rooms[0].views_enabled = true;
     package.rooms[0].views[0].visible = true;
-    package.rooms[0].views[0].source_x = 0;
-    package.rooms[0].views[0].source_y = 0;
-    package.rooms[0].views[0].source_w = 160;
-    package.rooms[0].views[0].source_h = 160;
-    package.rooms[0].tiles.push(iwm_runtime_model::RoomTilePlacement {
-        tile_id: 22,
-        source_bg: 0,
-        x: 200,
-        y: 200,
-        tile_x: 0,
-        tile_y: 0,
-        width: 32,
-        height: 32,
-        depth: 100,
-        xscale: 1.0,
-        yscale: 1.0,
-        blend: 0x00ff_ffff,
-    });
+    package.rooms[0].views[0].source_x = 800;
+    package.rooms[0].views[0].source_y = 608;
+    package.rooms[0].views[0].source_w = 800;
+    package.rooms[0].views[0].source_h = 600;
+    package.rooms[0].views[0].port_x = 0;
+    package.rooms[0].views[0].port_y = 0;
+    package.rooms[0].views[0].port_w = 800;
+    package.rooms[0].views[0].port_h = 600;
+    package.rooms[0].tiles[0].x = 832;
+    package.rooms[0].tiles[0].y = 640;
+    package.rooms[0].instances[0].x = 812;
+    package.rooms[0].instances[0].y = 624;
+    for instance in &mut package.rooms[0].instances {
+        instance.is_checkpoint = false;
+    }
     package.rooms[0].instances.push(iwm_runtime_model::RoomInstancePlacement {
         instance_id: 99,
         object_id: 0,
-        x: 200,
-        y: 200,
+        x: 64,
+        y: 64,
         xscale: 1.0,
         yscale: 1.0,
         angle: 0.0,
@@ -109,17 +108,28 @@ fn runtime_core_culls_tiles_and_sprites_outside_active_view() {
     core.render(&mut host).unwrap();
 
     let frame = host.renderer.submitted_frames.last().unwrap();
-    let tile_count = frame
-        .commands
-        .iter()
-        .filter(|command| matches!(command, RuntimeDrawCommand::DrawTile { .. }))
-        .count();
-    let sprite_count = frame
-        .commands
-        .iter()
-        .filter(|command| matches!(command, RuntimeDrawCommand::DrawSprite { .. }))
-        .count();
-
-    assert_eq!(tile_count, 1);
-    assert_eq!(sprite_count, 2);
+    assert_eq!(frame.width, 800);
+    assert_eq!(frame.height, 600);
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawTile { x: 32, y: 32, .. }
+    )));
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawSprite {
+            sprite_id: 0,
+            x: 12,
+            y: 16,
+            ..
+        }
+    )));
+    assert!(!frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawSprite {
+            sprite_id: 0,
+            x: -736,
+            y: -544,
+            ..
+        }
+    )));
 }
