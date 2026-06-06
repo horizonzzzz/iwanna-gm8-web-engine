@@ -63,6 +63,10 @@ Important validation note:
 - Movement works: not yet verified as a dedicated browser assertion
 - First blocking warning or missing behavior: title/menu/select can now be reached through the original room-order path, but full usability still depends on broader Draw-event rendering and save/file APIs such as `file_bin_*`
 - Sprite collision metadata is now present in the parser-emitted package contract as aggregated bbox bounds plus gm8exe-derived `collision_masks`; current runtime pixel checks use the first available sprite mask, while animated per-frame mask selection remains deferred
+- Large-room view behavior: local generated package rooms such as `rStage01`
+  preserve a `2400x1824` room with one visible `800x600` view; runtime-core now
+  submits an `800x600` frame and can move the active view through the sample's
+  `camera` object `view_xview` / `view_yview` logic.
 
 Critical-path `runtime-missing-source-lowering:*` warnings:
 

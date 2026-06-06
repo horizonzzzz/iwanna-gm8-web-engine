@@ -69,7 +69,8 @@ The execution notes below describe the current package contract and shell/runtim
 
 ### Runtime-Consumable Static Data
 
-- Room dimensions, backgrounds, views, and instance placements
+- Room dimensions, backgrounds, view source rectangles, view ports, GM8 follow
+  target/border/speed metadata, and instance placements
 - Instance-level `is_solid`, `is_hazard`, `is_checkpoint` flags
 - Room-level `playable` flag and `transition_targets` hints
 - Object definitions with sprite references and event tables
@@ -88,6 +89,9 @@ Important current invariants:
 - `objects[*].sprite_index` refers to `resources.index.json -> sprites[*].id` when non-negative
 - room background and tile references refer to `resources.index.json -> backgrounds[*].id`
 - `manifest.room_order` is optional for older packages, but when present each room id must resolve to `rooms[*].id`; parser-built packages use this order for `default_room_id` and runtime `room_goto_next()` semantics
+- `rooms[*].views[*]` preserves GM8 view rectangle and port fields plus
+  `target`, `hborder`, `vborder`, `hspeed`, and `vspeed`; runtime consumers may
+  use view port dimensions as the browser frame size when views are enabled
 - room, instance, and object event block ids should resolve consistently across `scripts.ir.json`, `logic.raw.json`, and `logic.lowered.json`
 - sprite resource collision bounds are emitted in `resources/index.json` for each sprite record; the parser also emits `collision_masks` and `per_frame_collision_masks` from gm8exe collision maps so runtime consumers can perform pixel-level checks after bbox broad-phase filtering
 - runtime consumers should validate cross-file references explicitly instead of silently assuming contiguous ids

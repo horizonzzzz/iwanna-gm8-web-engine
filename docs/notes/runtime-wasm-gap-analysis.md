@@ -171,12 +171,21 @@ Practical current note:
 
 GM8 viewports and camera following are not fully implemented.
 
-Missing pieces include:
+Current status:
 
-- view cropping
-- following different objects
-- viewport / port sizing
-- multi-view behavior
+- parser-built packages preserve view source rectangles, view ports, follow
+  target, and follow border/speed metadata
+- runtime-core renders the first visible view as the frame surface instead of
+  sizing browser frames to the full room
+- the current lowered runtime slice supports the gold sample's fixed-screen
+  camera pattern through `view_xview` / `view_yview` assignments
+
+Still missing:
+
+- full multi-view rendering
+- `view_angle` rendering
+- full GM8 follow-target camera updates across object ids and instance ids
+- outside/intersect-view event parity
 
 ### 9. Room Persistence
 

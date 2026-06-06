@@ -90,6 +90,10 @@ export type RoomDefinition = {
     port_w: number;
     port_h: number;
     target: number;
+    hborder?: number;
+    vborder?: number;
+    hspeed?: number;
+    vspeed?: number;
   }>;
   tiles: Array<{
     tile_id: number;
