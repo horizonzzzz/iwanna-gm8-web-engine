@@ -73,6 +73,47 @@ fn core_jumps_when_on_spawn_and_jump_is_pressed() {
 }
 
 #[test]
+fn core_preserves_fractional_vertical_jump_motion() {
+    let mut package = sample_package();
+    package.lowered_logic = Some(crate::LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![crate::LoweredLogicEntry {
+            block_id: "object:0:event:0:0".into(),
+            statements: vec![
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("jump".into()),
+                    value: LoweredLogicExpr::LiteralNumber(8.5),
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("gravity".into()),
+                    value: LoweredLogicExpr::LiteralNumber(0.4),
+                },
+            ],
+        }],
+    });
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x20),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert!((player.y - 15.9).abs() < 1e-9, "expected y=15.9 after jump/gravity, got {}", player.y);
+}
+
+#[test]
 fn core_uses_runtime_bound_jump_key_instead_of_hardcoded_space() {
     let mut package = sample_package();
     add_room_create_block(
@@ -638,4 +679,3 @@ fn single_pixel_mask(width: u32, height: u32, x: u32, y: u32) -> SpriteCollision
         data,
     }
 }
-

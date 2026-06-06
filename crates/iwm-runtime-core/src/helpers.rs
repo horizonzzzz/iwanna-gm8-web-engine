@@ -159,6 +159,28 @@ pub(crate) fn move_instance_axis(
         remaining -= 1.0;
     }
 
+    if remaining > f64::EPSILON {
+        let next_x = match axis {
+            Axis::Horizontal => instance.x + step * remaining,
+            Axis::Vertical => instance.x,
+        };
+        let next_y = match axis {
+            Axis::Horizontal => instance.y,
+            Axis::Vertical => instance.y + step * remaining,
+        };
+
+        if collides_at(instance, next_x, next_y, solids, ignore_runtime_id) {
+            match axis {
+                Axis::Horizontal => instance.hspeed = 0.0,
+                Axis::Vertical => instance.vspeed = 0.0,
+            }
+            return true;
+        }
+
+        instance.x = next_x;
+        instance.y = next_y;
+    }
+
     false
 }
 

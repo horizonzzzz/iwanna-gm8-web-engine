@@ -14,7 +14,7 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - The lowered parser contract now covers common comment stripping, `var` declarations, assignments, returns, calls, member/index access, unary expressions, and common control-flow heads on the current critical path.
 - The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, and it now also dispatches alarm, held-key, key-press, and key-release slices with parent fallback lookup for event dispatch.
 - The runtime core now uses a variable-height jump state machine on the IWanna-critical path, including held jump differentiation, release-cut tracking, ceiling-hit phase clearing, and landing reset state clearing.
-- The runtime core now also evaluates `keyboard_check`, `keyboard_check_direct`, `keyboard_check_pressed`, `keyboard_check_released`, `place_meeting`, `place_free`, `&&`, `||`, and single-`=` GM comparisons on the current lowered path, and player motion state now preserves floating-point `x/y/hspeed/vspeed` instead of rounding assignments back to integers.
+- The runtime core now also evaluates `keyboard_check`, `keyboard_check_direct`, `keyboard_check_pressed`, `keyboard_check_released`, `place_meeting`, `place_free`, `&&`, `||`, and single-`=` GM comparisons on the current lowered path, and player motion now preserves floating-point `x/y/hspeed/vspeed` plus subpixel axis deltas instead of rounding assignments or movement back to integers.
 - The browser/input path no longer needs jump to be hardcoded to Space for runtime-core fallback movement; runtime fallback input now prefers package-initialized bindings such as `global.leftbutton`, `global.rightbutton`, and `global.jumpbutton`, while the browser-facing host can also forward raw virtual-key hold/press/release state alongside the shell's semantic controls.
 - The browser shell no longer maps `W` / `ArrowUp` / `Space` into a shell-side semantic jump boolean, and the web-runtime host no longer aliases semantic jump edges onto `VK_SPACE`; jump intent now reaches runtime primarily through raw forwarded GM key codes so package-owned bindings such as `global.jumpbutton = vk_shift` can control which physical key actually jumps.
 - The runtime core now also re-resolves the package-bound jump key after lowered `step` logic runs, so a same-tick script update such as `global.jumpbutton = vk_shift` can affect builtin fallback movement on that same frame instead of one frame late.
@@ -145,7 +145,7 @@ These do not always block booting, but they block core IWanna fidelity and make 
 
 ### 7. Physics Precision
 
-Current movement still uses some hardcoded defaults such as `RUN_SPEED` and fallback jump values, but jump is no longer a fixed-height placeholder, and motion assignments no longer lose GM8 fractional values on write.
+Current movement still uses some hardcoded defaults such as `RUN_SPEED` and fallback jump values, but jump is no longer a fixed-height placeholder, and motion assignments / axis deltas no longer lose GM8 fractional values on write or movement.
 
 The runtime already has a hardcoded player movement baseline and per-instance `hspeed` / `vspeed` fields, plus explicit jump-phase state for hold, cut, and landing-reset behavior, but not a general GM8-style object-driven physics model.
 
@@ -161,6 +161,7 @@ Practical current note:
 
 - browser smoke after these changes shows that jump-path blockers have moved from "input and fractional values are dead" to broader lifecycle/runtime coverage; the player can still end up in obviously wrong long-run room states because `rInit`/room-start/world initialization semantics remain incomplete
 - do not treat the new floating-point/input-query support as proof that native IWanna jump feel is solved end to end yet
+- jump height calibration should now account for preserved subpixel vertical motion; if a held or double jump still falls short, the next likely causes are missing lowered semantics in the sample player Step path or unsupported GM helper calls rather than implicit integer movement truncation
 
 ### 8. Views And Cameras
 
@@ -244,6 +245,7 @@ Current jump-validation note:
 - jump-state trace coverage now exists in crate-local tests for tap vs hold, release cut, ceiling collision phase clearing, and landing reset
 - the runtime snapshot / wasm bridge / shell telemetry path now surfaces grounded and jump-phase state live during browser execution, so hand-feel debugging no longer depends only on Rust test fixtures
 - same-tick binding changes and within-tick raw key tap edges now have dedicated regression coverage across `runtime-core`, `runtime-web`, and the TS wasm-session bridge
+- runtime-core now has regression coverage for preserving fractional vertical jump motion with `jump=8.5` and `gravity=0.4`, matching the gold sample's first-jump variables
 - sample-accurate numeric alignment still requires local `IWBT_Dife` package validation rather than only repository fixtures
 
 Current resource-contract note:

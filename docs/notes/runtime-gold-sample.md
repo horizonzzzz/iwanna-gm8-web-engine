@@ -37,7 +37,7 @@ This is the intended local browser smoke target after generating a package from 
 ## Blockers By Layer
 
 - Parser/package availability: a fresh clone does not include `runtime/public/packages/sample/`, so the first gold-sample smoke prerequisite is still a local `build-package` run against `IWBT_Dife`.
-- Package-contract validation: after generating `runtime/public/packages/sample/`, run `cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample` before treating browser symptoms as runtime-semantic failures.
+- Package-contract validation: after generating `runtime/public/packages/sample/`, run `cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample` before treating browser symptoms as runtime-semantic failures. The current local sample artifact still reports missing background references for rooms 110 and 111, so package integrity should be re-established before final browser acceptance claims.
 - Runtime-core semantic gap: the remaining meaningful gaps are the ones that still block movement, collision, death/reset, or room transition after the WASM runtime has already booted and drawn a room.
 - Wasm/web host gap: the host telemetry path exists, but gold-sample-specific runtime claims still require evidence from a locally generated `sample/` package.
 - Shell-only issue: the default package path remains `/packages/sample`, so missing local artifacts should surface as explicit load errors rather than being mistaken for runtime-semantic failures.
@@ -47,7 +47,7 @@ Important validation note:
 - because local sample inventories differ across machines, local gold-sample smoke should be treated as environment evidence, not as the only repository-level proof that a parser/runtime/package contract still holds
 - stable repository fixtures and package-contract validation should catch structural drift before gold-sample browser debugging is needed
 - the current runtime slice already covers alarm dispatch, held/press/release keyboard dispatch, and parent-aware event lookup, so the next gold-sample blockers should be judged against the remaining runtime gap rather than those already-covered slices
-- jump is no longer a fixed-height placeholder in repository fixtures; the remaining gold-sample jump work is numeric calibration of tap, hold, release-cut, and landing-reset behavior against `IWBT_Dife`
+- jump is no longer a fixed-height placeholder in repository fixtures, and runtime-core now preserves fractional vertical jump movement for the sample's `jump=8.5` / `gravity=0.4` path; the remaining gold-sample jump work is numeric calibration of tap, hold, release-cut, double-jump, and landing-reset behavior against `IWBT_Dife`
 - the shell/runtime snapshot path now exposes grounded plus jump-phase trace flags for the player, which makes browser-side hand-feel debugging easier but does not change the remaining semantic blocker: the gold sample still needs its own player movement path executed accurately
 
 ## Sample Audit
