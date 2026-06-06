@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use iwm_runtime_model::{ObjectDefinition, SpriteResource};
 
 use crate::helpers::{adjusted_spawn_for_player, is_preferred_player_name};
-use crate::types::{RuntimeCollisionMask, RuntimeJumpState};
+use crate::types::{RuntimeCollisionMask, RuntimeJumpState, RuntimeRoomView};
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState};
 
 impl RuntimeCore {
@@ -90,6 +90,8 @@ impl RuntimeCore {
             playable: room.playable,
             transition_targets: room.transition_targets.clone(),
             spawn_point,
+            views_enabled: room.views_enabled,
+            views: room.views.iter().map(RuntimeRoomView::from).collect(),
             instances,
         };
         if let Some((spawn_x, spawn_y)) = room_state.spawn_point {

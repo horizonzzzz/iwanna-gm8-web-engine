@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use iwm_runtime_host::{RuntimeDiagnostic, RuntimeHostError};
 use iwm_runtime_model::{
-    AnalysisReport, ObjectDefinition, ResourceIndex, RoomDefinition, RuntimeManifest, ScriptIrFile,
+    AnalysisReport, ObjectDefinition, ResourceIndex, RoomDefinition, RoomView, RuntimeManifest,
+    ScriptIrFile,
 };
 use serde::{Deserialize, Serialize};
 
@@ -183,6 +184,45 @@ pub struct RuntimeCollisionMask {
 }
 
 #[derive(Debug, Clone)]
+pub struct RuntimeRoomView {
+    pub visible: bool,
+    pub source_x: i32,
+    pub source_y: i32,
+    pub source_w: u32,
+    pub source_h: u32,
+    pub port_x: i32,
+    pub port_y: i32,
+    pub port_w: u32,
+    pub port_h: u32,
+    pub target: i32,
+    pub hborder: i32,
+    pub vborder: i32,
+    pub hspeed: i32,
+    pub vspeed: i32,
+}
+
+impl From<&RoomView> for RuntimeRoomView {
+    fn from(value: &RoomView) -> Self {
+        Self {
+            visible: value.visible,
+            source_x: value.source_x,
+            source_y: value.source_y,
+            source_w: value.source_w,
+            source_h: value.source_h,
+            port_x: value.port_x,
+            port_y: value.port_y,
+            port_w: value.port_w,
+            port_h: value.port_h,
+            target: value.target,
+            hborder: value.hborder,
+            vborder: value.vborder,
+            hspeed: value.hspeed,
+            vspeed: value.vspeed,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct RuntimeRoomState {
     pub room_id: usize,
     pub room_name: String,
@@ -192,6 +232,8 @@ pub struct RuntimeRoomState {
     pub playable: bool,
     pub transition_targets: Vec<usize>,
     pub spawn_point: Option<(i32, i32)>,
+    pub views_enabled: bool,
+    pub views: Vec<RuntimeRoomView>,
     pub instances: Vec<RuntimeInstance>,
 }
 

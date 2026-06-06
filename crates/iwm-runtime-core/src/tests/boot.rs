@@ -29,6 +29,40 @@ fn core_preserves_sparse_object_ids_in_room_instances() {
 }
 
 #[test]
+fn runtime_room_state_copies_package_view_state() {
+    let mut package = sample_package();
+    package.rooms[0].views_enabled = true;
+    package.rooms[0].views[0].source_x = 800;
+    package.rooms[0].views[0].source_y = 608;
+    package.rooms[0].views[0].source_w = 800;
+    package.rooms[0].views[0].source_h = 600;
+    package.rooms[0].views[0].port_w = 800;
+    package.rooms[0].views[0].port_h = 600;
+    package.rooms[0].views[0].target = 259;
+    package.rooms[0].views[0].hborder = 40;
+    package.rooms[0].views[0].vborder = 48;
+    package.rooms[0].views[0].hspeed = -1;
+    package.rooms[0].views[0].vspeed = 12;
+
+    let core = RuntimeCore::load(package).unwrap();
+    let room = core.current_room().unwrap();
+
+    assert!(room.views_enabled);
+    assert_eq!(room.views.len(), 1);
+    assert_eq!(room.views[0].source_x, 800);
+    assert_eq!(room.views[0].source_y, 608);
+    assert_eq!(room.views[0].source_w, 800);
+    assert_eq!(room.views[0].source_h, 600);
+    assert_eq!(room.views[0].port_w, 800);
+    assert_eq!(room.views[0].port_h, 600);
+    assert_eq!(room.views[0].target, 259);
+    assert_eq!(room.views[0].hborder, 40);
+    assert_eq!(room.views[0].vborder, 48);
+    assert_eq!(room.views[0].hspeed, -1);
+    assert_eq!(room.views[0].vspeed, 12);
+}
+
+#[test]
 fn core_reports_missing_room() {
     let mut package = sample_package();
     package.manifest.default_room_id = Some(99);
