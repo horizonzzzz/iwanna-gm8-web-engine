@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use iwm_detector::{detect_input, load_package, selected_executable};
 use iwm_parser::build_package;
+use iwm_runtime_model::{read_runtime_package_dir, validate_runtime_package};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -21,6 +22,10 @@ enum Commands {
         input: PathBuf,
         #[arg(long)]
         output: PathBuf,
+    },
+    ValidatePackage {
+        #[arg(long)]
+        input: PathBuf,
     },
 }
 
@@ -70,6 +75,20 @@ fn main() {
             if let Err(err) = build_package(exe, &output, &report.dlls) {
                 eprintln!("{err:#}");
                 std::process::exit(1);
+            }
+        }
+        Commands::ValidatePackage { input } => {
+            let package = match read_runtime_package_dir(&input) {
+                Ok(package) => package,
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(1);
+                }
+            };
+            let report = validate_runtime_package(&package);
+            println!("{}", serde_json::to_string_pretty(&report).unwrap());
+            if !report.valid {
+                std::process::exit(2);
             }
         }
     }

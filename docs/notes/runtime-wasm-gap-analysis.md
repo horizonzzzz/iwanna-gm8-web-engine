@@ -33,6 +33,7 @@ Practical parser note:
 Practical contract note:
 
 - runtime progress still depends on cross-file package integrity, so parser/runtime/web work should treat identity/reference validation as a first-class prerequisite rather than as browser-only debugging
+- `crates/iwm-runtime-model/` now provides `validate_runtime_package()` plus a checked-in sparse synthetic fixture, and `iwm-cli validate-package` exposes the same structural checks for local generated packages
 - recent regressions showed that unresolved package references such as sparse `object_id` handling can look like rendering bugs even when the real fault is contract consumption drift
 - event dispatch now also depends on preserving `parent_index` as a runtime lookup path rather than assuming dense object arrays imply direct ownership
 

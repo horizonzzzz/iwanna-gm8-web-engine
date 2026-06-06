@@ -1,0 +1,61 @@
+[
+  {
+    "id": 300,
+    "name": "room_sparse",
+    "width": 640,
+    "height": 480,
+    "speed": 50,
+    "persistent": false,
+    "backgrounds": [
+      {
+        "visible_on_start": true,
+        "is_foreground": false,
+        "source_bg": 900,
+        "xoffset": 0,
+        "yoffset": 0,
+        "tile_horz": false,
+        "tile_vert": false,
+        "hspeed": 0,
+        "vspeed": 0,
+        "stretch": false
+      }
+    ],
+    "views_enabled": false,
+    "views": [],
+    "tiles": [
+      {
+        "tile_id": 1,
+        "source_bg": 900,
+        "x": 0,
+        "y": 0,
+        "tile_x": 0,
+        "tile_y": 0,
+        "width": 16,
+        "height": 16,
+        "depth": 100,
+        "xscale": 1.0,
+        "yscale": 1.0,
+        "blend": 16777215
+      }
+    ],
+    "instances": [
+      {
+        "instance_id": 1234,
+        "object_id": 705,
+        "x": 32,
+        "y": 64,
+        "xscale": 1.0,
+        "yscale": 1.0,
+        "angle": 0.0,
+        "blend": 16777215,
+        "creation_block_id": "room:300:instance:1234:create",
+        "is_solid": false,
+        "is_hazard": false,
+        "is_checkpoint": false
+      }
+    ],
+    "creation_block_id": "room:300:create",
+    "playable": true,
+    "transition_targets": []
+  }
+]

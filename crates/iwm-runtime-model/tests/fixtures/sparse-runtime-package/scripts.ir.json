@@ -1,0 +1,29 @@
+{
+  "format": "iwm-script-ir-v1",
+  "blocks": [
+    {
+      "id": "room:300:create",
+      "name": "room_sparse creation",
+      "kind": "room-creation",
+      "support": "source-only",
+      "executable_action_count": 0,
+      "ops": []
+    },
+    {
+      "id": "room:300:instance:1234:create",
+      "name": "room_sparse instance 1234 creation",
+      "kind": "instance-creation",
+      "support": "source-only",
+      "executable_action_count": 0,
+      "ops": []
+    },
+    {
+      "id": "object:705:event:3:0",
+      "name": "obj_sparse_player step",
+      "kind": "object-event",
+      "support": "source-only",
+      "executable_action_count": 0,
+      "ops": []
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "package_kind": "runtime-v1",
+  "source_name": "synthetic-sparse",
+  "source_hash": "synthetic-hash",
+  "engine_family": "gm8",
+  "compatibility": "partial",
+  "default_room_id": 300,
+  "room_count": 1,
+  "object_count": 1,
+  "script_block_count": 3,
+  "sprite_count": 1,
+  "background_count": 1,
+  "sound_count": 0,
+  "resource_index_path": "resources/index.json",
+  "warnings": []
+}

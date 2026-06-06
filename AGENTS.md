@@ -90,6 +90,7 @@ Package generation commands:
 
 - `cargo run -p iwm-cli -- detect --input C:\path\to\game`
 - `cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample`
+- `cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample`
 
 ## Sample Corpus Instructions
 
@@ -148,7 +149,7 @@ Before expanding from local experimentation to broader distribution, re-check th
 
 Current testing layers:
 
-1. targeted crate tests for detector, parser, runtime host, runtime core, or runtime web
+1. targeted crate tests for detector, parser, runtime model validator, runtime host, runtime core, or runtime web
 2. workspace-wide Rust verification with `cargo test`
 3. frontend shell verification with `npm --prefix runtime test`
 4. browser smoke verification with `npm --prefix runtime run test:browser` when local prerequisites are satisfied

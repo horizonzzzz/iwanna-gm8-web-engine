@@ -1,0 +1,25 @@
+[
+  {
+    "id": 705,
+    "name": "obj_sparse_player",
+    "sprite_index": 42,
+    "parent_index": -1,
+    "depth": 0,
+    "persistent": false,
+    "visible": true,
+    "solid": false,
+    "mask_index": -1,
+    "is_hazard": false,
+    "is_checkpoint": false,
+    "is_player": true,
+    "events": [
+      {
+        "event_type": 3,
+        "sub_event": 0,
+        "event_tag": "step",
+        "block_id": "object:705:event:3:0",
+        "action_count": 1
+      }
+    ]
+  }
+]

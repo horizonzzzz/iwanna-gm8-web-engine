@@ -1,0 +1,17 @@
+{
+  "format": "iwm-lowered-logic-v1",
+  "entries": [
+    {
+      "block_id": "room:300:create",
+      "statements": []
+    },
+    {
+      "block_id": "room:300:instance:1234:create",
+      "statements": []
+    },
+    {
+      "block_id": "object:705:event:3:0",
+      "statements": []
+    }
+  ]
+}

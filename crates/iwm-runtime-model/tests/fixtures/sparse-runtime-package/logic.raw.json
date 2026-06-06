@@ -1,0 +1,52 @@
+{
+  "format": "iwm-raw-logic-v1",
+  "room_creation_codes": [
+    {
+      "owner_kind": "room",
+      "owner_id": 300,
+      "owner_name": "room_sparse",
+      "event_type": null,
+      "sub_event": null,
+      "collision_object_id": null,
+      "block_id": "room:300:create",
+      "gml_source": "global.ready = true;"
+    }
+  ],
+  "instance_creation_codes": [
+    {
+      "owner_kind": "room-instance",
+      "owner_id": 1234,
+      "owner_name": "705",
+      "event_type": null,
+      "sub_event": null,
+      "collision_object_id": null,
+      "block_id": "room:300:instance:1234:create",
+      "gml_source": "image_speed = 0;"
+    }
+  ],
+  "object_events": [
+    {
+      "object_id": 705,
+      "object_name": "obj_sparse_player",
+      "event_type": 3,
+      "sub_event": 0,
+      "event_tag": "step",
+      "collision_object_id": null,
+      "block_id": "object:705:event:3:0",
+      "actions": [
+        {
+          "action_id": 603,
+          "lib_id": 1,
+          "action_kind": 7,
+          "execution_type": 2,
+          "fn_name": "execute_code",
+          "fn_code": "x += 1;",
+          "args": []
+        }
+      ]
+    }
+  ],
+  "scripts": [],
+  "triggers": [],
+  "timelines": []
+}

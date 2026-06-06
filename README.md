@@ -122,9 +122,11 @@ This produces `target\wasm32-unknown-unknown\debug\iwm_runtime_web.wasm` and cop
 ```powershell
 cargo run -p iwm-cli -- detect --input C:\path\to\game
 cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample
+cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample
 ```
 
 The shell default package path is `/packages/sample`, which maps to `runtime\public\packages\sample\`.
+The `validate-package` command checks the normalized runtime package contract before browser smoke, including manifest counts, sparse id references, resource references, and logic block presence across `scripts.ir.json`, `logic.raw.json`, and `logic.lowered.json`.
 
 ### 4. Launch the browser shell
 
@@ -172,6 +174,7 @@ Current workspace crates include:
 
 Current runtime crate layout notes:
 
+- `crates/iwm-runtime-model/` owns shared package schemas plus the structural runtime package validator used by tests and `iwm-cli validate-package`
 - `crates/iwm-runtime-host/` separates host-boundary types and traits from default implementations such as clock, input, file, render, external, diagnostics, and headless host composition
 - `crates/iwm-runtime-web/` separates bridge-facing models, runtime-host wrapper logic, translation helpers, result storage, and exported WASM FFI entrypoints
 - `crates/iwm-runtime-core/` separates runtime types, top-level orchestration, room building, room transitions, movement, lowered logic execution, rendering, diagnostics, and crate-local test support

@@ -9,3 +9,4 @@ clap.workspace = true
 serde_json.workspace = true
 iwm-detector = { path = "../iwm-detector" }
 iwm-parser = { path = "../iwm-parser" }
+iwm-runtime-model = { path = "../iwm-runtime-model" }

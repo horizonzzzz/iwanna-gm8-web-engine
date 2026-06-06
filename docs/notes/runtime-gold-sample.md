@@ -37,6 +37,7 @@ This is the intended local browser smoke target after generating a package from 
 ## Blockers By Layer
 
 - Parser/package availability: a fresh clone does not include `runtime/public/packages/sample/`, so the first gold-sample smoke prerequisite is still a local `build-package` run against `IWBT_Dife`.
+- Package-contract validation: after generating `runtime/public/packages/sample/`, run `cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample` before treating browser symptoms as runtime-semantic failures.
 - Runtime-core semantic gap: the remaining meaningful gaps are the ones that still block movement, collision, death/reset, or room transition after the WASM runtime has already booted and drawn a room.
 - Wasm/web host gap: the host telemetry path exists, but gold-sample-specific runtime claims still require evidence from a locally generated `sample/` package.
 - Shell-only issue: the default package path remains `/packages/sample`, so missing local artifacts should surface as explicit load errors rather than being mistaken for runtime-semantic failures.

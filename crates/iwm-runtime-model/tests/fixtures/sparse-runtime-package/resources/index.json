@@ -1,0 +1,31 @@
+{
+  "sprites": [
+    {
+      "id": 42,
+      "name": "spr_sparse_player",
+      "origin_x": 0,
+      "origin_y": 0,
+      "frame_paths": [
+        "resources/sprites/spr_sparse_player/0.png"
+      ],
+      "width": 16,
+      "height": 16,
+      "bbox_left": 0,
+      "bbox_right": 15,
+      "bbox_top": 0,
+      "bbox_bottom": 15,
+      "collision_masks": [],
+      "per_frame_collision_masks": false
+    }
+  ],
+  "backgrounds": [
+    {
+      "id": 900,
+      "name": "bg_sparse",
+      "width": 16,
+      "height": 16,
+      "image_path": "resources/backgrounds/bg_sparse.png"
+    }
+  ],
+  "sounds": []
+}

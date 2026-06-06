@@ -144,9 +144,9 @@ This keeps each agent scoped to one contract boundary and reduces the risk that 
 
 The next process-hardening cycle should proceed in this order:
 
-1. formalize the package validator and failure categories
-2. add stable sparse-id and missing-reference fixtures
-3. wire validator usage into parser/runtime-facing tests
+1. formalize the package validator and failure categories (initial `iwm-runtime-model` validator exists)
+2. add stable sparse-id and missing-reference fixtures (initial sparse package fixture exists under `crates/iwm-runtime-model/tests/fixtures/`)
+3. wire validator usage into parser/runtime-facing tests (initial runtime-model tests and `iwm-cli validate-package` integration exist)
 4. add bridge/schema fixture tests for lowered-logic and runtime snapshots
 5. document mandatory verification gates for future cross-layer work
 
