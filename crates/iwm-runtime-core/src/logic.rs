@@ -60,9 +60,9 @@ impl RuntimeCore {
         &mut self,
         host: &mut H,
     ) -> Result<StepExecutionResult, RuntimeCoreError> {
-        let step_event_blocks = self.object_event_blocks_by_tag("step");
-        let script_entries = self.lowered_script_entries();
-        let room_order = self.runtime_room_order();
+        let step_event_blocks = &self.cached_step_event_blocks;
+        let script_entries = &self.cached_script_entries;
+        let room_order = &self.cached_room_order;
         let button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
         let known_files = sample_known_files(host);
         let (current_room_id, dispatches) = {
@@ -125,10 +125,10 @@ impl RuntimeCore {
                     current_room_id,
                     button_states: &button_states,
                     room_instances: &room.instances,
-                    room_order: &room_order,
-                    objects: &self.package.objects,
+                    room_order: room_order.as_slice(),
                     known_files: &known_files,
                     other_instance: None,
+                    place_target_ids_by_name: &self.place_target_ids_by_name,
                 };
 
                 for entry in &entries {
@@ -136,7 +136,7 @@ impl RuntimeCore {
                         apply_runtime_statement(
                             statement,
                             &mut instance,
-                            &script_entries,
+                            script_entries,
                             &mut self.globals,
                             &mut self.pending_room_transition,
                             &mut self.pending_room_reset,
@@ -186,7 +186,10 @@ impl RuntimeCore {
         })
     }
 
-    fn object_event_blocks_by_tag(&self, event_tag: &str) -> HashMap<usize, Vec<String>> {
+    pub(crate) fn object_event_blocks_by_tag(
+        &self,
+        event_tag: &str,
+    ) -> HashMap<usize, Vec<String>> {
         self.package
             .objects
             .iter()
@@ -200,6 +203,37 @@ impl RuntimeCore {
                 (object.id, block_ids)
             })
             .collect::<HashMap<_, _>>()
+    }
+
+    /// Precomputes, for each lowercased object name, the set of object ids that
+    /// match or inherit from an object with that name. `place_meeting` and
+    /// `place_free` use this to avoid walking the inheritance chain of every
+    /// object on each call.
+    pub(crate) fn compute_place_target_ids_by_name(&self) -> HashMap<String, Vec<usize>> {
+        let objects = &self.package.objects;
+        let mut map: HashMap<String, Vec<usize>> = HashMap::new();
+        for name_owner in objects {
+            let name = name_owner.name.to_ascii_lowercase();
+            if map.contains_key(&name) {
+                continue;
+            }
+            let roots = objects
+                .iter()
+                .filter(|object| object.name.eq_ignore_ascii_case(&name))
+                .map(|object| object.id)
+                .collect::<Vec<_>>();
+            let targets = objects
+                .iter()
+                .filter(|object| {
+                    roots.iter().any(|root_id| {
+                        object_matches_or_inherits_from(objects, object.id, *root_id)
+                    })
+                })
+                .map(|object| object.id)
+                .collect::<Vec<_>>();
+            map.insert(name, targets);
+        }
+        map
     }
 
     fn apply_lowered_block_to_globals(&mut self, block_id: &str) {
@@ -293,9 +327,9 @@ impl RuntimeCore {
                         button_states: &button_states,
                         room_instances: &room_state.instances,
                         room_order: &[],
-                        objects: &self.package.objects,
                         known_files: &known_files,
                         other_instance: None,
+                        place_target_ids_by_name: &self.place_target_ids_by_name,
                     };
                     if let Some(value) = evaluate_expr(
                         value,
@@ -321,9 +355,9 @@ impl RuntimeCore {
                     button_states: &button_states,
                     room_instances: &room_state.instances,
                     room_order: &[],
-                    objects: &self.package.objects,
                     known_files: &known_files,
                     other_instance: None,
+                    place_target_ids_by_name: &self.place_target_ids_by_name,
                 };
                 let condition_value = evaluate_expr(
                     condition,
@@ -406,9 +440,9 @@ impl RuntimeCore {
             button_states: &button_states,
             room_instances: &room_state.instances,
             room_order: &[],
-            objects: &self.package.objects,
             known_files: &known_files,
             other_instance: None,
+            place_target_ids_by_name: &self.place_target_ids_by_name,
         };
         let x = args
             .first()
@@ -768,9 +802,9 @@ pub(crate) struct RuntimeEvalContext<'a> {
     pub button_states: &'a HashMap<RuntimeButton, iwm_runtime_host::ButtonState>,
     pub room_instances: &'a [RuntimeInstance],
     pub room_order: &'a [usize],
-    pub objects: &'a [ObjectDefinition],
     pub known_files: &'a HashSet<String>,
     pub other_instance: Option<&'a RuntimeInstance>,
+    pub place_target_ids_by_name: &'a HashMap<String, Vec<usize>>,
 }
 
 pub(crate) fn apply_view_globals_to_room(
@@ -1126,28 +1160,18 @@ fn evaluate_place_query(
         LoweredLogicExpr::Identifier(name) => Some(name.as_str()),
         _ => None,
     })?;
-    let root_object_ids = context
-        .objects
-        .iter()
-        .filter(|object| object.name.eq_ignore_ascii_case(object_name))
-        .map(|object| object.id)
-        .collect::<Vec<_>>();
-    let target_object_ids = context
-        .objects
-        .iter()
-        .filter(|object| {
-            root_object_ids.iter().any(|root_id| {
-                object_matches_or_inherits_from(context.objects, object.id, *root_id)
-            })
-        })
-        .map(|object| object.id)
-        .collect::<Vec<_>>();
-    let targets = context
-        .room_instances
-        .iter()
-        .filter(|candidate| candidate.alive && target_object_ids.contains(&candidate.object_id))
-        .cloned()
-        .collect::<Vec<_>>();
+    let targets = match context
+        .place_target_ids_by_name
+        .get(&object_name.to_ascii_lowercase())
+    {
+        Some(target_object_ids) => context
+            .room_instances
+            .iter()
+            .filter(|candidate| candidate.alive && target_object_ids.contains(&candidate.object_id))
+            .cloned()
+            .collect::<Vec<_>>(),
+        None => Vec::new(),
+    };
     let collides = !targets.is_empty()
         && crate::helpers::collides_at(
             instance,

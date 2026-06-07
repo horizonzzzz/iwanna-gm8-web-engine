@@ -6,7 +6,7 @@ mod web_runtime_host;
 
 pub use bridge_types::{
     BridgeDrawCommand, BridgeFrameSnapshot, BridgeInputTraceSnapshot, BridgeJumpSnapshot,
-    BridgePlayerSnapshot, BridgeSnapshot, BridgeTickPhaseSnapshot, WebInputState,
+    BridgePlayerSnapshot, BridgeRgba8, BridgeSnapshot, BridgeTickPhaseSnapshot, WebInputState,
 };
 pub use ffi::{
     iwm_alloc, iwm_boot_json, iwm_diagnostics_json, iwm_frame_json, iwm_free, iwm_last_result_len,

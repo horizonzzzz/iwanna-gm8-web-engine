@@ -87,14 +87,19 @@ impl RuntimeCore {
             .map(ActiveView::frame_height)
             .unwrap_or(room.height);
 
-        let mut commands = vec![RuntimeDrawCommand::Clear {
+        // Pre-size for clear + backgrounds + tiles + per-instance sprites +
+        // present, so large rooms don't repeatedly grow the command buffer.
+        let estimated_commands =
+            2 + source_room.backgrounds.len() + source_room.tiles.len() + room.instances.len();
+        let mut commands = Vec::with_capacity(estimated_commands);
+        commands.push(RuntimeDrawCommand::Clear {
             colour: Rgba8 {
                 r: 12,
                 g: 16,
                 b: 22,
                 a: 255,
             },
-        }];
+        });
 
         commands.extend(
             source_room
@@ -169,11 +174,9 @@ impl RuntimeCore {
 
             if object.sprite_index >= 0 {
                 let sprite = self
-                    .package
-                    .resources
-                    .sprites
-                    .iter()
-                    .find(|sprite| sprite.id == object.sprite_index as usize);
+                    .sprite_index
+                    .get(&(object.sprite_index as usize))
+                    .and_then(|index| self.package.resources.sprites.get(*index));
                 let sprite_width = sprite.map(|sprite| sprite.width as i32).unwrap_or(16);
                 let sprite_height = sprite.map(|sprite| sprite.height as i32).unwrap_or(16);
                 if let Some((left, top, right, bottom)) = active_bounds {
@@ -190,12 +193,6 @@ impl RuntimeCore {
                         continue;
                     }
                 }
-                let sprite = self
-                    .package
-                    .resources
-                    .sprites
-                    .iter()
-                    .find(|sprite| sprite.id == object.sprite_index as usize);
                 commands.push(RuntimeDrawCommand::DrawSprite {
                     sprite_id: object.sprite_index as usize,
                     frame_index: 0,

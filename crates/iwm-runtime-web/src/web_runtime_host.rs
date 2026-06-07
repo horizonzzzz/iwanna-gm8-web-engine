@@ -1,9 +1,7 @@
 use iwm_runtime_core::{RuntimeCore, RuntimePackage};
 use iwm_runtime_host::{ButtonState, HeadlessHost, RuntimeButton};
 
-use crate::translate::{
-    bridge_draw_command, bridge_frame_snapshot, bridge_snapshot, format_core_error,
-};
+use crate::translate::{bridge_snapshot, format_core_error};
 use crate::{BridgeFrameSnapshot, BridgeSnapshot, WebInputState};
 
 #[derive(Debug)]
@@ -181,21 +179,12 @@ impl WebRuntimeHost {
             .unwrap_or_default()
     }
 
-    pub fn frame_snapshot(&self) -> Result<BridgeFrameSnapshot, String> {
-        let frame = self
-            .host
+    pub fn frame_snapshot(&self) -> Result<&BridgeFrameSnapshot, String> {
+        self.host
             .renderer
             .submitted_frames
             .last()
-            .ok_or_else(|| "runtime has not submitted a frame yet".to_string())?;
-
-        Ok(bridge_frame_snapshot(
-            frame.tick,
-            frame.room_id,
-            frame.width,
-            frame.height,
-            frame.commands.iter().map(bridge_draw_command).collect(),
-        ))
+            .ok_or_else(|| "runtime has not submitted a frame yet".to_string())
     }
 
     pub fn host_frame_count(&self) -> usize {

@@ -2,11 +2,11 @@ use iwm_runtime_core::{
     RuntimeCoreError, RuntimeInputTraceSnapshot, RuntimeJumpSnapshot, RuntimePlayerSnapshot,
     RuntimeSnapshot, RuntimeStatus, RuntimeTickPhaseSnapshot,
 };
-use iwm_runtime_host::{RuntimeDiagnostic, RuntimeDrawCommand};
+use iwm_runtime_host::RuntimeDiagnostic;
 
 use crate::{
-    BridgeDrawCommand, BridgeFrameSnapshot, BridgeInputTraceSnapshot, BridgeJumpSnapshot,
-    BridgePlayerSnapshot, BridgeSnapshot, BridgeTickPhaseSnapshot,
+    BridgeInputTraceSnapshot, BridgeJumpSnapshot, BridgePlayerSnapshot, BridgeSnapshot,
+    BridgeTickPhaseSnapshot,
 };
 
 pub fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
@@ -69,87 +69,6 @@ pub fn bridge_tick_phase_snapshot(snapshot: RuntimeTickPhaseSnapshot) -> BridgeT
     }
 }
 
-pub fn bridge_draw_command(command: &RuntimeDrawCommand) -> BridgeDrawCommand {
-    match command {
-        RuntimeDrawCommand::Clear { colour } => BridgeDrawCommand::Clear {
-            colour: [colour.r, colour.g, colour.b, colour.a],
-        },
-        RuntimeDrawCommand::DrawBackground {
-            background_id,
-            x,
-            y,
-            stretch,
-            tile_horz,
-            tile_vert,
-            is_foreground,
-        } => BridgeDrawCommand::DrawBackground {
-            background_id: *background_id,
-            x: *x,
-            y: *y,
-            stretch: *stretch,
-            tile_horz: *tile_horz,
-            tile_vert: *tile_vert,
-            is_foreground: *is_foreground,
-        },
-        RuntimeDrawCommand::DrawTile {
-            background_id,
-            x,
-            y,
-            tile_x,
-            tile_y,
-            width,
-            height,
-            xscale,
-            yscale,
-        } => BridgeDrawCommand::DrawTile {
-            background_id: *background_id,
-            x: *x,
-            y: *y,
-            tile_x: *tile_x,
-            tile_y: *tile_y,
-            width: *width,
-            height: *height,
-            xscale: *xscale,
-            yscale: *yscale,
-        },
-        RuntimeDrawCommand::DrawSprite {
-            sprite_id,
-            frame_index,
-            x,
-            y,
-            origin_x,
-            origin_y,
-            xscale,
-            yscale,
-            angle_degrees,
-        } => BridgeDrawCommand::DrawSprite {
-            sprite_id: *sprite_id,
-            frame_index: *frame_index,
-            x: *x,
-            y: *y,
-            origin_x: *origin_x,
-            origin_y: *origin_y,
-            xscale: *xscale,
-            yscale: *yscale,
-            angle_degrees: *angle_degrees,
-        },
-        RuntimeDrawCommand::FillRect {
-            x,
-            y,
-            width,
-            height,
-            colour,
-        } => BridgeDrawCommand::FillRect {
-            x: *x,
-            y: *y,
-            width: *width,
-            height: *height,
-            colour: [colour.r, colour.g, colour.b, colour.a],
-        },
-        RuntimeDrawCommand::Present => BridgeDrawCommand::Present,
-    }
-}
-
 pub fn format_diagnostics(diagnostics: &[RuntimeDiagnostic]) -> Vec<String> {
     diagnostics
         .iter()
@@ -188,21 +107,5 @@ pub fn format_core_error(error: RuntimeCoreError) -> String {
             format!("runtime package is missing room {}", room_id)
         }
         RuntimeCoreError::Host(host_error) => host_error.to_string(),
-    }
-}
-
-pub fn bridge_frame_snapshot(
-    tick: u64,
-    room_id: Option<usize>,
-    width: u32,
-    height: u32,
-    commands: Vec<BridgeDrawCommand>,
-) -> BridgeFrameSnapshot {
-    BridgeFrameSnapshot {
-        tick,
-        room_id,
-        width,
-        height,
-        commands,
     }
 }

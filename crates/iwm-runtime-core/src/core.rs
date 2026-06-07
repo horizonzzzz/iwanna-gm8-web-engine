@@ -18,7 +18,21 @@ pub struct RuntimeCore {
     pub(crate) package: RuntimePackage,
     pub(crate) object_index: HashMap<usize, usize>,
     pub(crate) room_index: HashMap<usize, usize>,
+    /// Maps a sprite id to its index in `package.resources.sprites`, so the
+    /// render pass can resolve sprites without scanning the sprite list per
+    /// instance.
+    pub(crate) sprite_index: HashMap<usize, usize>,
     pub(crate) lowered_logic_index: HashMap<String, usize>,
+    /// Static-after-load tables used every tick by the step dispatch. Cached
+    /// here so `execute_lowered_step_events` does not rebuild and clone them on
+    /// each tick.
+    pub(crate) cached_script_entries: HashMap<String, LoweredLogicEntry>,
+    pub(crate) cached_room_order: Vec<usize>,
+    pub(crate) cached_step_event_blocks: HashMap<usize, Vec<String>>,
+    /// Maps a lowercased object name to the full set of object ids that match or
+    /// inherit from it, so `place_meeting`/`place_free` skip the per-call
+    /// inheritance walk over every object.
+    pub(crate) place_target_ids_by_name: HashMap<String, Vec<usize>>,
     pub(crate) current_room: Option<RuntimeRoomState>,
     pub(crate) status: RuntimeStatus,
     pub(crate) tick: u64,
@@ -49,6 +63,13 @@ impl RuntimeCore {
             .enumerate()
             .map(|(index, object)| (object.id, index))
             .collect::<HashMap<_, _>>();
+        let sprite_index = package
+            .resources
+            .sprites
+            .iter()
+            .enumerate()
+            .map(|(index, sprite)| (sprite.id, index))
+            .collect::<HashMap<_, _>>();
         let lowered_logic_index = package
             .lowered_logic
             .as_ref()
@@ -66,7 +87,12 @@ impl RuntimeCore {
             package,
             object_index,
             room_index,
+            sprite_index,
             lowered_logic_index,
+            cached_script_entries: HashMap::new(),
+            cached_room_order: Vec::new(),
+            cached_step_event_blocks: HashMap::new(),
+            place_target_ids_by_name: HashMap::new(),
             current_room: None,
             status: RuntimeStatus::Ready,
             tick: 0,
@@ -85,6 +111,10 @@ impl RuntimeCore {
             last_tick_phases: RuntimeTickPhaseSnapshot::default(),
         };
 
+        core.cached_script_entries = core.lowered_script_entries();
+        core.cached_room_order = core.runtime_room_order();
+        core.cached_step_event_blocks = core.object_event_blocks_by_tag("step");
+        core.place_target_ids_by_name = core.compute_place_target_ids_by_name();
         core.package_bootstrap_globals = core.collect_package_bootstrap_globals();
         core.boot_default_room()?;
         Ok(core)
@@ -399,9 +429,9 @@ impl RuntimeCore {
             button_states: &button_states,
             room_instances: &room_instances,
             room_order: &room_order,
-            objects: &self.package.objects,
             known_files: &known_files,
             other_instance: other_instance.as_ref(),
+            place_target_ids_by_name: &self.place_target_ids_by_name,
         };
 
         let mut instance = {

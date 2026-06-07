@@ -1,6 +1,8 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use serde::{ser::SerializeTuple, Serialize, Serializer};
+
 pub const DEFAULT_TICK_RATE_HZ: u32 = 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -24,7 +26,26 @@ pub struct Rgba8 {
     pub a: u8,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl Serialize for Rgba8 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut tuple = serializer.serialize_tuple(4)?;
+        tuple.serialize_element(&self.r)?;
+        tuple.serialize_element(&self.g)?;
+        tuple.serialize_element(&self.b)?;
+        tuple.serialize_element(&self.a)?;
+        tuple.end()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
 pub enum RuntimeDrawCommand {
     Clear {
         colour: Rgba8,
@@ -70,7 +91,8 @@ pub enum RuntimeDrawCommand {
     Present,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeRenderFrame {
     pub tick: u64,
     pub room_id: Option<usize>,
