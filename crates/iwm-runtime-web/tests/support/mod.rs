@@ -1,9 +1,8 @@
 use iwm_runtime_core::RuntimePackage;
 use iwm_runtime_model::{
-    AnalysisReport, BackgroundResource, CompatibilityLevel, LogicBlock, LogicOp,
-    ObjectDefinition, ObjectEventEntry, ResourceIndex, RoomBackgroundLayer,
-    RoomDefinition, RoomInstancePlacement, RoomTilePlacement, RoomView, RuntimeManifest,
-    ScriptIrFile, SoundResource, SpriteResource,
+    AnalysisReport, BackgroundResource, CompatibilityLevel, LogicBlock, LogicOp, ObjectDefinition,
+    ObjectEventEntry, ResourceIndex, RoomBackgroundLayer, RoomDefinition, RoomInstancePlacement,
+    RoomTilePlacement, RoomView, RuntimeManifest, ScriptIrFile, SoundResource, SpriteResource,
 };
 
 pub fn sample_package() -> RuntimePackage {

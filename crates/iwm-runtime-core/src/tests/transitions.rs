@@ -267,4 +267,3 @@ fn core_spawn_adjusts_explicit_player_out_of_checkpoint_solid() {
         .unwrap();
     assert_eq!((player.x, player.y), (12.0, 24.0));
 }
-

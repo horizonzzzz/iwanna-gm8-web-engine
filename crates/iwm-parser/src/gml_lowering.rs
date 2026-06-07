@@ -175,23 +175,29 @@ fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
     }
 
     if stmt.starts_with("with ") || stmt.starts_with("with(") {
-        return lower_block_statement(stmt, "with").map(|(head, body)| LoweredLogicStatement::With {
-            target: lower_expr(&head),
-            body: lower_source(&body),
+        return lower_block_statement(stmt, "with").map(|(head, body)| {
+            LoweredLogicStatement::With {
+                target: lower_expr(&head),
+                body: lower_source(&body),
+            }
         });
     }
 
     if stmt.starts_with("repeat ") || stmt.starts_with("repeat(") {
-        return lower_block_statement(stmt, "repeat").map(|(head, body)| LoweredLogicStatement::Repeat {
-            count: lower_expr(&head),
-            body: lower_source(&body),
+        return lower_block_statement(stmt, "repeat").map(|(head, body)| {
+            LoweredLogicStatement::Repeat {
+                count: lower_expr(&head),
+                body: lower_source(&body),
+            }
         });
     }
 
     if stmt.starts_with("while ") || stmt.starts_with("while(") {
-        return lower_block_statement(stmt, "while").map(|(head, body)| LoweredLogicStatement::While {
-            condition: lower_expr(&head),
-            body: lower_source(&body),
+        return lower_block_statement(stmt, "while").map(|(head, body)| {
+            LoweredLogicStatement::While {
+                condition: lower_expr(&head),
+                body: lower_source(&body),
+            }
         });
     }
 
@@ -213,7 +219,8 @@ fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
     }
 
     if let Some((lhs, rhs)) = stmt.split_once('=') {
-        if !lhs.contains("==") && !lhs.contains(">=") && !lhs.contains("<=") && !lhs.contains("!=") {
+        if !lhs.contains("==") && !lhs.contains(">=") && !lhs.contains("<=") && !lhs.contains("!=")
+        {
             return Some(LoweredLogicStatement::Assignment {
                 target: lower_expr(lhs.trim()),
                 value: lower_expr(rhs.trim()),
@@ -548,7 +555,10 @@ fn split_head_and_body(rest: &str) -> Option<(String, String, String)> {
         extract_parenthesized_block(rest)?
     } else {
         let brace_index = rest.find('{')?;
-        (rest[..brace_index].trim().to_string(), rest[brace_index..].to_string())
+        (
+            rest[..brace_index].trim().to_string(),
+            rest[brace_index..].to_string(),
+        )
     };
 
     let tail = tail.trim_start();
@@ -802,7 +812,9 @@ fn split_top_level_operator(source: &str, operator: &str) -> Option<(String, Str
 
         if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
             let tail = &source[byte_index..];
-            if tail.starts_with(operator) && operator_occurrence_is_valid(source, byte_index, operator) {
+            if tail.starts_with(operator)
+                && operator_occurrence_is_valid(source, byte_index, operator)
+            {
                 let left = source[..byte_index].trim();
                 let right = source[byte_index + op_len..].trim();
                 if !left.is_empty() && !right.is_empty() {
@@ -865,8 +877,17 @@ fn operator_occurrence_is_valid(source: &str, byte_index: usize, operator: &str)
     let before = source[..byte_index].chars().next_back();
     let after = source[byte_index + operator.len()..].chars().next();
 
-    !matches!(before, Some('=') | Some('!') | Some('<') | Some('>') | Some('+') | Some('-') | Some('*') | Some('/'))
-        && !matches!(after, Some('='))
+    !matches!(
+        before,
+        Some('=')
+            | Some('!')
+            | Some('<')
+            | Some('>')
+            | Some('+')
+            | Some('-')
+            | Some('*')
+            | Some('/')
+    ) && !matches!(after, Some('='))
 }
 
 fn split_top_level_trailing_index(source: &str) -> Option<(String, String)> {
@@ -910,7 +931,9 @@ fn find_top_level_dot(source: &str) -> Option<usize> {
             ']' => bracket_depth = bracket_depth.saturating_sub(1),
             '{' => brace_depth += 1,
             '}' => brace_depth = brace_depth.saturating_sub(1),
-            '.' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => last_dot = Some(index),
+            '.' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                last_dot = Some(index)
+            }
             _ => {}
         }
     }

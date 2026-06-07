@@ -1,14 +1,15 @@
 use iwm_runtime_host::HeadlessHost;
 use iwm_runtime_model::{
-    AnalysisReport, BackgroundResource, CompatibilityLevel, LogicBlock, LogicOp,
-    ObjectDefinition, ObjectEventEntry, ResourceIndex, RoomBackgroundLayer, RoomDefinition,
-    RoomInstancePlacement, RoomTilePlacement, RoomView, RuntimeManifest, ScriptIrFile,
-    SoundResource, SpriteResource,
+    AnalysisReport, BackgroundResource, CompatibilityLevel, LogicBlock, LogicOp, ObjectDefinition,
+    ObjectEventEntry, ResourceIndex, RoomBackgroundLayer, RoomDefinition, RoomInstancePlacement,
+    RoomTilePlacement, RoomView, RuntimeManifest, ScriptIrFile, SoundResource, SpriteResource,
 };
 use std::path::Path;
 
 use crate::helpers::collides_at;
-use crate::{LoweredLogicEntry, LoweredLogicFile, LoweredLogicStatement, RuntimeCore, RuntimePackage};
+use crate::{
+    LoweredLogicEntry, LoweredLogicFile, LoweredLogicStatement, RuntimeCore, RuntimePackage,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct JumpTraceFrame {
@@ -285,35 +286,38 @@ pub(super) fn sample_package() -> RuntimePackage {
         },
         lowered_logic: None,
         resources: ResourceIndex {
-            sprites: vec![SpriteResource {
-                id: 0,
-                name: "spr_player".into(),
-                origin_x: 0,
-                origin_y: 0,
-                frame_paths: vec![],
-                width: 16,
-                height: 16,
-                bbox_left: 0,
-                bbox_right: 15,
-                bbox_top: 0,
-                bbox_bottom: 15,
-                collision_masks: vec![],
-                per_frame_collision_masks: false,
-            }, SpriteResource {
-                id: 1,
-                name: "spr_sparse".into(),
-                origin_x: 0,
-                origin_y: 0,
-                frame_paths: vec![],
-                width: 16,
-                height: 16,
-                bbox_left: 0,
-                bbox_right: 15,
-                bbox_top: 0,
-                bbox_bottom: 15,
-                collision_masks: vec![],
-                per_frame_collision_masks: false,
-            }],
+            sprites: vec![
+                SpriteResource {
+                    id: 0,
+                    name: "spr_player".into(),
+                    origin_x: 0,
+                    origin_y: 0,
+                    frame_paths: vec![],
+                    width: 16,
+                    height: 16,
+                    bbox_left: 0,
+                    bbox_right: 15,
+                    bbox_top: 0,
+                    bbox_bottom: 15,
+                    collision_masks: vec![],
+                    per_frame_collision_masks: false,
+                },
+                SpriteResource {
+                    id: 1,
+                    name: "spr_sparse".into(),
+                    origin_x: 0,
+                    origin_y: 0,
+                    frame_paths: vec![],
+                    width: 16,
+                    height: 16,
+                    bbox_left: 0,
+                    bbox_right: 15,
+                    bbox_top: 0,
+                    bbox_bottom: 15,
+                    collision_masks: vec![],
+                    per_frame_collision_masks: false,
+                },
+            ],
             backgrounds: vec![BackgroundResource {
                 id: 0,
                 name: "bg_room".into(),
@@ -357,7 +361,8 @@ pub(super) fn real_sample_package() -> Option<RuntimePackage> {
     }
 
     let manifest = serde_json::from_slice(&std::fs::read(manifest_path).ok()?).ok()?;
-    let rooms = serde_json::from_slice(&std::fs::read(package_root.join("rooms.json")).ok()?).ok()?;
+    let rooms =
+        serde_json::from_slice(&std::fs::read(package_root.join("rooms.json")).ok()?).ok()?;
     let objects =
         serde_json::from_slice(&std::fs::read(package_root.join("objects.json")).ok()?).ok()?;
     let scripts =
@@ -368,10 +373,9 @@ pub(super) fn real_sample_package() -> Option<RuntimePackage> {
         &std::fs::read(package_root.join("resources").join("index.json")).ok()?,
     )
     .ok()?;
-    let lowered_logic = serde_json::from_slice(
-        &std::fs::read(package_root.join("logic.lowered.json")).ok()?,
-    )
-    .ok()?;
+    let lowered_logic =
+        serde_json::from_slice(&std::fs::read(package_root.join("logic.lowered.json")).ok()?)
+            .ok()?;
 
     Some(RuntimePackage {
         manifest,
@@ -404,7 +408,13 @@ pub(super) fn capture_jump_trace(core: &RuntimeCore) -> JumpTraceFrame {
         y: player.y,
         hspeed: player.hspeed,
         vspeed: player.vspeed,
-        grounded: collides_at(player, player.x, player.y + 1.0, &solids, Some(player.runtime_id)),
+        grounded: collides_at(
+            player,
+            player.x,
+            player.y + 1.0,
+            &solids,
+            Some(player.runtime_id),
+        ),
         jump_active: player.jump.active,
         jump_hold_frames: player.jump.hold_frames,
         jump_cut_applied: player.jump.cut_applied,
@@ -419,11 +429,7 @@ pub(super) fn add_step_block(package: &mut RuntimePackage, statements: Vec<Lower
         block_id: "object:0:event:3:0".into(),
         action_count: 0,
     });
-    append_lowered_entry(
-        package,
-        "object:0:event:3:0".into(),
-        statements,
-    );
+    append_lowered_entry(package, "object:0:event:3:0".into(), statements);
 }
 
 pub(super) fn add_room_create_block(
@@ -431,11 +437,7 @@ pub(super) fn add_room_create_block(
     statements: Vec<LoweredLogicStatement>,
 ) {
     package.rooms[0].creation_block_id = Some("room:7:create".into());
-    append_lowered_entry(
-        package,
-        "room:7:create".into(),
-        statements,
-    );
+    append_lowered_entry(package, "room:7:create".into(), statements);
 }
 
 pub(super) fn append_lowered_entry(
@@ -473,11 +475,7 @@ pub(super) fn add_script_block(
             code: script_name.to_string(),
         }],
     });
-    append_lowered_entry(
-        package,
-        format!("script:{script_id}"),
-        statements,
-    );
+    append_lowered_entry(package, format!("script:{script_id}"), statements);
 }
 
 pub(super) fn add_keyboard_block(
@@ -497,11 +495,7 @@ pub(super) fn add_keyboard_block(
         block_id: format!("object:0:event:5:{key}"),
         action_count: 0,
     });
-    append_lowered_entry(
-        package,
-        format!("object:0:event:5:{key}"),
-        statements,
-    );
+    append_lowered_entry(package, format!("object:0:event:5:{key}"), statements);
 }
 
 pub(super) fn add_keyboard_press_block(
@@ -521,11 +515,7 @@ pub(super) fn add_keyboard_press_block(
         block_id: format!("object:0:event:9:{key}"),
         action_count: 0,
     });
-    append_lowered_entry(
-        package,
-        format!("object:0:event:9:{key}"),
-        statements,
-    );
+    append_lowered_entry(package, format!("object:0:event:9:{key}"), statements);
 }
 
 pub(super) fn add_keyboard_release_block(
@@ -545,11 +535,7 @@ pub(super) fn add_keyboard_release_block(
         block_id: format!("object:0:event:10:{key}"),
         action_count: 0,
     });
-    append_lowered_entry(
-        package,
-        format!("object:0:event:10:{key}"),
-        statements,
-    );
+    append_lowered_entry(package, format!("object:0:event:10:{key}"), statements);
 }
 
 pub(super) fn add_collision_block(
@@ -583,11 +569,7 @@ pub(super) fn add_alarm_block(
         block_id: format!("object:0:event:2:{slot}"),
         action_count: 0,
     });
-    append_lowered_entry(
-        package,
-        format!("object:0:event:2:{slot}"),
-        statements,
-    );
+    append_lowered_entry(package, format!("object:0:event:2:{slot}"), statements);
 }
 
 pub(super) fn add_create_block(
@@ -601,9 +583,5 @@ pub(super) fn add_create_block(
         block_id: "object:0:event:0:0".into(),
         action_count: 0,
     });
-    append_lowered_entry(
-        package,
-        "object:0:event:0:0".into(),
-        statements,
-    );
+    append_lowered_entry(package, "object:0:event:0:0".into(), statements);
 }

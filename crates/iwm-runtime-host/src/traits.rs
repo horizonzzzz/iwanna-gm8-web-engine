@@ -8,6 +8,10 @@ use crate::types::{
 pub trait RuntimeTimeHost {
     fn now_nanos(&self) -> u128;
 
+    fn diagnostic_now_nanos(&self) -> Option<u128> {
+        None
+    }
+
     fn tick_rate_hz(&self) -> u32 {
         DEFAULT_TICK_RATE_HZ
     }
@@ -30,11 +34,8 @@ pub trait RuntimeRenderHost {
 }
 
 pub trait RuntimeAudioHost {
-    fn play_sound(
-        &mut self,
-        sound_id: i32,
-        mode: RuntimeSoundMode,
-    ) -> Result<(), RuntimeHostError>;
+    fn play_sound(&mut self, sound_id: i32, mode: RuntimeSoundMode)
+        -> Result<(), RuntimeHostError>;
     fn stop_sound(&mut self, sound_id: i32) -> Result<(), RuntimeHostError>;
 }
 

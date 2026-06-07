@@ -1,5 +1,5 @@
-mod gm8_adapter;
 pub mod event_tags;
+mod gm8_adapter;
 pub mod gml_lowering;
 pub mod logic_export;
 pub mod models;

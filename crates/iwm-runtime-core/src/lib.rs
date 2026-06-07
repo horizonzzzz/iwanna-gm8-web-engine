@@ -1,6 +1,6 @@
 mod core;
-mod diagnostics;
 mod debug_input;
+mod diagnostics;
 mod event_dispatch;
 mod helpers;
 mod logic;
@@ -17,6 +17,6 @@ pub use core::RuntimeCore;
 pub use types::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicFile, LoweredLogicStatement,
     RuntimeCollisionMask, RuntimeCoreError, RuntimeInputTraceSnapshot, RuntimeInstance,
-    RuntimeJumpSnapshot, RuntimeJumpState, RuntimePackage, RuntimePlayerSnapshot,
-    RuntimeRoomState, RuntimeSnapshot, RuntimeStatus, RuntimeValue,
+    RuntimeJumpSnapshot, RuntimeJumpState, RuntimePackage, RuntimePlayerSnapshot, RuntimeRoomState,
+    RuntimeSnapshot, RuntimeStatus, RuntimeTickPhaseSnapshot, RuntimeValue,
 };

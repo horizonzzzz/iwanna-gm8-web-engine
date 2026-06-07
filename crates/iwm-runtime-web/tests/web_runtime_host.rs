@@ -22,7 +22,8 @@ fn load_real_sample_package() -> Option<iwm_runtime_core::RuntimePackage> {
     }
 
     let manifest = serde_json::from_slice(&std::fs::read(manifest_path).ok()?).ok()?;
-    let rooms = serde_json::from_slice(&std::fs::read(package_root.join("rooms.json")).ok()?).ok()?;
+    let rooms =
+        serde_json::from_slice(&std::fs::read(package_root.join("rooms.json")).ok()?).ok()?;
     let objects =
         serde_json::from_slice(&std::fs::read(package_root.join("objects.json")).ok()?).ok()?;
     let scripts =
@@ -33,10 +34,9 @@ fn load_real_sample_package() -> Option<iwm_runtime_core::RuntimePackage> {
         &std::fs::read(package_root.join("resources").join("index.json")).ok()?,
     )
     .ok()?;
-    let lowered_logic = serde_json::from_slice(
-        &std::fs::read(package_root.join("logic.lowered.json")).ok()?,
-    )
-    .ok()?;
+    let lowered_logic =
+        serde_json::from_slice(&std::fs::read(package_root.join("logic.lowered.json")).ok()?)
+            .ok()?;
 
     Some(iwm_runtime_core::RuntimePackage {
         manifest,
@@ -61,6 +61,8 @@ fn web_runtime_host_boots_and_ticks_headless_runtime() {
     let after_tick = host.tick(2).unwrap();
     assert_eq!(after_tick.tick, 2);
     assert_eq!(after_tick.room_id, Some(0));
+    assert!(after_tick.tick_phases.step_events_nanos > 0);
+    assert!(after_tick.tick_phases.render_submit_nanos > 0);
     assert_eq!(host.host_frame_count(), 1);
 }
 
@@ -272,7 +274,9 @@ fn web_runtime_host_does_not_map_semantic_jump_to_space_without_raw_space_input(
             block_id: "room:7:create".into(),
             statements: vec![iwm_runtime_core::LoweredLogicStatement::Assignment {
                 target: iwm_runtime_core::LoweredLogicExpr::MemberAccess {
-                    target: Box::new(iwm_runtime_core::LoweredLogicExpr::Identifier("global".into())),
+                    target: Box::new(iwm_runtime_core::LoweredLogicExpr::Identifier(
+                        "global".into(),
+                    )),
                     member: "jumpbutton".into(),
                 },
                 value: iwm_runtime_core::LoweredLogicExpr::LiteralNumber(0x10 as f64),
@@ -315,8 +319,12 @@ fn web_runtime_host_formats_diagnostics_for_bridge_consumers() {
 
     let diagnostics = host.diagnostics();
 
-    assert!(diagnostics.iter().any(|entry| entry.contains("runtime-idle")));
-    assert!(diagnostics.iter().any(|entry| entry.contains("runtime-jump-input")));
+    assert!(diagnostics
+        .iter()
+        .any(|entry| entry.contains("runtime-idle")));
+    assert!(diagnostics
+        .iter()
+        .any(|entry| entry.contains("runtime-jump-input")));
     assert!(json!(diagnostics).is_array());
 }
 
@@ -436,7 +444,10 @@ fn web_runtime_host_reemits_raw_press_after_release_cycle() {
         keys_released: vec![],
     });
     let first = host.tick(1).unwrap();
-    assert_eq!(first.input_trace.active_keys, vec!["0x10:p1jp1jr0".to_string()]);
+    assert_eq!(
+        first.input_trace.active_keys,
+        vec!["0x10:p1jp1jr0".to_string()]
+    );
 
     host.set_input(WebInputState {
         left: false,
@@ -463,7 +474,10 @@ fn web_runtime_host_reemits_raw_press_after_release_cycle() {
         keys_released: vec![],
     });
     let second = host.tick(1).unwrap();
-    assert_eq!(second.input_trace.active_keys, vec!["0x10:p1jp1jr0".to_string()]);
+    assert_eq!(
+        second.input_trace.active_keys,
+        vec!["0x10:p1jp1jr0".to_string()]
+    );
 }
 
 #[test]
@@ -481,10 +495,10 @@ fn web_runtime_host_frame_snapshot_includes_tiles_and_explicit_player_output() {
             ..
         }
     )));
-    assert!(frame.commands.iter().any(|command| matches!(
-        command,
-        BridgeDrawCommand::DrawSprite { sprite_id: 0, .. }
-    )));
+    assert!(frame
+        .commands
+        .iter()
+        .any(|command| matches!(command, BridgeDrawCommand::DrawSprite { sprite_id: 0, .. })));
 }
 
 #[test]
@@ -641,5 +655,3 @@ fn real_sample_shift_jump_retriggers_after_landing_in_sampleroom01() {
         "second jump should leave ground again, last_player={last_player:?}, second_jump={second_jump:?}"
     );
 }
-
-

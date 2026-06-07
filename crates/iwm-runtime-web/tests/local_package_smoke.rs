@@ -2,8 +2,7 @@ use std::path::Path;
 
 use iwm_runtime_core::RuntimePackage;
 use iwm_runtime_model::{
-    AnalysisReport, ObjectDefinition, ResourceIndex, RoomDefinition, RuntimeManifest,
-    ScriptIrFile,
+    AnalysisReport, ObjectDefinition, ResourceIndex, RoomDefinition, RuntimeManifest, ScriptIrFile,
 };
 use iwm_runtime_web::{BridgeDrawCommand, WebRuntimeHost};
 
@@ -28,8 +27,7 @@ fn real_mashikaku_package_emits_tile_commands_when_local_package_exists() {
     let rooms: Vec<RoomDefinition> =
         serde_json::from_slice(&std::fs::read(&rooms_path).unwrap()).unwrap();
     let objects: Vec<ObjectDefinition> =
-        serde_json::from_slice(&std::fs::read(package_root.join("objects.json")).unwrap())
-            .unwrap();
+        serde_json::from_slice(&std::fs::read(package_root.join("objects.json")).unwrap()).unwrap();
     let scripts: ScriptIrFile =
         serde_json::from_slice(&std::fs::read(package_root.join("scripts.ir.json")).unwrap())
             .unwrap();
@@ -56,10 +54,10 @@ fn real_mashikaku_package_emits_tile_commands_when_local_package_exists() {
     host.select_room(87).unwrap();
     let frame = host.frame_snapshot().unwrap();
 
-    assert!(frame.commands.iter().any(|command| matches!(
-        command,
-        BridgeDrawCommand::DrawTile { .. }
-    )));
+    assert!(frame
+        .commands
+        .iter()
+        .any(|command| matches!(command, BridgeDrawCommand::DrawTile { .. })));
 }
 
 #[test]

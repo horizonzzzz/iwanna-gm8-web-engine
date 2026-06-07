@@ -1,5 +1,17 @@
 import type { RuntimePackage } from '../types';
 
+export type WasmRuntimeTickPhases = {
+  inputDiagNanos: number;
+  stepEventsNanos: number;
+  viewSyncNanos: number;
+  playerMovementNanos: number;
+  collisionEventsNanos: number;
+  alarmsNanos: number;
+  keyboardEventsNanos: number;
+  renderSubmitNanos: number;
+  totalNanos: number;
+};
+
 export type WasmRuntimeBridgeSnapshot = {
   status?: string;
   tick: number;
@@ -26,6 +38,7 @@ export type WasmRuntimeBridgeSnapshot = {
     jumpJustReleased: boolean;
     activeKeys: string[];
   };
+  tickPhases?: WasmRuntimeTickPhases;
   diagnostics: string[];
 };
 
@@ -216,13 +229,35 @@ export async function instantiateWasmRuntimeBridge(
   }
 
   const bytes = await response.arrayBuffer();
-  const instantiated = await WebAssembly.instantiate(bytes, imports);
+  const instantiated = await WebAssembly.instantiate(bytes, mergeWasmRuntimeImports(imports));
   const exported = instantiated.instance.exports;
   if (!isWasmRuntimeExports(exported)) {
     throw new Error('WASM module does not expose the expected iwm runtime bridge exports');
   }
 
   return makeWasmRuntimeBridge(exported);
+}
+
+export function makeWasmRuntimeHostImports(
+  now: () => number = () => globalThis.performance?.now() ?? Date.now()
+): WebAssembly.Imports {
+  return {
+    env: {
+      iwm_host_now_nanos: () => Math.max(0, now() * 1_000_000)
+    }
+  };
+}
+
+function mergeWasmRuntimeImports(overrides: WebAssembly.Imports): WebAssembly.Imports {
+  const defaults = makeWasmRuntimeHostImports();
+  return {
+    ...defaults,
+    ...overrides,
+    env: {
+      ...(defaults.env ?? {}),
+      ...((overrides.env as WebAssembly.ModuleImports | undefined) ?? {})
+    }
+  };
 }
 
 export async function loadDefaultWasmRuntimeBridge(): Promise<WasmRuntimeBridge> {

@@ -22,6 +22,7 @@ type ShellDependencies = {
   loadWasmBridge?: () => Promise<WasmRuntimeBridge>;
   setInterval?: (handler: () => void, timeout: number) => IntervalHandle;
   clearInterval?: (handle: IntervalHandle) => void;
+  now?: () => number;
 };
 
 const defaultDependencies: ShellDependencies = {
@@ -29,11 +30,24 @@ const defaultDependencies: ShellDependencies = {
   renderStaticRoom,
   renderWasmFrame,
   setInterval: (handler, timeout) => globalThis.setInterval(handler, timeout),
-  clearInterval: (handle) => globalThis.clearInterval(handle)
+  clearInterval: (handle) => globalThis.clearInterval(handle),
+  now: () => globalThis.performance?.now() ?? Date.now()
 };
 
 const AUTO_TICK_MS = 1000 / 60;
 const MAX_VISIBLE_DIAGNOSTICS = 8;
+
+type RuntimePerformanceStats = {
+  inputMs: number;
+  tickMs: number;
+  snapshotMs: number;
+  frameMs: number;
+  runtimeMs: number;
+  renderMs: number;
+  totalMs: number;
+  commandCount: number;
+  skippedIntervals: number;
+};
 
 type ShellElements = {
   input: HTMLInputElement;
@@ -159,6 +173,12 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
   const runtimeDiagnostics = doc.createElement('p');
   runtimeDiagnostics.id = 'runtime-diagnostics';
 
+  const runtimePerformance = doc.createElement('p');
+  runtimePerformance.id = 'runtime-performance';
+
+  const runtimeTickPhases = doc.createElement('p');
+  runtimeTickPhases.id = 'runtime-tick-phases';
+
   const diagnostics = doc.createElement('section');
   diagnostics.className = 'diagnostics';
 
@@ -169,7 +189,7 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
   const metaRoot = doc.createElement('section');
   metaRoot.className = 'meta';
 
-  runtimeTelemetry.append(runtimeRoom, runtimeTick, runtimePlayer, runtimeDiagnostics);
+  runtimeTelemetry.append(runtimeRoom, runtimeTick, runtimePlayer, runtimeDiagnostics, runtimePerformance, runtimeTickPhases);
   sidebar.append(title, intro, packageField, button, pauseButton, resetButton, status, backendStatus, runtimeTelemetry, diagnostics, metaRoot);
 
   const stage = doc.createElement('main');
@@ -246,11 +266,25 @@ function formatRuntimePlayer(snapshot: WasmRuntimeBridgeSnapshot): string {
   return `Player: x=${snapshot.player.x} y=${snapshot.player.y} hspeed=${snapshot.player.hspeed} vspeed=${snapshot.player.vspeed} grounded=${jump.grounded} jumpActive=${jump.active} hold=${jump.holdFrames} cut=${jump.cutApplied} jumpKey=0x${trace.jumpButtonKey.toString(16)} jp=${trace.jumpPressed} jjp=${trace.jumpJustPressed} jjr=${trace.jumpJustReleased} keys=[${trace.activeKeys.join(',')}]`;
 }
 
+function formatNanosAsMs(nanos: number): string {
+  return (nanos / 1_000_000).toFixed(3);
+}
+
+function formatRuntimeTickPhases(snapshot: WasmRuntimeBridgeSnapshot): string {
+  const phases = snapshot.tickPhases;
+  if (!phases) {
+    return 'Tick phases ms: unavailable';
+  }
+
+  return `Tick phases ms: total=${formatNanosAsMs(phases.totalNanos)} inputDiag=${formatNanosAsMs(phases.inputDiagNanos)} step=${formatNanosAsMs(phases.stepEventsNanos)} view=${formatNanosAsMs(phases.viewSyncNanos)} player=${formatNanosAsMs(phases.playerMovementNanos)} collision=${formatNanosAsMs(phases.collisionEventsNanos)} alarms=${formatNanosAsMs(phases.alarmsNanos)} keyboard=${formatNanosAsMs(phases.keyboardEventsNanos)} renderSubmit=${formatNanosAsMs(phases.renderSubmitNanos)}`;
+}
+
 function renderRuntimeTelemetry(
   doc: Document,
   root: HTMLElement,
   snapshot: WasmRuntimeBridgeSnapshot,
-  roomLabel: string
+  roomLabel: string,
+  performance: RuntimePerformanceStats | null = null
 ): void {
   root.replaceChildren();
 
@@ -273,7 +307,17 @@ function renderRuntimeTelemetry(
     ? `Diagnostics: ${visibleDiagnostics.join(' | ')}`
     : 'Diagnostics: none';
 
-  root.append(room, tick, player, diagnostics);
+  const runtimePerformance = doc.createElement('p');
+  runtimePerformance.id = 'runtime-performance';
+  runtimePerformance.textContent = performance
+    ? `Frame ms: total=${performance.totalMs.toFixed(1)} input=${performance.inputMs.toFixed(1)} tick=${performance.tickMs.toFixed(1)} snapshot=${performance.snapshotMs.toFixed(1)} frame=${performance.frameMs.toFixed(1)} render=${performance.renderMs.toFixed(1)} runtime=${performance.runtimeMs.toFixed(1)} commands=${performance.commandCount} skipped=${performance.skippedIntervals}`
+    : 'Frame ms: unavailable';
+
+  const runtimeTickPhases = doc.createElement('p');
+  runtimeTickPhases.id = 'runtime-tick-phases';
+  runtimeTickPhases.textContent = formatRuntimeTickPhases(snapshot);
+
+  root.append(room, tick, player, diagnostics, runtimePerformance, runtimeTickPhases);
 }
 
 function renderRuntimeRoom(
@@ -367,6 +411,8 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
   let autoTickHandle: IntervalHandle | null = null;
   let autoTickRunning = false;
   let autoTickInFlight = false;
+  let skippedAutoTickIntervals = 0;
+  let lastPerformance: RuntimePerformanceStats | null = null;
   const renderCache = new ResourceCache();
 
   const stopAutoTick = (): void => {
@@ -423,7 +469,8 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
         snapshot,
         snapshot.roomId != null
           ? `${snapshot.roomId}: ${snapshot.roomName ?? 'room'}`
-          : 'none'
+          : 'none',
+        lastPerformance
       );
       status.textContent = `WASM runtime active: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`;
       return;
@@ -464,10 +511,24 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       keysPressed: [...pendingPressedVirtualKeys],
       keysReleased: [...pendingReleasedVirtualKeys]
     });
-    const { snapshot, frame } = await activeBackend.session.stepOnce();
+    const frameStart = resolved.now?.() ?? Date.now();
+    const { snapshot, frame, timings } = await activeBackend.session.stepOnce();
     pendingPressedVirtualKeys.clear();
     pendingReleasedVirtualKeys.clear();
+    const renderStart = resolved.now?.() ?? Date.now();
     await resolved.renderWasmFrame(canvas, frame, loadedPackage.resources, input.value, renderCache);
+    const renderMs = (resolved.now?.() ?? Date.now()) - renderStart;
+    lastPerformance = {
+      inputMs: timings.inputMs,
+      tickMs: timings.tickMs,
+      snapshotMs: timings.snapshotMs,
+      frameMs: timings.frameMs,
+      runtimeMs: timings.runtimeMs,
+      renderMs,
+      totalMs: (resolved.now?.() ?? Date.now()) - frameStart,
+      commandCount: frame.commands.length,
+      skippedIntervals: skippedAutoTickIntervals
+    };
     renderTextDiagnostics(doc, diagnostics, snapshot.diagnostics);
     renderRuntimeTelemetry(
       doc,
@@ -475,7 +536,8 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       snapshot,
       snapshot.roomId != null
         ? `${snapshot.roomId}: ${snapshot.roomName ?? 'room'}`
-        : 'none'
+        : 'none',
+      lastPerformance
     );
     status.textContent = `WASM runtime active: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`;
     return { snapshot, frame };
@@ -489,6 +551,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
 
     autoTickHandle = resolved.setInterval(() => {
       if (autoTickInFlight) {
+        skippedAutoTickIntervals += 1;
         return;
       }
 
@@ -534,7 +597,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
           nextBackend = {
             kind: 'wasm',
             bridge: wasmBridge,
-            session: new WasmRuntimeSession(wasmBridge)
+            session: new WasmRuntimeSession(wasmBridge, resolved.now)
           };
           roomId = snapshot.roomId ?? roomId;
         } catch (error) {

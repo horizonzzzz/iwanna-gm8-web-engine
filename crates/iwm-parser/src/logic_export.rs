@@ -59,17 +59,18 @@ pub fn export_rooms_and_logic(
                     };
 
                     // Look up the object to get solid/hazard/checkpoint hints
-                    let (is_solid, is_hazard, is_checkpoint) = match objects.get(instance.object as usize) {
-                        Some(Some(obj)) => {
-                            let name_str = String::from_utf8_lossy(&obj.name.0);
-                            (
-                                obj.solid,
-                                detect_hazard(&name_str),
-                                detect_checkpoint(&name_str),
-                            )
-                        }
-                        _ => (false, false, false),
-                    };
+                    let (is_solid, is_hazard, is_checkpoint) =
+                        match objects.get(instance.object as usize) {
+                            Some(Some(obj)) => {
+                                let name_str = String::from_utf8_lossy(&obj.name.0);
+                                (
+                                    obj.solid,
+                                    detect_hazard(&name_str),
+                                    detect_checkpoint(&name_str),
+                                )
+                            }
+                            _ => (false, false, false),
+                        };
 
                     RoomInstancePlacement {
                         instance_id: instance.id,
@@ -89,15 +90,15 @@ pub fn export_rooms_and_logic(
                 .collect();
 
             // Detect if room is playable (has instances with sprites that aren't decorative)
-            let playable = instances.iter().any(|i| {
-                match objects.get(i.object_id as usize) {
+            let playable = instances
+                .iter()
+                .any(|i| match objects.get(i.object_id as usize) {
                     Some(Some(obj)) => {
                         let name_str = String::from_utf8_lossy(&obj.name.0);
                         obj.sprite_index >= 0 && !is_decorative_object(&name_str)
                     }
                     _ => false,
-                }
-            });
+                });
 
             RoomDefinition {
                 id: room_id,
@@ -240,8 +241,10 @@ pub fn export_rooms_and_logic(
                 visible: object.visible,
                 solid: object.solid,
                 mask_index: object.mask_index,
-                is_hazard: detect_hazard(&String::from_utf8_lossy(object.name.0.as_ref())).then_some(true),
-                is_checkpoint: detect_checkpoint(&String::from_utf8_lossy(object.name.0.as_ref())).then_some(true),
+                is_hazard: detect_hazard(&String::from_utf8_lossy(object.name.0.as_ref()))
+                    .then_some(true),
+                is_checkpoint: detect_checkpoint(&String::from_utf8_lossy(object.name.0.as_ref()))
+                    .then_some(true),
                 is_player: detect_player(&String::from_utf8_lossy(object.name.0.as_ref())),
                 events,
             }
@@ -290,10 +293,7 @@ pub fn export_rooms_and_logic(
 
 /// Count how many actions in a list can be executed without GML lowering
 fn count_executable_actions(actions: &[CodeAction]) -> usize {
-    actions
-        .iter()
-        .filter(|a| a.fn_code.0.is_empty())
-        .count()
+    actions.iter().filter(|a| a.fn_code.0.is_empty()).count()
 }
 
 /// Detect if an object name suggests it's a hazard

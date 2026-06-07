@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+
+use crate::{RuntimePackage, RuntimeRoomState};
+
 #[derive(Clone)]
 pub(crate) enum RuntimeEventSelector {
     Alarm(u32),
@@ -5,10 +9,10 @@ pub(crate) enum RuntimeEventSelector {
     KeyboardPressed(u16),
     KeyboardReleased(u16),
     #[cfg_attr(not(test), allow(dead_code))]
-    Collision { target_object_id: usize },
+    Collision {
+        target_object_id: usize,
+    },
 }
-
-use crate::RuntimePackage;
 
 pub(crate) fn object_event_block_ids(
     package: &RuntimePackage,
@@ -32,11 +36,9 @@ pub(crate) fn object_event_block_ids(
             key as u32,
             format!("keyrelease:{}", format_key_name(key)),
         ),
-        RuntimeEventSelector::Collision { target_object_id } => (
-            4usize,
-            target_object_id as u32,
-            "collision".to_string(),
-        ),
+        RuntimeEventSelector::Collision { target_object_id } => {
+            (4usize, target_object_id as u32, "collision".to_string())
+        }
     };
 
     let mut current_object_id = Some(object_id);
@@ -47,7 +49,10 @@ pub(crate) fn object_event_block_ids(
         };
 
         for event in &object.events {
-            if event.event_type == event_type && event.sub_event == sub_event && event.event_tag == wanted {
+            if event.event_type == event_type
+                && event.sub_event == sub_event
+                && event.event_tag == wanted
+            {
                 block_ids.push(event.block_id.clone());
             }
         }
@@ -60,6 +65,21 @@ pub(crate) fn object_event_block_ids(
     }
 
     block_ids
+}
+
+pub(crate) fn runtime_instance_indices_by_object_id(
+    room: &RuntimeRoomState,
+) -> HashMap<usize, Vec<usize>> {
+    let mut indices = HashMap::new();
+    for (index, instance) in room.instances.iter().enumerate() {
+        if instance.alive {
+            indices
+                .entry(instance.object_id)
+                .or_insert_with(Vec::new)
+                .push(index);
+        }
+    }
+    indices
 }
 
 pub(crate) fn collision_event_target_object_ids(

@@ -1,6 +1,6 @@
 use iwm_parser::gml_lowering::lower_raw_logic_file;
-use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
 use iwm_parser::models::{RawLogicFile, RawLogicScript};
+use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
 
 #[test]
 fn lowering_respects_boolean_precedence_between_or_and_and() {
@@ -87,7 +87,9 @@ fn lowering_preserves_return_statements_and_ignores_block_comments() {
     let lowered = lower_raw_logic_file(&raw);
     assert!(matches!(
         lowered.entries[0].statements[0],
-        LoweredLogicStatement::Return { value: Some(LoweredLogicExpr::LiteralBool(false)) }
+        LoweredLogicStatement::Return {
+            value: Some(LoweredLogicExpr::LiteralBool(false))
+        }
     ));
 }
 
@@ -185,7 +187,11 @@ fn lowering_preserves_unary_negative_and_not_expressions() {
     let lowered = lower_raw_logic_file(&raw);
 
     match &lowered.entries[0].statements[0] {
-        LoweredLogicStatement::Conditional { condition, then_branch, .. } => {
+        LoweredLogicStatement::Conditional {
+            condition,
+            then_branch,
+            ..
+        } => {
             assert!(matches!(
                 condition,
                 LoweredLogicExpr::UnaryExpr { op, child }
@@ -247,7 +253,9 @@ fn lowering_splits_top_level_newline_separated_assignments() {
     ] {
         match statement {
             LoweredLogicStatement::Assignment { target, value } => {
-                assert!(matches!(target, LoweredLogicExpr::Identifier(name) if name == expected_name));
+                assert!(
+                    matches!(target, LoweredLogicExpr::Identifier(name) if name == expected_name)
+                );
                 assert!(matches!(
                     value,
                     LoweredLogicExpr::Call { name, args }
@@ -276,7 +284,8 @@ fn lowering_treats_single_equals_as_comparison_and_preserves_decimal_literals() 
         scripts: vec![RawLogicScript {
             script_id: 9,
             script_name: "scr_jump_cut".to_string(),
-            gml_source: "if(global.grav=0 && vspeed<0){ vspeed*=0.45; image_speed = 0.5; }".to_string(),
+            gml_source: "if(global.grav=0 && vspeed<0){ vspeed*=0.45; image_speed = 0.5; }"
+                .to_string(),
         }],
         triggers: vec![],
         timelines: vec![],
@@ -319,7 +328,9 @@ fn lowering_treats_single_equals_as_comparison_and_preserves_decimal_literals() 
 
             match &then_branch[0] {
                 LoweredLogicStatement::Assignment { target, value } => {
-                    assert!(matches!(target, LoweredLogicExpr::Identifier(name) if name == "vspeed"));
+                    assert!(
+                        matches!(target, LoweredLogicExpr::Identifier(name) if name == "vspeed")
+                    );
                     assert!(matches!(
                         value,
                         LoweredLogicExpr::BinaryExpr { op, left, right }
@@ -333,7 +344,9 @@ fn lowering_treats_single_equals_as_comparison_and_preserves_decimal_literals() 
 
             match &then_branch[1] {
                 LoweredLogicStatement::Assignment { target, value } => {
-                    assert!(matches!(target, LoweredLogicExpr::Identifier(name) if name == "image_speed"));
+                    assert!(
+                        matches!(target, LoweredLogicExpr::Identifier(name) if name == "image_speed")
+                    );
                     assert!(matches!(
                         value,
                         LoweredLogicExpr::LiteralNumber(number) if (*number - 0.5).abs() < f64::EPSILON
@@ -356,7 +369,9 @@ fn lowering_preserves_else_branch_function_calls_after_conditionals() {
         scripts: vec![RawLogicScript {
             script_id: 10,
             script_name: "scr_else".to_string(),
-            gml_source: "if(file_exists(\"temp\") == true){ tempExe(); } else { room_goto_next(); }".to_string(),
+            gml_source:
+                "if(file_exists(\"temp\") == true){ tempExe(); } else { room_goto_next(); }"
+                    .to_string(),
         }],
         triggers: vec![],
         timelines: vec![],

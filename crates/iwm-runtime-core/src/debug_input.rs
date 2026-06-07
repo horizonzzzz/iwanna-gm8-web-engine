@@ -19,12 +19,12 @@ impl RuntimeCore {
             .active_buttons()
             .into_iter()
             .filter_map(|(button, state)| match button {
-                RuntimeButton::Keyboard(key) if state.pressed || state.just_pressed || state.just_released => {
+                RuntimeButton::Keyboard(key)
+                    if state.pressed || state.just_pressed || state.just_released =>
+                {
                     Some(format!(
                         "0x{key:02x}:p{}jp{}jr{}",
-                        state.pressed as u8,
-                        state.just_pressed as u8,
-                        state.just_released as u8
+                        state.pressed as u8, state.just_pressed as u8, state.just_released as u8
                     ))
                 }
                 _ => None,

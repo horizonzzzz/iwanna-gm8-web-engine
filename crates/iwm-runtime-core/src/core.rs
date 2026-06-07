@@ -3,13 +3,14 @@ use std::collections::HashMap;
 use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 
 use crate::event_dispatch::{
-    collision_event_target_object_ids, object_event_block_ids, RuntimeEventSelector,
+    collision_event_target_object_ids, object_event_block_ids,
+    runtime_instance_indices_by_object_id, RuntimeEventSelector,
 };
 use crate::helpers::{as_number, collides_at, is_player_instance};
 use crate::{
-    LoweredLogicEntry, LoweredLogicStatement, RuntimeCoreError, RuntimePackage,
-    RuntimeInputTraceSnapshot, RuntimeInstance, RuntimeJumpSnapshot, RuntimePlayerSnapshot, RuntimeRoomState,
-    RuntimeSnapshot, RuntimeStatus, RuntimeValue,
+    LoweredLogicEntry, LoweredLogicStatement, RuntimeCoreError, RuntimeInputTraceSnapshot,
+    RuntimeInstance, RuntimeJumpSnapshot, RuntimePackage, RuntimePlayerSnapshot, RuntimeRoomState,
+    RuntimeSnapshot, RuntimeStatus, RuntimeTickPhaseSnapshot, RuntimeValue,
 };
 
 #[derive(Debug)]
@@ -27,6 +28,7 @@ pub struct RuntimeCore {
     pub(crate) globals: HashMap<String, RuntimeValue>,
     pub(crate) package_bootstrap_globals: HashMap<String, RuntimeValue>,
     pub(crate) last_input_trace: RuntimeInputTraceSnapshot,
+    pub(crate) last_tick_phases: RuntimeTickPhaseSnapshot,
 }
 
 impl RuntimeCore {
@@ -80,6 +82,7 @@ impl RuntimeCore {
                 jump_just_released: false,
                 active_keys: Vec::new(),
             },
+            last_tick_phases: RuntimeTickPhaseSnapshot::default(),
         };
 
         core.package_bootstrap_globals = core.collect_package_bootstrap_globals();
@@ -148,6 +151,7 @@ impl RuntimeCore {
                     })
             }),
             input_trace: self.last_input_trace.clone(),
+            tick_phases: self.last_tick_phases,
             diagnostics: self.diagnostics.clone(),
         }
     }
@@ -169,6 +173,10 @@ impl RuntimeCore {
             return Err(RuntimeCoreError::NoRooms);
         }
 
+        let tick_start = host.diagnostic_now_nanos();
+        let mut phase_start = tick_start;
+        let mut tick_phases = RuntimeTickPhaseSnapshot::default();
+
         let left = self.bound_button_state(host, "global.leftbutton", 0x25);
         let right = self.bound_button_state(host, "global.rightbutton", 0x27);
         let mut jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
@@ -187,7 +195,10 @@ impl RuntimeCore {
             );
         }
 
+        tick_phases.input_diag_nanos += mark_phase_elapsed(host, &mut phase_start);
+
         self.apply_pending_room_change()?;
+        tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
         let Some(room) = self.current_room.as_ref() else {
             self.status = RuntimeStatus::Error;
@@ -201,14 +212,25 @@ impl RuntimeCore {
                 "runtime-empty-room",
                 format!("room {} has no live instances", room.room_name),
             );
+            tick_phases.step_events_nanos += mark_phase_elapsed(host, &mut phase_start);
         } else {
             let step_result = self.execute_lowered_step_events(host)?;
+            tick_phases.step_events_nanos += mark_phase_elapsed(host, &mut phase_start);
+
             self.sync_current_room_views_from_globals();
+            tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
+
             if step_result.interrupted {
                 self.apply_pending_room_change()?;
+                tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
+
                 self.render(host)?;
+                tick_phases.render_submit_nanos += mark_phase_elapsed(host, &mut phase_start);
+                tick_phases.total_nanos = elapsed_since(host, tick_start);
+                self.last_tick_phases = tick_phases;
                 return Ok(());
             }
+
             if !step_result.player_motion_changed || step_result.player_jump_owned_by_script {
                 jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
                 self.step_player(
@@ -219,12 +241,15 @@ impl RuntimeCore {
                     !step_result.player_jump_owned_by_script,
                 )?;
             }
+            tick_phases.player_movement_nanos += mark_phase_elapsed(host, &mut phase_start);
         }
 
         self.dispatch_collision_events(host)?;
+        tick_phases.collision_events_nanos += mark_phase_elapsed(host, &mut phase_start);
 
         // Dispatch alarm events (countdown alarm state)
         self.process_alarm_countdowns(host)?;
+        tick_phases.alarms_nanos += mark_phase_elapsed(host, &mut phase_start);
 
         // Dispatch held keyboard events for any currently pressed key exposed by the host.
         for (button, state) in host.active_buttons() {
@@ -256,12 +281,17 @@ impl RuntimeCore {
         if restart.just_pressed {
             self.pending_room_reset = true;
         }
+        tick_phases.keyboard_events_nanos += mark_phase_elapsed(host, &mut phase_start);
 
         if self.pending_room_reset || self.pending_room_transition.is_some() {
             self.apply_pending_room_change()?;
         }
+        tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
         self.render(host)?;
+        tick_phases.render_submit_nanos += mark_phase_elapsed(host, &mut phase_start);
+        tick_phases.total_nanos = elapsed_since(host, tick_start);
+        self.last_tick_phases = tick_phases;
         Ok(())
     }
 
@@ -307,11 +337,8 @@ impl RuntimeCore {
                 .enumerate()
                 .filter(|(_, i)| i.alive)
                 .filter_map(|(idx, instance)| {
-                    let block_ids = object_event_block_ids(
-                        &self.package,
-                        instance.object_id,
-                        selector.clone(),
-                    );
+                    let block_ids =
+                        object_event_block_ids(&self.package, instance.object_id, selector.clone());
                     if block_ids.is_empty() {
                         None
                     } else {
@@ -426,15 +453,16 @@ impl RuntimeCore {
                 .enumerate()
                 .filter(|(_, i)| i.alive)
                 .flat_map(|(idx, instance)| {
-                    instance
-                        .vars
-                        .iter()
-                        .filter_map(move |(key, value)| match (parse_alarm_slot(key), value) {
-                            (Some(slot), RuntimeValue::Number(ticks)) if *ticks > 0.0 && *ticks <= 1.0 => {
+                    instance.vars.iter().filter_map(move |(key, value)| {
+                        match (parse_alarm_slot(key), value) {
+                            (Some(slot), RuntimeValue::Number(ticks))
+                                if *ticks > 0.0 && *ticks <= 1.0 =>
+                            {
                                 Some((idx, slot))
                             }
                             _ => None,
-                        })
+                        }
+                    })
                 })
                 .collect()
         };
@@ -486,20 +514,25 @@ impl RuntimeCore {
                 return Err(RuntimeCoreError::NoRooms);
             };
             let mut hits = Vec::new();
+            let indices_by_object_id = runtime_instance_indices_by_object_id(room);
             for instance in &room.instances {
                 if !instance.alive {
                     continue;
                 }
-                let target_object_ids = collision_event_target_object_ids(&self.package, instance.object_id);
+                let target_object_ids =
+                    collision_event_target_object_ids(&self.package, instance.object_id);
                 if target_object_ids.is_empty() {
                     continue;
                 }
                 for target_object_id in target_object_ids {
-                    for other in &room.instances {
-                        if !other.alive
-                            || instance.runtime_id == other.runtime_id
-                            || other.object_id != target_object_id
-                        {
+                    let Some(target_indices) = indices_by_object_id.get(&target_object_id) else {
+                        continue;
+                    };
+                    for other_index in target_indices {
+                        let Some(other) = room.instances.get(*other_index) else {
+                            continue;
+                        };
+                        if instance.runtime_id == other.runtime_id {
                             continue;
                         }
                         if crate::helpers::collides_at(
@@ -531,7 +564,12 @@ impl RuntimeCore {
                     RuntimeEventSelector::Collision { target_object_id },
                 )
             };
-            self.apply_event_blocks_to_instance(host, instance_idx, &block_ids, Some(other_instance));
+            self.apply_event_blocks_to_instance(
+                host,
+                instance_idx,
+                &block_ids,
+                Some(other_instance),
+            );
         }
 
         Ok(())
@@ -539,8 +577,31 @@ impl RuntimeCore {
 }
 
 fn parse_alarm_slot(key: &str) -> Option<u32> {
-    key.strip_prefix("alarm[")?
-        .strip_suffix(']')?
-        .parse()
-        .ok()
+    key.strip_prefix("alarm[")?.strip_suffix(']')?.parse().ok()
+}
+
+fn mark_phase_elapsed<H: RuntimeHost>(host: &H, phase_start: &mut Option<u128>) -> u64 {
+    let Some(start) = *phase_start else {
+        return 0;
+    };
+    let Some(end) = host.diagnostic_now_nanos() else {
+        *phase_start = None;
+        return 0;
+    };
+    *phase_start = Some(end);
+    nanos_between(start, end)
+}
+
+fn elapsed_since<H: RuntimeHost>(host: &H, start: Option<u128>) -> u64 {
+    let Some(start) = start else {
+        return 0;
+    };
+    let Some(end) = host.diagnostic_now_nanos() else {
+        return 0;
+    };
+    nanos_between(start, end)
+}
+
+fn nanos_between(start: u128, end: u128) -> u64 {
+    end.saturating_sub(start).min(u128::from(u64::MAX)) as u64
 }

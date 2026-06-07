@@ -16,7 +16,12 @@ pub fn export_raw_logic(assets: &GameAssets) -> RawLogicFile {
     let mut triggers = Vec::new();
     let mut timelines = Vec::new();
 
-    for (room_id, room) in assets.rooms.iter().enumerate().filter_map(|(id, room)| room.as_ref().map(|room| (id, room))) {
+    for (room_id, room) in assets
+        .rooms
+        .iter()
+        .enumerate()
+        .filter_map(|(id, room)| room.as_ref().map(|room| (id, room)))
+    {
         if !room.creation_code.0.is_empty() {
             room_creation_codes.push(RawLogicOwner {
                 owner_kind: RawLogicOwnerKind::Room,
@@ -46,7 +51,12 @@ pub fn export_raw_logic(assets: &GameAssets) -> RawLogicFile {
         }
     }
 
-    for (object_id, object) in assets.objects.iter().enumerate().filter_map(|(id, object)| object.as_ref().map(|object| (id, object))) {
+    for (object_id, object) in assets
+        .objects
+        .iter()
+        .enumerate()
+        .filter_map(|(id, object)| object.as_ref().map(|object| (id, object)))
+    {
         for (event_type, sub_events) in object.events.iter().enumerate() {
             for (sub_event, actions) in sub_events {
                 let event_tag = normalize_event_tag(event_type, *sub_event);
@@ -70,7 +80,12 @@ pub fn export_raw_logic(assets: &GameAssets) -> RawLogicFile {
         }
     }
 
-    for (script_id, script) in assets.scripts.iter().enumerate().filter_map(|(id, script)| script.as_ref().map(|script| (id, script))) {
+    for (script_id, script) in assets
+        .scripts
+        .iter()
+        .enumerate()
+        .filter_map(|(id, script)| script.as_ref().map(|script| (id, script)))
+    {
         scripts.push(RawLogicScript {
             script_id,
             script_name: script.name.to_string(),
@@ -78,7 +93,12 @@ pub fn export_raw_logic(assets: &GameAssets) -> RawLogicFile {
         });
     }
 
-    for (trigger_id, trigger) in assets.triggers.iter().enumerate().filter_map(|(id, trigger)| trigger.as_ref().map(|trigger| (id, trigger))) {
+    for (trigger_id, trigger) in assets
+        .triggers
+        .iter()
+        .enumerate()
+        .filter_map(|(id, trigger)| trigger.as_ref().map(|trigger| (id, trigger)))
+    {
         triggers.push(RawLogicTrigger {
             trigger_id,
             trigger_name: trigger.name.to_string(),
@@ -88,7 +108,12 @@ pub fn export_raw_logic(assets: &GameAssets) -> RawLogicFile {
         });
     }
 
-    for (timeline_id, timeline) in assets.timelines.iter().enumerate().filter_map(|(id, timeline)| timeline.as_ref().map(|timeline| (id, timeline))) {
+    for (timeline_id, timeline) in assets
+        .timelines
+        .iter()
+        .enumerate()
+        .filter_map(|(id, timeline)| timeline.as_ref().map(|timeline| (id, timeline)))
+    {
         for (moment, actions) in &timeline.moments {
             timelines.push(RawLogicTimelineMoment {
                 timeline_id,
@@ -124,4 +149,3 @@ fn raw_action(action: &CodeAction) -> RawCodeAction {
         ),
     }
 }
-

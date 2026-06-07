@@ -1,4 +1,6 @@
-use iwm_runtime_model::{CompatibilityLevel, ObjectDefinition, ObjectEventEntry, RoomDefinition, RuntimeManifest};
+use iwm_runtime_model::{
+    CompatibilityLevel, ObjectDefinition, ObjectEventEntry, RoomDefinition, RuntimeManifest,
+};
 use std::fs;
 use std::process::Command;
 
@@ -60,11 +62,10 @@ fn bgra_pixels_are_converted_to_rgba_order() {
 #[test]
 fn exported_sprite_resources_include_collision_bounding_box_fields() {
     use gm8exe::{
-        asset::Sprite,
         asset::sprite::{CollisionMap, Frame},
+        asset::Sprite,
         settings::{GameHelpDialog, Settings},
-        Colour,
-        GameAssets, GameVersion,
+        Colour, GameAssets, GameVersion,
     };
     use iwm_parser::resource_export::export_resources;
 
@@ -370,22 +371,40 @@ fn raw_logic_file_preserves_gml_ownership_and_source_text() {
 
     let json = serde_json::to_value(&raw).unwrap();
     assert_eq!(json["format"], "iwm-raw-logic-v1");
-    assert_eq!(json["room_creation_codes"][0]["gml_source"], "global.boss_hp = 100;");
-    assert_eq!(json["instance_creation_codes"][0]["gml_source"], "timer = -30;");
-    assert_eq!(json["object_events"][0]["actions"][0]["fn_code"], "timer += 1; if timer > 60 { y -= 2; }");
-    assert_eq!(json["scripts"][0]["gml_source"], "instance_create(x, y, obj_bullet);");
-    assert_eq!(json["triggers"][0]["condition_gml"], "distance_to_object(obj_player) < 32");
-    assert_eq!(json["timelines"][0]["actions"][0]["fn_code"], "alarm[0] = 60;");
+    assert_eq!(
+        json["room_creation_codes"][0]["gml_source"],
+        "global.boss_hp = 100;"
+    );
+    assert_eq!(
+        json["instance_creation_codes"][0]["gml_source"],
+        "timer = -30;"
+    );
+    assert_eq!(
+        json["object_events"][0]["actions"][0]["fn_code"],
+        "timer += 1; if timer > 60 { y -= 2; }"
+    );
+    assert_eq!(
+        json["scripts"][0]["gml_source"],
+        "instance_create(x, y, obj_bullet);"
+    );
+    assert_eq!(
+        json["triggers"][0]["condition_gml"],
+        "distance_to_object(obj_player) < 32"
+    );
+    assert_eq!(
+        json["timelines"][0]["actions"][0]["fn_code"],
+        "alarm[0] = 60;"
+    );
 }
 
 #[test]
 fn lowered_logic_file_tokenizes_assignments_and_calls_from_raw_logic() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
-    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
     use iwm_parser::models::{
         RawCodeAction, RawLogicEventBinding, RawLogicFile, RawLogicOwner, RawLogicOwnerKind,
         RawLogicScript,
     };
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
 
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),
@@ -455,10 +474,8 @@ fn lowered_logic_file_tokenizes_assignments_and_calls_from_raw_logic() {
 #[test]
 fn lowered_logic_file_recognizes_control_flow_blocks() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawCodeAction, RawLogicEventBinding, RawLogicFile};
     use iwm_parser::LoweredLogicStatement;
-    use iwm_parser::models::{
-        RawCodeAction, RawLogicEventBinding, RawLogicFile,
-    };
 
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),
@@ -497,8 +514,8 @@ fn lowered_logic_file_recognizes_control_flow_blocks() {
 #[test]
 fn lowered_logic_file_recognizes_common_loop_blocks() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
-    use iwm_parser::LoweredLogicStatement;
     use iwm_parser::models::{RawCodeAction, RawLogicEventBinding, RawLogicFile};
+    use iwm_parser::LoweredLogicStatement;
 
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),
@@ -530,7 +547,10 @@ fn lowered_logic_file_recognizes_common_loop_blocks() {
     let lowered = lower_raw_logic_file(&raw);
     let statements = &lowered.entries[0].statements;
     assert!(matches!(statements[0], LoweredLogicStatement::With { .. }));
-    assert!(matches!(statements[1], LoweredLogicStatement::Repeat { .. }));
+    assert!(matches!(
+        statements[1],
+        LoweredLogicStatement::Repeat { .. }
+    ));
     assert!(matches!(statements[2], LoweredLogicStatement::While { .. }));
     assert!(matches!(statements[3], LoweredLogicStatement::For { .. }));
 }
@@ -538,8 +558,8 @@ fn lowered_logic_file_recognizes_common_loop_blocks() {
 #[test]
 fn lowered_logic_file_preserves_nested_function_call_arguments() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
-    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
     use iwm_parser::models::{RawLogicFile, RawLogicScript};
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
 
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),
@@ -584,8 +604,8 @@ fn lowered_logic_file_preserves_nested_function_call_arguments() {
 #[test]
 fn lowered_logic_file_does_not_treat_comparisons_as_assignments() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawCodeAction, RawLogicEventBinding, RawLogicFile};
     use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
-    use iwm_parser::models::{RawLogicEventBinding, RawLogicFile, RawCodeAction};
 
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),
@@ -617,7 +637,10 @@ fn lowered_logic_file_does_not_treat_comparisons_as_assignments() {
     let lowered = lower_raw_logic_file(&raw);
     let statements = &lowered.entries[0].statements;
 
-    assert!(matches!(statements[0], LoweredLogicStatement::Conditional { .. }));
+    assert!(matches!(
+        statements[0],
+        LoweredLogicStatement::Conditional { .. }
+    ));
     assert!(matches!(
         statements[1],
         LoweredLogicStatement::Assignment { ref target, ref value }
@@ -635,8 +658,8 @@ fn lowered_logic_file_does_not_treat_comparisons_as_assignments() {
 #[test]
 fn lowered_logic_file_emits_structured_member_index_and_binary_expressions() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
-    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
     use iwm_parser::models::{RawLogicFile, RawLogicScript};
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
 
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),
@@ -699,8 +722,8 @@ fn lowered_logic_file_emits_structured_member_index_and_binary_expressions() {
 #[test]
 fn lowered_logic_file_handles_compound_assignments() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
-    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
     use iwm_parser::models::RawLogicFile;
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
 
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),
@@ -765,8 +788,8 @@ fn lowered_logic_file_handles_compound_assignments() {
 #[test]
 fn lowered_logic_file_handles_increment_and_decrement() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
-    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
     use iwm_parser::models::RawLogicFile;
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
 
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),
@@ -785,7 +808,10 @@ fn lowered_logic_file_handles_increment_and_decrement() {
     let lowered = lower_raw_logic_file(&raw);
     let statements = &lowered.entries[0].statements;
 
-    for (index, (name, op)) in [("i", "+"), ("j", "+"), ("k", "-"), ("m", "-")].into_iter().enumerate() {
+    for (index, (name, op)) in [("i", "+"), ("j", "+"), ("k", "-"), ("m", "-")]
+        .into_iter()
+        .enumerate()
+    {
         match &statements[index] {
             LoweredLogicStatement::Assignment { target, value } => {
                 assert!(matches!(target, LoweredLogicExpr::Identifier(ident) if ident == name));
@@ -810,8 +836,8 @@ fn lowered_logic_file_handles_increment_and_decrement() {
 fn object_event_entry_includes_normalized_event_tag() {
     // Event entries should include a human-readable event_tag for runtime dispatch
     let event = ObjectEventEntry {
-        event_type: 3,       // Step event
-        sub_event: 0,        // Step normal
+        event_type: 3, // Step event
+        sub_event: 0,  // Step normal
         event_tag: "step".to_string(),
         block_id: "object:0:event:3:0".to_string(),
         action_count: 2,
@@ -834,8 +860,8 @@ fn object_event_entry_event_tags_for_all_supported_event_types() {
         (3, 0, "step"),
         (3, 1, "step:begin"),
         (3, 2, "step:end"),
-        (4, 0, "collision"),  // collision target is dynamic, tag is generic
-        (5, 65, "keyboard:a"),  // ASCII key code
+        (4, 0, "collision"),   // collision target is dynamic, tag is generic
+        (5, 65, "keyboard:a"), // ASCII key code
         (6, 0, "mouse:left"),
         (7, 0, "other:outside"),
         (7, 1, "other:boundary"),
@@ -904,7 +930,7 @@ fn room_definition_includes_playability_metadata() {
         instances: vec![],
         creation_block_id: None,
         playable: true,
-        transition_targets: vec![1, 3],  // Room IDs this room can transition to
+        transition_targets: vec![1, 3], // Room IDs this room can transition to
     };
 
     let json = serde_json::to_value(&room).unwrap();
@@ -1001,7 +1027,7 @@ fn logic_block_distinguishes_executable_vs_source_only() {
             id: "object:0:event:0:0".to_string(),
             name: "obj_player Create".to_string(),
             kind: "object-event".to_string(),
-            support: "action-list".to_string(),  // Executable
+            support: "action-list".to_string(), // Executable
             executable_action_count: 3,
             ops: vec![LogicOp::ActionCall {
                 action_id: 1,
@@ -1019,7 +1045,7 @@ fn logic_block_distinguishes_executable_vs_source_only() {
             id: "room:0:create".to_string(),
             name: "room 0 creation".to_string(),
             kind: "room-creation".to_string(),
-            support: "source-only".to_string(),  // Requires GML lowering
+            support: "source-only".to_string(), // Requires GML lowering
             executable_action_count: 0,
             ops: vec![LogicOp::SourceSnippet {
                 code: "global.score = 0;".to_string(),
@@ -1061,16 +1087,25 @@ fn analysis_warnings_use_actionable_categories() {
     let json = serde_json::to_value(&analysis).unwrap();
     let warnings = json["warnings"].as_array().unwrap();
 
-    assert!(warnings.iter().any(|w| w.as_str().unwrap().starts_with("runtime-missing-source-lowering:")));
-    assert!(warnings.iter().any(|w| w.as_str().unwrap().starts_with("runtime-unsupported-event:")));
-    assert!(warnings.iter().any(|w| w.as_str().unwrap().starts_with("runtime-unsupported-action:")));
+    assert!(warnings.iter().any(|w| w
+        .as_str()
+        .unwrap()
+        .starts_with("runtime-missing-source-lowering:")));
+    assert!(warnings.iter().any(|w| w
+        .as_str()
+        .unwrap()
+        .starts_with("runtime-unsupported-event:")));
+    assert!(warnings.iter().any(|w| w
+        .as_str()
+        .unwrap()
+        .starts_with("runtime-unsupported-action:")));
 }
 
 #[test]
 fn lowered_logic_file_uses_code_action_args_when_fn_code_is_empty() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
-    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
     use iwm_parser::models::{RawCodeAction, RawLogicEventBinding, RawLogicFile};
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
 
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),
@@ -1091,7 +1126,9 @@ fn lowered_logic_file_uses_code_action_args_when_fn_code_is_empty() {
                 execution_type: 2,
                 fn_name: String::new(),
                 fn_code: String::new(),
-                args: vec!["if keyboard_check_pressed(global.jumpbutton) { playerJump(); }".to_string()],
+                args: vec![
+                    "if keyboard_check_pressed(global.jumpbutton) { playerJump(); }".to_string(),
+                ],
             }],
         }],
         scripts: vec![],
@@ -1318,7 +1355,12 @@ fn logic_and_raw_exports_share_normalized_event_tags_for_gm8_event_ids() {
         let assets = sample_assets_for_event(event_type, sub_event);
         let (room_defs, object_defs, _) =
             export_rooms_and_logic(&assets.rooms, &assets.objects, &assets.scripts);
-        assert!(room_defs.is_empty() || room_defs.iter().all(|room| room.transition_targets.is_empty()));
+        assert!(
+            room_defs.is_empty()
+                || room_defs
+                    .iter()
+                    .all(|room| room.transition_targets.is_empty())
+        );
 
         let logic_event = &object_defs[0].events[0];
         assert_eq!(logic_event.event_tag, expected_tag);
@@ -1379,14 +1421,14 @@ fn event_block_ids_are_stable_and_parseable() {
     assert_eq!(parts[0], "object");
     assert_eq!(parts[1], "12");
     assert_eq!(parts[2], "event");
-    assert_eq!(parts[3], "3");  // event_type
-    assert_eq!(parts[4], "0");  // sub_event
+    assert_eq!(parts[3], "3"); // event_type
+    assert_eq!(parts[4], "0"); // sub_event
 }
 
 #[test]
 fn room_transition_block_ids_follow_naming_convention() {
-    use iwm_parser::logic_export::room_creation_block_id;
     use iwm_parser::logic_export::instance_creation_block_id;
+    use iwm_parser::logic_export::room_creation_block_id;
 
     let room_create = room_creation_block_id(5);
     assert_eq!(room_create, "room:5:create");
@@ -1511,7 +1553,8 @@ fn export_rooms_and_logic_uses_readable_keyboard_event_tags() {
     };
     use iwm_parser::logic_export::export_rooms_and_logic;
 
-    let mut events: Vec<Vec<(u32, Vec<gm8exe::asset::CodeAction>)>> = (0..12).map(|_| Vec::new()).collect();
+    let mut events: Vec<Vec<(u32, Vec<gm8exe::asset::CodeAction>)>> =
+        (0..12).map(|_| Vec::new()).collect();
     events[5].push((65, Vec::new()));
 
     let objects: AssetList<Object> = vec![Some(Box::new(Object {

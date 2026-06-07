@@ -256,6 +256,19 @@ pub struct RuntimeInputTraceSnapshot {
     pub active_keys: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RuntimeTickPhaseSnapshot {
+    pub input_diag_nanos: u64,
+    pub step_events_nanos: u64,
+    pub view_sync_nanos: u64,
+    pub player_movement_nanos: u64,
+    pub collision_events_nanos: u64,
+    pub alarms_nanos: u64,
+    pub keyboard_events_nanos: u64,
+    pub render_submit_nanos: u64,
+    pub total_nanos: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct RuntimeSnapshot {
     pub status: RuntimeStatus,
@@ -265,6 +278,7 @@ pub struct RuntimeSnapshot {
     pub instance_count: usize,
     pub player: Option<RuntimePlayerSnapshot>,
     pub input_trace: RuntimeInputTraceSnapshot,
+    pub tick_phases: RuntimeTickPhaseSnapshot,
     pub diagnostics: Vec<RuntimeDiagnostic>,
 }
 

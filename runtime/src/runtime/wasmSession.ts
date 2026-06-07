@@ -4,6 +4,15 @@ import type { WasmRuntimeBridgeSnapshot } from './wasmBridge';
 export type WasmRuntimeStepResult = {
   snapshot: WasmRuntimeBridgeSnapshot;
   frame: WasmRuntimeFrame;
+  timings: WasmRuntimeStepTimings;
+};
+
+export type WasmRuntimeStepTimings = {
+  inputMs: number;
+  tickMs: number;
+  snapshotMs: number;
+  frameMs: number;
+  runtimeMs: number;
 };
 
 const DEFAULT_INPUT: WasmRuntimeInputState = {
@@ -27,7 +36,10 @@ export class WasmRuntimeSession {
   private pendingKeyPresses = new Set<number>();
   private pendingKeyReleases = new Set<number>();
 
-  constructor(private readonly bridge: WasmRuntimeBridge) {}
+  constructor(
+    private readonly bridge: WasmRuntimeBridge,
+    private readonly now: () => number = () => globalThis.performance?.now() ?? Date.now()
+  ) {}
 
   setInputState(
     snapshot: Pick<WasmRuntimeInputState, 'left' | 'right' | 'jump' | 'restart'>
@@ -76,10 +88,20 @@ export class WasmRuntimeSession {
 
   async stepOnce(): Promise<WasmRuntimeStepResult> {
     const input = { ...this.input };
+    const runtimeStart = this.now();
+    const inputStart = this.now();
     await this.bridge.setInput(input);
+    const inputMs = this.now() - inputStart;
+    const tickStart = this.now();
     await this.bridge.tick(1);
+    const tickMs = this.now() - tickStart;
+    const snapshotStart = this.now();
     const snapshot = await this.bridge.snapshot();
+    const snapshotMs = this.now() - snapshotStart;
+    const frameStart = this.now();
     const frame = await this.bridge.frame();
+    const frameMs = this.now() - frameStart;
+    const runtimeMs = this.now() - runtimeStart;
     this.pendingJumpPressed = false;
     this.pendingJumpReleased = false;
     this.pendingKeyPresses.clear();
@@ -88,6 +110,16 @@ export class WasmRuntimeSession {
     this.input.jumpReleased = false;
     this.input.keysPressed = [];
     this.input.keysReleased = [];
-    return { snapshot, frame };
+    return {
+      snapshot,
+      frame,
+      timings: {
+        inputMs,
+        tickMs,
+        snapshotMs,
+        frameMs,
+        runtimeMs
+      }
+    };
   }
 }

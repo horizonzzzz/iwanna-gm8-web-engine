@@ -87,20 +87,22 @@ fn runtime_core_renders_visible_view_as_canvas_frame() {
     for instance in &mut package.rooms[0].instances {
         instance.is_checkpoint = false;
     }
-    package.rooms[0].instances.push(iwm_runtime_model::RoomInstancePlacement {
-        instance_id: 99,
-        object_id: 0,
-        x: 64,
-        y: 64,
-        xscale: 1.0,
-        yscale: 1.0,
-        angle: 0.0,
-        blend: 0x00ff_ffff,
-        creation_block_id: None,
-        is_solid: false,
-        is_hazard: false,
-        is_checkpoint: false,
-    });
+    package.rooms[0]
+        .instances
+        .push(iwm_runtime_model::RoomInstancePlacement {
+            instance_id: 99,
+            object_id: 0,
+            x: 64,
+            y: 64,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: false,
+            is_hazard: false,
+            is_checkpoint: false,
+        });
 
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();
@@ -110,10 +112,10 @@ fn runtime_core_renders_visible_view_as_canvas_frame() {
     let frame = host.renderer.submitted_frames.last().unwrap();
     assert_eq!(frame.width, 800);
     assert_eq!(frame.height, 600);
-    assert!(frame.commands.iter().any(|command| matches!(
-        command,
-        RuntimeDrawCommand::DrawTile { x: 32, y: 32, .. }
-    )));
+    assert!(frame
+        .commands
+        .iter()
+        .any(|command| matches!(command, RuntimeDrawCommand::DrawTile { x: 32, y: 32, .. })));
     assert!(frame.commands.iter().any(|command| matches!(
         command,
         RuntimeDrawCommand::DrawSprite {

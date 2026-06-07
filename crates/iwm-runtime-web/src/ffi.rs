@@ -1,9 +1,9 @@
 use std::sync::{Mutex, OnceLock};
 
-use crate::{WebInputState, WebRuntimeHost};
 use crate::result_store::{
     last_result_len, read_utf8_from_ptr, store_error_result, store_json_result,
 };
+use crate::{WebInputState, WebRuntimeHost};
 
 fn runtime_host() -> &'static Mutex<WebRuntimeHost> {
     static RUNTIME: OnceLock<Mutex<WebRuntimeHost>> = OnceLock::new();

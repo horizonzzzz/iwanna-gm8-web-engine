@@ -1,7 +1,8 @@
 use iwm_runtime_host::{ButtonState, RuntimeHost};
 
 use crate::helpers::{
-    as_number, collides_at, is_player_instance, move_instance_axis, player_out_of_bounds, Axis,
+    as_number, collides_at, collision_candidates_near, is_player_instance, move_instance_axis,
+    player_out_of_bounds, Axis,
 };
 use crate::{RuntimeCore, RuntimeCoreError};
 
@@ -31,18 +32,75 @@ impl RuntimeCore {
         let room_width = room.width;
         let room_height = room.height;
         let room_name = room.room_name.clone();
-        let solids = room
+        let player_snapshot = room
             .instances
-            .iter()
-            .filter(|instance| instance.alive && instance.solid)
-            .cloned()
-            .collect::<Vec<_>>();
-        let hazards = room
-            .instances
-            .iter()
-            .filter(|instance| instance.alive && instance.hazard)
-            .cloned()
-            .collect::<Vec<_>>();
+            .get(player_index)
+            .ok_or(RuntimeCoreError::NoRooms)?
+            .clone();
+
+        let run_speed = player_snapshot
+            .vars
+            .get("moveSpeed")
+            .and_then(as_number)
+            .or_else(|| player_snapshot.vars.get("maxSpeed").and_then(as_number))
+            .unwrap_or(RUN_SPEED);
+        let jump_speed = player_snapshot
+            .vars
+            .get("jump")
+            .and_then(as_number)
+            .unwrap_or(JUMP_SPEED);
+        let jump_cut_speed = player_snapshot
+            .vars
+            .get("jump2")
+            .and_then(as_number)
+            .unwrap_or((jump_speed - 1.0).max(1.0));
+        let jump_hold_frames = player_snapshot
+            .vars
+            .get("jumpHoldFrames")
+            .and_then(as_number)
+            .unwrap_or(4.0)
+            .round() as u32;
+        let gravity = player_snapshot
+            .vars
+            .get("gravity")
+            .and_then(as_number)
+            .unwrap_or(GRAVITY);
+        let max_fall_speed = player_snapshot
+            .vars
+            .get("maxFallSpeed")
+            .and_then(as_number)
+            .unwrap_or(MAX_FALL_SPEED);
+
+        let next_hspeed = match (left_pressed, right_pressed) {
+            (true, false) => -run_speed,
+            (false, true) => run_speed,
+            _ => 0.0,
+        };
+        let movement_padding = next_hspeed
+            .abs()
+            .max(player_snapshot.vspeed.abs())
+            .max(jump_speed + gravity.abs())
+            .max(max_fall_speed)
+            .ceil()
+            + 2.0;
+        let solids = collision_candidates_near(
+            &player_snapshot,
+            player_snapshot.x,
+            player_snapshot.y,
+            &room.instances,
+            Some(player_snapshot.runtime_id),
+            movement_padding,
+            |instance| instance.alive && instance.solid,
+        );
+        let hazards = collision_candidates_near(
+            &player_snapshot,
+            player_snapshot.x,
+            player_snapshot.y,
+            &room.instances,
+            Some(player_snapshot.runtime_id),
+            movement_padding,
+            |instance| instance.alive && instance.hazard,
+        );
 
         let room = self
             .current_room
@@ -53,50 +111,17 @@ impl RuntimeCore {
             .get_mut(player_index)
             .ok_or(RuntimeCoreError::NoRooms)?;
 
-        let run_speed = player
-            .vars
-            .get("moveSpeed")
-            .and_then(as_number)
-            .or_else(|| player.vars.get("maxSpeed").and_then(as_number))
-            .unwrap_or(RUN_SPEED);
-        let jump_speed = player
-            .vars
-            .get("jump")
-            .and_then(as_number)
-            .unwrap_or(JUMP_SPEED);
-        let jump_cut_speed = player
-            .vars
-            .get("jump2")
-            .and_then(as_number)
-            .unwrap_or((jump_speed - 1.0).max(1.0));
-        let jump_hold_frames = player
-            .vars
-            .get("jumpHoldFrames")
-            .and_then(as_number)
-            .unwrap_or(4.0)
-            .round() as u32;
-        let gravity = player
-            .vars
-            .get("gravity")
-            .and_then(as_number)
-            .unwrap_or(GRAVITY);
-        let max_fall_speed = player
-            .vars
-            .get("maxFallSpeed")
-            .and_then(as_number)
-            .unwrap_or(MAX_FALL_SPEED);
-
         player.previous_x = player.x;
         player.previous_y = player.y;
 
         player.hspeed = match (left_pressed, right_pressed) {
             (true, false) => {
                 player.facing_left = true;
-                -run_speed
+                next_hspeed
             }
             (false, true) => {
                 player.facing_left = false;
-                run_speed
+                next_hspeed
             }
             _ => 0.0,
         };
@@ -127,7 +152,11 @@ impl RuntimeCore {
                 player.jump.hold_frames += 1;
             }
 
-            if jump.just_released && player.jump.active && player.vspeed < 0.0 && !player.jump.cut_applied {
+            if jump.just_released
+                && player.jump.active
+                && player.vspeed < 0.0
+                && !player.jump.cut_applied
+            {
                 player.vspeed = player.vspeed.max(-jump_cut_speed);
                 player.jump.cut_applied = true;
             }

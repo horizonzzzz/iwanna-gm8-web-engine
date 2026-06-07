@@ -27,6 +27,10 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - The runtime core now also hydrates missing package bootstrap globals before shell-driven manual `select_room` / `reload_room` jumps, using parser-lowered room-instance create blocks that assign `global.*`. This specifically fixes sample-package hand testing where direct entry into a playable room previously skipped required globals such as `global.grav`, making second jumps fail even though `Shift` press/release edges and `playerJump()` dispatch were already correct.
 - Package validation now accepts hidden room background layers that reference non-exported resources, matching the current renderer contract, while visible room backgrounds and tile backgrounds remain hard references.
 - Runtime snapshots and the browser shell now also expose jump-trace telemetry for the current player path: grounded state plus active / hold / cut jump-phase flags. This is a debugging and validation surface, not proof that the underlying jump semantics already match the gold sample.
+- The browser shell now also exposes per-frame runtime timing telemetry for the WASM path, including separate input, tick, snapshot, frame, canvas render, total frame, draw command count, and skipped auto-tick interval values. Runtime snapshots also carry the previous runtime-core tick phase timings for input diagnostics, lowered step events, view sync, player movement, collision events, alarms, keyboard events, and render submission. This makes large-room slowdowns visible when the shell cannot finish a tick/render cycle inside the 60 Hz interval, and separates runtime-core work from frame JSON and browser drawing.
+- Runtime-core player fallback movement now filters solid and hazard collision candidates to instances near the player's current motion envelope before running bbox and sprite-mask collision checks, and it no longer clones the full room instance list before filtering those candidates.
+- Runtime-core lowered step dispatch now shares host input/file sampling across all step owners in a tick and evaluates against the original room instance slice without cloning the full room snapshot. Large rooms can still be expensive because broader event dispatch and render-frame command generation continue to scan full room instance/tile lists.
+- Runtime-core collision event dispatch now indexes live instances by `object_id` before checking collision targets, so large rooms with many collision-event owners targeting the player do not scan every room instance for each owner.
 
 Practical parser note:
 
@@ -179,6 +183,14 @@ Current status:
   sizing browser frames to the full room
 - the current lowered runtime slice supports the gold sample's fixed-screen
   camera pattern through `view_xview` / `view_yview` assignments
+- player fallback movement no longer checks every solid/hazard in a large room
+  for each collision probe and no longer clones the full room instance list
+  before filtering nearby candidates
+- lowered step dispatch no longer clones the full room instance snapshot or
+  repeats known-file host sampling for each step owner
+- frame generation and general event dispatch are not yet spatially indexed
+- collision event dispatch now narrows candidates by target `object_id` before
+  running collision checks
 
 Still missing:
 
@@ -186,6 +198,8 @@ Still missing:
 - `view_angle` rendering
 - full GM8 follow-target camera updates across object ids and instance ids
 - outside/intersect-view event parity
+- spatial indexing or cached visible slices for room tiles, visible instances,
+  and remaining full-room scans
 
 ### 9. Room Persistence
 

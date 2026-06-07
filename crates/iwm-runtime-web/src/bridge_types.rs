@@ -47,6 +47,20 @@ pub struct BridgeInputTraceSnapshot {
     pub active_keys: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeTickPhaseSnapshot {
+    pub input_diag_nanos: u64,
+    pub step_events_nanos: u64,
+    pub view_sync_nanos: u64,
+    pub player_movement_nanos: u64,
+    pub collision_events_nanos: u64,
+    pub alarms_nanos: u64,
+    pub keyboard_events_nanos: u64,
+    pub render_submit_nanos: u64,
+    pub total_nanos: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgeSnapshot {
@@ -57,11 +71,16 @@ pub struct BridgeSnapshot {
     pub instance_count: usize,
     pub player: Option<BridgePlayerSnapshot>,
     pub input_trace: BridgeInputTraceSnapshot,
+    pub tick_phases: BridgeTickPhaseSnapshot,
     pub diagnostics: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
 pub enum BridgeDrawCommand {
     Clear {
         colour: [u8; 4],

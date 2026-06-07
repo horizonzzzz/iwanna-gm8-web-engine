@@ -1,17 +1,20 @@
 use std::path::{Path, PathBuf};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
 
 use crate::{
     ButtonState, DeterministicClock, ExternalSignature, ExternalValue, MemoryFileHost,
-    NoopAudioHost, NullRenderHost, RejectingExternalHost, RuntimeAudioHost,
-    RuntimeButton, RuntimeDiagnostic, RuntimeDiagnosticsHost, RuntimeExternalHost,
-    RuntimeFileHost, RuntimeHostError, RuntimeInputHost, RuntimeRenderFrame,
-    RuntimeRenderHost, RuntimeSoundMode, RuntimeTimeHost, SnapshotInputHost,
-    VecDiagnosticsHost,
+    NoopAudioHost, NullRenderHost, RejectingExternalHost, RuntimeAudioHost, RuntimeButton,
+    RuntimeDiagnostic, RuntimeDiagnosticsHost, RuntimeExternalHost, RuntimeFileHost,
+    RuntimeHostError, RuntimeInputHost, RuntimeRenderFrame, RuntimeRenderHost, RuntimeSoundMode,
+    RuntimeTimeHost, SnapshotInputHost, VecDiagnosticsHost,
 };
 
 #[derive(Debug)]
 pub struct HeadlessHost {
     pub clock: DeterministicClock,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub diagnostic_start: Instant,
     pub input: SnapshotInputHost,
     pub renderer: NullRenderHost,
     pub audio: NoopAudioHost,
@@ -24,6 +27,8 @@ impl HeadlessHost {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             clock: DeterministicClock::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            diagnostic_start: Instant::now(),
             input: SnapshotInputHost::default(),
             renderer: NullRenderHost::default(),
             audio: NoopAudioHost::default(),
@@ -37,6 +42,10 @@ impl HeadlessHost {
 impl RuntimeTimeHost for HeadlessHost {
     fn now_nanos(&self) -> u128 {
         self.clock.now_nanos()
+    }
+
+    fn diagnostic_now_nanos(&self) -> Option<u128> {
+        diagnostic_now_nanos(self)
     }
 
     fn tick_rate_hz(&self) -> u32 {
@@ -118,6 +127,27 @@ impl RuntimeDiagnosticsHost for HeadlessHost {
     fn record(&mut self, diagnostic: RuntimeDiagnostic) {
         self.diagnostics.record(diagnostic);
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn diagnostic_now_nanos(host: &HeadlessHost) -> Option<u128> {
+    Some(host.diagnostic_start.elapsed().as_nanos())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn diagnostic_now_nanos(_host: &HeadlessHost) -> Option<u128> {
+    let nanos = unsafe { iwm_host_now_nanos() };
+    if nanos.is_finite() && nanos >= 0.0 {
+        Some(nanos as u128)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[link(wasm_import_module = "env")]
+extern "C" {
+    fn iwm_host_now_nanos() -> f64;
 }
 
 #[cfg(test)]

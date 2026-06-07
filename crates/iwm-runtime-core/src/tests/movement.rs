@@ -1,7 +1,7 @@
 use iwm_runtime_host::{ButtonState, RuntimeButton};
 use iwm_runtime_model::{RoomInstancePlacement, SpriteCollisionMask};
 
-use crate::helpers::collides_at;
+use crate::helpers::{collides_at, collision_candidate_indices_near, collision_candidates_near};
 use crate::RuntimeCore;
 
 use super::support::{add_room_create_block, capture_jump_trace, host, sample_package};
@@ -110,7 +110,11 @@ fn core_preserves_fractional_vertical_jump_motion() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert!((player.y - 15.9).abs() < 1e-9, "expected y=15.9 after jump/gravity, got {}", player.y);
+    assert!(
+        (player.y - 15.9).abs() < 1e-9,
+        "expected y=15.9 after jump/gravity, got {}",
+        player.y
+    );
 }
 
 #[test]
@@ -392,6 +396,101 @@ fn core_collisions_use_runtime_bbox_instead_of_whole_sprite_extents() {
 }
 
 #[test]
+fn core_filters_player_collision_candidates_to_nearby_instances() {
+    let mut package = sample_package();
+    for index in 0..250 {
+        package.rooms[0]
+            .instances
+            .push(iwm_runtime_model::RoomInstancePlacement {
+                instance_id: 2000 + index,
+                object_id: 2,
+                x: 10_000 + index as i32 * 32,
+                y: 10_000,
+                xscale: 1.0,
+                yscale: 1.0,
+                angle: 0.0,
+                blend: 0x00ff_ffff,
+                creation_block_id: None,
+                is_solid: true,
+                is_hazard: false,
+                is_checkpoint: false,
+            });
+    }
+    let core = RuntimeCore::load(package).unwrap();
+    let room = core.current_room().unwrap();
+    let player_index = room
+        .instances
+        .iter()
+        .position(|instance| instance.player_candidate)
+        .unwrap();
+    let player = room.instances[player_index].clone();
+    let candidates = collision_candidates_near(
+        &player,
+        player.x,
+        player.y,
+        &room.instances,
+        Some(player.runtime_id),
+        32.0,
+        |instance| instance.alive && instance.solid,
+    );
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].object_name, "obj_block");
+    assert!(collides_at(
+        &player,
+        player.x,
+        player.y + 16.0,
+        &candidates,
+        Some(player.runtime_id)
+    ));
+}
+
+#[test]
+fn core_can_find_nearby_collision_candidate_indices_without_cloning_candidates() {
+    let mut package = sample_package();
+    for index in 0..250 {
+        package.rooms[0].instances.push(RoomInstancePlacement {
+            instance_id: 3000 + index,
+            object_id: 2,
+            x: 20_000 + index as i32 * 32,
+            y: 20_000,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: true,
+            is_hazard: false,
+            is_checkpoint: false,
+        });
+    }
+    let core = RuntimeCore::load(package).unwrap();
+    let room = core.current_room().unwrap();
+    let player_index = room
+        .instances
+        .iter()
+        .position(|instance| instance.player_candidate)
+        .unwrap();
+    let player = &room.instances[player_index];
+
+    let candidate_indices = collision_candidate_indices_near(
+        player,
+        player.x,
+        player.y,
+        &room.instances,
+        Some(player.runtime_id),
+        32.0,
+        |instance| instance.alive && instance.solid,
+    );
+
+    assert_eq!(candidate_indices.len(), 1);
+    assert_eq!(
+        room.instances[candidate_indices[0]].object_name,
+        "obj_block"
+    );
+}
+
+#[test]
 fn core_tracks_left_facing_state_for_player_movement() {
     let mut core = RuntimeCore::load(sample_package()).unwrap();
     let mut host = host();
@@ -444,7 +543,10 @@ fn core_initializes_and_clears_jump_state_on_room_reset() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!(initial_player.jump, crate::types::RuntimeJumpState::default());
+    assert_eq!(
+        initial_player.jump,
+        crate::types::RuntimeJumpState::default()
+    );
 
     let room = core.current_room.as_mut().unwrap();
     let player = room

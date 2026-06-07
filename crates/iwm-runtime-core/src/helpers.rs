@@ -71,6 +71,68 @@ pub(crate) fn collides_at(
     })
 }
 
+pub(crate) fn collision_candidates_near<F>(
+    instance: &RuntimeInstance,
+    x: f64,
+    y: f64,
+    others: &[RuntimeInstance],
+    ignore_runtime_id: Option<usize>,
+    padding: f64,
+    predicate: F,
+) -> Vec<RuntimeInstance>
+where
+    F: Fn(&RuntimeInstance) -> bool,
+{
+    collision_candidate_indices_near(
+        instance,
+        x,
+        y,
+        others,
+        ignore_runtime_id,
+        padding,
+        predicate,
+    )
+    .into_iter()
+    .filter_map(|index| others.get(index).cloned())
+    .collect()
+}
+
+pub(crate) fn collision_candidate_indices_near<F>(
+    instance: &RuntimeInstance,
+    x: f64,
+    y: f64,
+    others: &[RuntimeInstance],
+    ignore_runtime_id: Option<usize>,
+    padding: f64,
+    predicate: F,
+) -> Vec<usize>
+where
+    F: Fn(&RuntimeInstance) -> bool,
+{
+    let padding = padding.max(0.0).ceil() as i32;
+    let (left, top, right, bottom) = bounds_at(instance, x, y);
+    let query_left = left - padding;
+    let query_top = top - padding;
+    let query_right = right + padding;
+    let query_bottom = bottom + padding;
+
+    others
+        .iter()
+        .enumerate()
+        .filter(|(_, other)| ignore_runtime_id != Some(other.runtime_id))
+        .filter(|(_, other)| predicate(other))
+        .filter_map(|(index, other)| {
+            let (other_left, other_top, other_right, other_bottom) =
+                bounds_at(other, other.x, other.y);
+            (query_left < other_right
+                && query_right > other_left
+                && query_top < other_bottom
+                && query_bottom > other_top)
+                .then_some(index)
+        })
+        .collect()
+}
+
 fn active_collision_mask(instance: &RuntimeInstance) -> Option<&RuntimeCollisionMask> {
     instance.collision_masks.first().filter(|mask| {
         let expected_len = mask.width.checked_mul(mask.height).unwrap_or(0) as usize;
@@ -206,7 +268,13 @@ pub(crate) fn adjusted_spawn_for_player(
         .cloned()
         .collect::<Vec<_>>();
 
-    if !collides_at(player, spawn_x as f64, spawn_y as f64, &solids, Some(player.runtime_id)) {
+    if !collides_at(
+        player,
+        spawn_x as f64,
+        spawn_y as f64,
+        &solids,
+        Some(player.runtime_id),
+    ) {
         return (spawn_x, spawn_y);
     }
 

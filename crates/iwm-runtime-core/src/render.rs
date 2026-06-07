@@ -46,22 +46,25 @@ fn active_view_for_room(room: &RuntimeRoomState) -> Option<ActiveView> {
         return None;
     }
 
-    room.views.iter().find(|view| view.visible).and_then(|view| {
-        if view.source_w == 0 || view.source_h == 0 || view.port_w == 0 || view.port_h == 0 {
-            None
-        } else {
-            Some(ActiveView {
-                source_x: view.source_x,
-                source_y: view.source_y,
-                source_w: view.source_w,
-                source_h: view.source_h,
-                port_x: view.port_x,
-                port_y: view.port_y,
-                port_w: view.port_w,
-                port_h: view.port_h,
-            })
-        }
-    })
+    room.views
+        .iter()
+        .find(|view| view.visible)
+        .and_then(|view| {
+            if view.source_w == 0 || view.source_h == 0 || view.port_w == 0 || view.port_h == 0 {
+                None
+            } else {
+                Some(ActiveView {
+                    source_x: view.source_x,
+                    source_y: view.source_y,
+                    source_w: view.source_w,
+                    source_h: view.source_h,
+                    port_x: view.port_x,
+                    port_y: view.port_y,
+                    port_w: view.port_w,
+                    port_h: view.port_h,
+                })
+            }
+        })
 }
 
 impl RuntimeCore {
@@ -77,8 +80,12 @@ impl RuntimeCore {
             .ok_or(RuntimeCoreError::RoomMissing(room.room_id))?;
         let active_view = active_view_for_room(room);
         let active_bounds = active_view.map(ActiveView::source_bounds);
-        let frame_width = active_view.map(ActiveView::frame_width).unwrap_or(room.width);
-        let frame_height = active_view.map(ActiveView::frame_height).unwrap_or(room.height);
+        let frame_width = active_view
+            .map(ActiveView::frame_width)
+            .unwrap_or(room.width);
+        let frame_height = active_view
+            .map(ActiveView::frame_height)
+            .unwrap_or(room.height);
 
         let mut commands = vec![RuntimeDrawCommand::Clear {
             colour: Rgba8 {

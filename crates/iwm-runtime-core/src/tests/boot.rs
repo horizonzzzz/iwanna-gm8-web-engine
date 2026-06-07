@@ -1,8 +1,8 @@
+use crate::helpers::is_player_instance;
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicFile, LoweredLogicStatement, RuntimeCore,
     RuntimeCoreError, RuntimeStatus,
 };
-use crate::helpers::is_player_instance;
 
 use super::support::sample_package;
 
@@ -12,7 +12,10 @@ fn core_loads_default_room_and_instances() {
 
     assert_eq!(core.status(), RuntimeStatus::Ready);
     assert_eq!(core.current_room().map(|room| room.room_id), Some(7));
-    assert_eq!(core.current_room().map(|room| room.instances.len()), Some(5));
+    assert_eq!(
+        core.current_room().map(|room| room.instances.len()),
+        Some(5)
+    );
     assert!(core.current_room().unwrap().instances[0].player_candidate);
 }
 
@@ -21,7 +24,10 @@ fn core_preserves_sparse_object_ids_in_room_instances() {
     let core = RuntimeCore::load(sample_package()).unwrap();
     let room = core.current_room().unwrap();
 
-    assert!(room.instances.iter().any(|instance| instance.object_id == 705));
+    assert!(room
+        .instances
+        .iter()
+        .any(|instance| instance.object_id == 705));
     assert!(room
         .instances
         .iter()
@@ -132,9 +138,10 @@ fn core_does_not_treat_player_start_markers_as_spawned_players() {
     let room = core.current_room().unwrap();
 
     assert!(!room.instances.iter().any(is_player_instance));
-    assert!(room.instances.iter().any(|instance| {
-        instance.object_name == "playerStart" && instance.player_candidate
-    }));
+    assert!(room
+        .instances
+        .iter()
+        .any(|instance| { instance.object_name == "playerStart" && instance.player_candidate }));
 }
 
 #[test]
@@ -171,7 +178,8 @@ fn core_loads_structured_lowered_logic_entries() {
     let core = RuntimeCore::load(package).unwrap();
 
     assert_eq!(core.current_room().map(|room| room.room_id), Some(7));
-    assert!(core
-        .current_room()
-        .is_some_and(|room| room.instances.iter().any(|instance| instance.player_candidate)));
+    assert!(core.current_room().is_some_and(|room| room
+        .instances
+        .iter()
+        .any(|instance| instance.player_candidate)));
 }

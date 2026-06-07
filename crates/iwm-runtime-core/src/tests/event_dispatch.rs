@@ -1,12 +1,13 @@
-use iwm_runtime_host::{ButtonState, RuntimeButton};
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
+use iwm_runtime_host::{ButtonState, RuntimeButton};
 
 use super::support::{
     add_alarm_block, add_collision_block, add_create_block, add_keyboard_block,
     add_keyboard_press_block, add_keyboard_release_block, host, sample_package,
 };
 use crate::event_dispatch::{
-    collision_event_target_object_ids, object_event_block_ids, RuntimeEventSelector,
+    collision_event_target_object_ids, object_event_block_ids,
+    runtime_instance_indices_by_object_id, RuntimeEventSelector,
 };
 
 #[test]
@@ -127,7 +128,10 @@ fn core_does_not_retrigger_keyboard_press_events_for_held_input() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!(player.vars.get("press_count"), Some(&RuntimeValue::Number(1.0)));
+    assert_eq!(
+        player.vars.get("press_count"),
+        Some(&RuntimeValue::Number(1.0))
+    );
 }
 
 #[test]
@@ -304,6 +308,37 @@ fn collision_target_object_ids_fall_back_through_parent_inheritance() {
     let target_ids = collision_event_target_object_ids(&package, 1);
 
     assert_eq!(target_ids, vec![2]);
+}
+
+#[test]
+fn collision_dispatch_can_index_runtime_instances_by_object_id() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let block = room
+            .instances
+            .iter()
+            .find(|instance| instance.solid)
+            .unwrap()
+            .clone();
+        for offset in 0..128 {
+            let mut clone = block.clone();
+            clone.runtime_id = room.instances.len();
+            clone.instance_id = 10_000 + offset;
+            clone.x = 10_000.0 + f64::from(offset);
+            room.instances.push(clone);
+        }
+    }
+
+    let room = core.current_room().unwrap();
+    let indexed = runtime_instance_indices_by_object_id(room);
+
+    assert_eq!(
+        indexed.get(&0).map(Vec::len),
+        Some(1),
+        "player target lookup should not include unrelated room instances"
+    );
+    assert_eq!(indexed.get(&2).map(Vec::len), Some(129));
 }
 
 #[test]

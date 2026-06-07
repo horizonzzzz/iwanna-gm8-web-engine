@@ -60,50 +60,54 @@ impl RuntimeCore {
         &mut self,
         host: &mut H,
     ) -> Result<StepExecutionResult, RuntimeCoreError> {
-        let Some(room) = self.current_room.as_ref() else {
-            return Err(RuntimeCoreError::NoRooms);
-        };
-
         let step_event_blocks = self.object_event_blocks_by_tag("step");
         let script_entries = self.lowered_script_entries();
         let room_order = self.runtime_room_order();
-        let room_instances_snapshot = room.instances.clone();
-        let dispatches = room
-            .instances
-            .iter()
-            .enumerate()
-            .filter(|(_, instance)| instance.alive)
-            .filter_map(|(index, instance)| {
-                let entries = step_event_blocks
-                    .get(&instance.object_id)
-                    .into_iter()
-                    .flat_map(|block_ids| block_ids.iter())
-                    .filter_map(|block_id| self.lowered_logic_entry(block_id).cloned())
-                    .collect::<Vec<_>>();
+        let button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
+        let known_files = sample_known_files(host);
+        let (current_room_id, dispatches) = {
+            let Some(room) = self.current_room.as_ref() else {
+                return Err(RuntimeCoreError::NoRooms);
+            };
+            let dispatches = room
+                .instances
+                .iter()
+                .enumerate()
+                .filter(|(_, instance)| instance.alive)
+                .filter_map(|(index, instance)| {
+                    let entries = step_event_blocks
+                        .get(&instance.object_id)
+                        .into_iter()
+                        .flat_map(|block_ids| block_ids.iter())
+                        .filter_map(|block_id| self.lowered_logic_entry(block_id).cloned())
+                        .collect::<Vec<_>>();
 
-                if entries.is_empty() {
-                    None
-                } else {
-                    Some((index, entries))
-                }
-            })
-            .collect::<Vec<_>>();
+                    if entries.is_empty() {
+                        None
+                    } else {
+                        Some((index, entries))
+                    }
+                })
+                .collect::<Vec<_>>();
+            (room.room_id, dispatches)
+        };
 
         let mut player_motion_changed = false;
         let mut player_jump_owned_by_script = false;
+        let mut instance_updates = Vec::new();
 
         for (index, entries) in dispatches {
-            let button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
-            let Some(room) = self.current_room.as_mut() else {
-                return Err(RuntimeCoreError::NoRooms);
-            };
-            let Some(instance) = room.instances.get_mut(index) else {
+            let Some(mut instance) = self
+                .current_room
+                .as_ref()
+                .and_then(|room| room.instances.get(index).cloned())
+            else {
                 continue;
             };
             if !instance.alive {
                 continue;
             }
-            let is_player = crate::helpers::is_player_instance(instance);
+            let is_player = crate::helpers::is_player_instance(&instance);
             let motion_before = (instance.x, instance.y, instance.hspeed, instance.vspeed);
             if is_player
                 && entries
@@ -112,37 +116,49 @@ impl RuntimeCore {
             {
                 player_jump_owned_by_script = true;
             }
-            let known_files = sample_known_files(host);
 
-            let eval_context = RuntimeEvalContext {
-                current_room_id: room.room_id,
-                button_states: &button_states,
-                room_instances: &room_instances_snapshot,
-                room_order: &room_order,
-                objects: &self.package.objects,
-                known_files: &known_files,
-                other_instance: None,
-            };
+            {
+                let Some(room) = self.current_room.as_ref() else {
+                    return Err(RuntimeCoreError::NoRooms);
+                };
+                let eval_context = RuntimeEvalContext {
+                    current_room_id,
+                    button_states: &button_states,
+                    room_instances: &room.instances,
+                    room_order: &room_order,
+                    objects: &self.package.objects,
+                    known_files: &known_files,
+                    other_instance: None,
+                };
 
-            for entry in &entries {
-                for statement in &entry.statements {
-                    apply_runtime_statement(
-                        statement,
-                        instance,
-                        &script_entries,
-                        &mut self.globals,
-                        &mut self.pending_room_transition,
-                        &mut self.pending_room_reset,
-                        host,
-                        &mut self.diagnostics,
-                        Some(&eval_context),
-                    );
-                    if self.pending_room_reset || self.pending_room_transition.is_some() {
-                        return Ok(StepExecutionResult {
-                            interrupted: true,
-                            player_motion_changed,
-                            player_jump_owned_by_script,
-                        });
+                for entry in &entries {
+                    for statement in &entry.statements {
+                        apply_runtime_statement(
+                            statement,
+                            &mut instance,
+                            &script_entries,
+                            &mut self.globals,
+                            &mut self.pending_room_transition,
+                            &mut self.pending_room_reset,
+                            host,
+                            &mut self.diagnostics,
+                            Some(&eval_context),
+                        );
+                        if self.pending_room_reset || self.pending_room_transition.is_some() {
+                            instance_updates.push((index, instance));
+                            if let Some(room) = self.current_room.as_mut() {
+                                for (update_index, updated_instance) in instance_updates {
+                                    if let Some(slot) = room.instances.get_mut(update_index) {
+                                        *slot = updated_instance;
+                                    }
+                                }
+                            }
+                            return Ok(StepExecutionResult {
+                                interrupted: true,
+                                player_motion_changed,
+                                player_jump_owned_by_script,
+                            });
+                        }
                     }
                 }
             }
@@ -151,6 +167,15 @@ impl RuntimeCore {
                 && (instance.x, instance.y, instance.hspeed, instance.vspeed) != motion_before
             {
                 player_motion_changed = true;
+            }
+            instance_updates.push((index, instance));
+        }
+
+        if let Some(room) = self.current_room.as_mut() {
+            for (index, instance) in instance_updates {
+                if let Some(slot) = room.instances.get_mut(index) {
+                    *slot = instance;
+                }
             }
         }
 

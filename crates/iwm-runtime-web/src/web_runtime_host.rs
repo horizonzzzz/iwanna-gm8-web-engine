@@ -1,12 +1,10 @@
 use iwm_runtime_core::{RuntimeCore, RuntimePackage};
 use iwm_runtime_host::{ButtonState, HeadlessHost, RuntimeButton};
 
-use crate::{
-    BridgeFrameSnapshot, BridgeSnapshot, WebInputState,
-};
 use crate::translate::{
     bridge_draw_command, bridge_frame_snapshot, bridge_snapshot, format_core_error,
 };
+use crate::{BridgeFrameSnapshot, BridgeSnapshot, WebInputState};
 
 #[derive(Debug)]
 pub struct WebRuntimeHost {
@@ -45,8 +43,8 @@ impl WebRuntimeHost {
     }
 
     pub fn boot_from_json(&mut self, package_json: &str) -> Result<BridgeSnapshot, String> {
-        let package =
-            serde_json::from_str::<RuntimePackage>(package_json).map_err(|error| error.to_string())?;
+        let package = serde_json::from_str::<RuntimePackage>(package_json)
+            .map_err(|error| error.to_string())?;
         self.boot(package)
     }
 
@@ -172,7 +170,9 @@ impl WebRuntimeHost {
     }
 
     pub fn snapshot(&self) -> Option<BridgeSnapshot> {
-        self.core.as_ref().map(|core| bridge_snapshot(core.snapshot()))
+        self.core
+            .as_ref()
+            .map(|core| bridge_snapshot(core.snapshot()))
     }
 
     pub fn diagnostics(&self) -> Vec<String> {

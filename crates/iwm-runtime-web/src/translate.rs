@@ -1,12 +1,12 @@
 use iwm_runtime_core::{
     RuntimeCoreError, RuntimeInputTraceSnapshot, RuntimeJumpSnapshot, RuntimePlayerSnapshot,
-    RuntimeSnapshot, RuntimeStatus,
+    RuntimeSnapshot, RuntimeStatus, RuntimeTickPhaseSnapshot,
 };
 use iwm_runtime_host::{RuntimeDiagnostic, RuntimeDrawCommand};
 
 use crate::{
     BridgeDrawCommand, BridgeFrameSnapshot, BridgeInputTraceSnapshot, BridgeJumpSnapshot,
-    BridgePlayerSnapshot, BridgeSnapshot,
+    BridgePlayerSnapshot, BridgeSnapshot, BridgeTickPhaseSnapshot,
 };
 
 pub fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
@@ -18,6 +18,7 @@ pub fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
         instance_count: snapshot.instance_count,
         player: snapshot.player.map(bridge_player_snapshot),
         input_trace: bridge_input_trace_snapshot(snapshot.input_trace),
+        tick_phases: bridge_tick_phase_snapshot(snapshot.tick_phases),
         diagnostics: format_diagnostics(&snapshot.diagnostics),
     }
 }
@@ -42,13 +43,29 @@ pub fn bridge_jump_snapshot(snapshot: RuntimeJumpSnapshot) -> BridgeJumpSnapshot
     }
 }
 
-pub fn bridge_input_trace_snapshot(snapshot: RuntimeInputTraceSnapshot) -> BridgeInputTraceSnapshot {
+pub fn bridge_input_trace_snapshot(
+    snapshot: RuntimeInputTraceSnapshot,
+) -> BridgeInputTraceSnapshot {
     BridgeInputTraceSnapshot {
         jump_button_key: snapshot.jump_button_key,
         jump_pressed: snapshot.jump_pressed,
         jump_just_pressed: snapshot.jump_just_pressed,
         jump_just_released: snapshot.jump_just_released,
         active_keys: snapshot.active_keys,
+    }
+}
+
+pub fn bridge_tick_phase_snapshot(snapshot: RuntimeTickPhaseSnapshot) -> BridgeTickPhaseSnapshot {
+    BridgeTickPhaseSnapshot {
+        input_diag_nanos: snapshot.input_diag_nanos,
+        step_events_nanos: snapshot.step_events_nanos,
+        view_sync_nanos: snapshot.view_sync_nanos,
+        player_movement_nanos: snapshot.player_movement_nanos,
+        collision_events_nanos: snapshot.collision_events_nanos,
+        alarms_nanos: snapshot.alarms_nanos,
+        keyboard_events_nanos: snapshot.keyboard_events_nanos,
+        render_submit_nanos: snapshot.render_submit_nanos,
+        total_nanos: snapshot.total_nanos,
     }
 }
 

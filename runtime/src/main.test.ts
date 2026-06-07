@@ -360,6 +360,17 @@ describe('main runtime shell', () => {
     jumpJustReleased: false,
     activeKeys: []
   };
+  const defaultTickPhases = {
+    inputDiagNanos: 100_000,
+    stepEventsNanos: 2_500_000,
+    viewSyncNanos: 50_000,
+    playerMovementNanos: 700_000,
+    collisionEventsNanos: 400_000,
+    alarmsNanos: 30_000,
+    keyboardEventsNanos: 20_000,
+    renderSubmitNanos: 300_000,
+    totalNanos: 4_100_000
+  };
 
   beforeEach(() => {
     doc = new FakeDocument();
@@ -1094,6 +1105,124 @@ describe('main runtime shell', () => {
 
     const diagnosticsPre = doc.querySelector<FakeElement>('pre');
     expect((diagnosticsPre?.textContent ?? '').length).toBeLessThan(200);
+  });
+
+  it('reports runtime tick performance and skipped intervals while auto-running', async () => {
+    const loadPackage = vi.fn(async () => samplePackage);
+    const renderStaticRoom = vi.fn(async () => undefined);
+    const scheduler = new FakeIntervalScheduler();
+    let renderResolve: (() => void) | null = null;
+    const renderWasmFrame = vi.fn(
+      async () => new Promise<void>((resolve) => {
+        renderResolve = resolve;
+      })
+    );
+    const wasmBridge: WasmRuntimeBridge = {
+      backend: 'opengmk-wasm',
+      boot: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        inputTrace: defaultInputTrace,
+        player: null
+      })),
+      snapshot: vi.fn(async () => ({
+        tick: 1,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        inputTrace: defaultInputTrace,
+        tickPhases: defaultTickPhases,
+        player: null
+      })),
+      frame: vi.fn(async () => ({
+        tick: 1,
+        roomId: 0,
+        width: 320,
+        height: 240,
+        commands: [{ kind: 'present' as const }]
+      })),
+      setInput: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        inputTrace: defaultInputTrace,
+        player: null
+      })),
+      tick: vi.fn(async () => ({
+        tick: 1,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        inputTrace: defaultInputTrace,
+        player: null
+      })),
+      reset: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        inputTrace: defaultInputTrace,
+        player: null
+      })),
+      selectRoom: vi.fn(async () => ({
+        tick: 0,
+        roomId: 0,
+        roomName: 'Room 1',
+        diagnostics: [],
+        inputTrace: defaultInputTrace,
+        player: null
+      })),
+      diagnostics: vi.fn(async () => [])
+    };
+
+    const root = doc.createElement('div');
+    doc.body.append(root);
+
+    createRuntimeShell(root as unknown as HTMLElement, {
+      loadPackage,
+      renderStaticRoom,
+      renderWasmFrame,
+      loadWasmBridge: vi.fn(async () => wasmBridge),
+      setInterval: scheduler.setIntervalFn,
+      clearInterval: scheduler.clearIntervalFn,
+      now: (() => {
+        let now = 0;
+        return () => {
+          now += 10;
+          return now;
+        };
+      })()
+    });
+
+    doc.querySelectorAll<FakeElement>('button')[0]?.click();
+    await flushAsyncWork();
+    renderResolve?.();
+    await flushAsyncWork();
+
+    await scheduler.fireAll();
+    await scheduler.fireAll();
+    expect(wasmBridge.tick).toHaveBeenCalledTimes(1);
+    renderResolve?.();
+    await flushAsyncWork();
+
+    const performanceText = doc.querySelector<FakeElement>('#runtime-performance')?.textContent ?? '';
+    expect(performanceText).toContain('Frame ms:');
+    expect(performanceText).toContain('input=');
+    expect(performanceText).toContain('tick=');
+    expect(performanceText).toContain('snapshot=');
+    expect(performanceText).toContain('frame=');
+    expect(performanceText).toContain('render=');
+    expect(performanceText).toContain('skipped=1');
+    expect(performanceText).toContain('commands=1');
+
+    const tickPhasesText = doc.querySelector<FakeElement>('#runtime-tick-phases')?.textContent ?? '';
+    expect(tickPhasesText).toContain('Tick phases ms:');
+    expect(tickPhasesText).toContain('step=2.500');
+    expect(tickPhasesText).toContain('collision=0.400');
+    expect(tickPhasesText).toContain('renderSubmit=0.300');
   });
 
   it('falls back to the static room viewer when the wasm runtime cannot boot', async () => {
