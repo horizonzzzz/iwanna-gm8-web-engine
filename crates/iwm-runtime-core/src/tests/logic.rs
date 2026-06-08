@@ -248,6 +248,56 @@ fn lowered_script_locals_do_not_leak_into_calling_event_scope() {
 }
 
 #[test]
+fn lowered_with_executes_body_against_matching_instances_with_other_as_caller() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::With {
+            target: LoweredLogicExpr::Identifier("obj_block".into()),
+            body: vec![
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("touched_by_with".into()),
+                    value: LoweredLogicExpr::LiteralBool(true),
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("caller_x_seen".into()),
+                    value: LoweredLogicExpr::MemberAccess {
+                        target: Box::new(LoweredLogicExpr::Identifier("other".into())),
+                        member: "x".into(),
+                    },
+                },
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    let block = room
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "obj_block")
+        .unwrap();
+    assert_eq!(player.vars.get("touched_by_with"), None);
+    assert_eq!(
+        block.vars.get("touched_by_with"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert_eq!(
+        block.vars.get("caller_x_seen"),
+        Some(&RuntimeValue::Number(12.0))
+    );
+}
+
+#[test]
 fn core_updates_active_view_from_lowered_camera_step() {
     let mut package = sample_package();
     package.rooms[0].width = 2400;

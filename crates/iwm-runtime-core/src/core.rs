@@ -442,10 +442,12 @@ impl RuntimeCore {
 
         for entry in &entries {
             let mut scope = crate::logic::RuntimeExecutionScope::default();
+            let mut with_updates = Vec::new();
             for statement in &entry.statements {
                 crate::logic::apply_runtime_statement(
                     statement,
                     &mut instance,
+                    instance_idx,
                     &script_entries,
                     &mut self.globals,
                     &mut self.pending_room_transition,
@@ -454,9 +456,17 @@ impl RuntimeCore {
                     &mut self.diagnostics,
                     &mut scope,
                     Some(&eval_context),
+                    &mut with_updates,
                 );
                 if self.pending_room_reset || self.pending_room_transition.is_some() {
                     break;
+                }
+            }
+            if let Some(room) = self.current_room.as_mut() {
+                for (update_index, updated_instance) in with_updates {
+                    if let Some(slot) = room.instances.get_mut(update_index) {
+                        *slot = updated_instance;
+                    }
                 }
             }
             if self.pending_room_reset || self.pending_room_transition.is_some() {

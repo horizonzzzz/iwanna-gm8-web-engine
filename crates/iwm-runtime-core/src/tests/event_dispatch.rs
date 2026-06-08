@@ -113,6 +113,52 @@ fn event_block_locals_do_not_leak_between_lowered_entries() {
 }
 
 #[test]
+fn event_dispatch_with_executes_against_matching_instances() {
+    let mut package = sample_package();
+    add_keyboard_block(
+        &mut package,
+        0x41,
+        vec![LoweredLogicStatement::With {
+            target: LoweredLogicExpr::Identifier("obj_block".into()),
+            body: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("event_with_hit".into()),
+                value: LoweredLogicExpr::LiteralBool(true),
+            }],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x41),
+        ButtonState {
+            pressed: true,
+            just_pressed: false,
+            just_released: false,
+        },
+    );
+
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    let block = room
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "obj_block")
+        .unwrap();
+    assert_eq!(player.vars.get("event_with_hit"), None);
+    assert_eq!(
+        block.vars.get("event_with_hit"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
 fn core_dispatches_keyboard_press_event_blocks() {
     let mut package = sample_package();
     add_keyboard_press_block(

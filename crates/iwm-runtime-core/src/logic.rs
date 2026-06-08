@@ -94,13 +94,19 @@ impl RuntimeCore {
 
         let mut player_motion_changed = false;
         let mut player_jump_owned_by_script = false;
-        let mut instance_updates = Vec::new();
+        let mut instance_updates: Vec<(usize, RuntimeInstance)> = Vec::new();
 
         for (index, entries) in dispatches {
-            let Some(mut instance) = self
-                .current_room
-                .as_ref()
-                .and_then(|room| room.instances.get(index).cloned())
+            let Some(mut instance) = instance_updates
+                .iter()
+                .rev()
+                .find(|(update_index, _)| *update_index == index)
+                .map(|(_, instance)| instance.clone())
+                .or_else(|| {
+                    self.current_room
+                        .as_ref()
+                        .and_then(|room| room.instances.get(index).cloned())
+                })
             else {
                 continue;
             };
@@ -133,10 +139,12 @@ impl RuntimeCore {
 
                 for entry in &entries {
                     let mut scope = RuntimeExecutionScope::default();
+                    let mut with_updates = Vec::new();
                     for statement in &entry.statements {
                         apply_runtime_statement(
                             statement,
                             &mut instance,
+                            index,
                             script_entries,
                             &mut self.globals,
                             &mut self.pending_room_transition,
@@ -145,9 +153,11 @@ impl RuntimeCore {
                             &mut self.diagnostics,
                             &mut scope,
                             Some(&eval_context),
+                            &mut with_updates,
                         );
                         if self.pending_room_reset || self.pending_room_transition.is_some() {
                             instance_updates.push((index, instance));
+                            instance_updates.append(&mut with_updates);
                             if let Some(room) = self.current_room.as_mut() {
                                 for (update_index, updated_instance) in instance_updates {
                                     if let Some(slot) = room.instances.get_mut(update_index) {
@@ -162,6 +172,7 @@ impl RuntimeCore {
                             });
                         }
                     }
+                    instance_updates.append(&mut with_updates);
                 }
             }
 
@@ -520,6 +531,7 @@ impl RuntimeCore {
 pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     statement: &LoweredLogicStatement,
     instance: &mut RuntimeInstance,
+    instance_index: usize,
     script_entries: &HashMap<String, LoweredLogicEntry>,
     globals: &mut HashMap<String, RuntimeValue>,
     pending_room_transition: &mut Option<usize>,
@@ -528,6 +540,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     diagnostics: &mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
     scope: &mut RuntimeExecutionScope,
     eval_context: Option<&RuntimeEvalContext<'_>>,
+    room_instance_updates: &mut Vec<(usize, RuntimeInstance)>,
 ) {
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
@@ -560,6 +573,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 apply_runtime_statement(
                     nested,
                     instance,
+                    instance_index,
                     script_entries,
                     globals,
                     pending_room_transition,
@@ -568,6 +582,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     diagnostics,
                     scope,
                     eval_context,
+                    room_instance_updates,
                 );
             }
         }
@@ -626,6 +641,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         apply_runtime_statement(
                             nested,
                             instance,
+                            instance_index,
                             script_entries,
                             globals,
                             pending_room_transition,
@@ -634,6 +650,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             diagnostics,
                             &mut script_scope,
                             eval_context,
+                            room_instance_updates,
                         );
                         if *pending_room_reset || pending_room_transition.is_some() {
                             break;
@@ -642,7 +659,119 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
             }
         },
+        LoweredLogicStatement::With { target, body } => {
+            let Some(context) = eval_context else {
+                return;
+            };
+            let target_indices = with_target_indices(target, instance_index, context);
+            let other_snapshot = instance.clone();
+            for target_index in target_indices {
+                let with_context = context.with_other(&other_snapshot);
+                if target_index == instance_index {
+                    for nested in body {
+                        apply_runtime_statement(
+                            nested,
+                            instance,
+                            instance_index,
+                            script_entries,
+                            globals,
+                            pending_room_transition,
+                            pending_room_reset,
+                            host,
+                            diagnostics,
+                            scope,
+                            Some(&with_context),
+                            room_instance_updates,
+                        );
+                        if *pending_room_reset || pending_room_transition.is_some() {
+                            break;
+                        }
+                    }
+                    if *pending_room_reset || pending_room_transition.is_some() {
+                        break;
+                    }
+                    continue;
+                }
+
+                let Some(mut target_instance) = context.room_instances.get(target_index).cloned()
+                else {
+                    continue;
+                };
+                if !target_instance.alive {
+                    continue;
+                }
+                for nested in body {
+                    apply_runtime_statement(
+                        nested,
+                        &mut target_instance,
+                        target_index,
+                        script_entries,
+                        globals,
+                        pending_room_transition,
+                        pending_room_reset,
+                        host,
+                        diagnostics,
+                        scope,
+                        Some(&with_context),
+                        room_instance_updates,
+                    );
+                    if *pending_room_reset || pending_room_transition.is_some() {
+                        break;
+                    }
+                }
+                room_instance_updates.push((target_index, target_instance));
+                if *pending_room_reset || pending_room_transition.is_some() {
+                    break;
+                }
+            }
+        }
         _ => {}
+    }
+}
+
+fn with_target_indices(
+    target: &LoweredLogicExpr,
+    instance_index: usize,
+    context: &RuntimeEvalContext<'_>,
+) -> Vec<usize> {
+    match target {
+        LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("self") => {
+            vec![instance_index]
+        }
+        LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("other") => context
+            .other_instance
+            .and_then(|other| {
+                context
+                    .room_instances
+                    .iter()
+                    .position(|instance| instance.runtime_id == other.runtime_id)
+            })
+            .into_iter()
+            .collect(),
+        LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("all") => context
+            .room_instances
+            .iter()
+            .enumerate()
+            .filter(|(_, instance)| instance.alive)
+            .map(|(index, _)| index)
+            .collect(),
+        LoweredLogicExpr::Identifier(name) => {
+            let wanted_object_ids = context
+                .place_target_ids_by_name
+                .get(&name.to_ascii_lowercase())
+                .cloned()
+                .unwrap_or_default();
+            context
+                .room_instances
+                .iter()
+                .enumerate()
+                .filter(|(_, instance)| {
+                    instance.alive && wanted_object_ids.contains(&instance.object_id)
+                })
+                .map(|(index, _)| index)
+                .collect()
+        }
+        _ => Vec::new(),
     }
 }
 
@@ -890,6 +1019,23 @@ pub(crate) struct RuntimeEvalContext<'a> {
     pub known_files: &'a HashSet<String>,
     pub other_instance: Option<&'a RuntimeInstance>,
     pub place_target_ids_by_name: &'a HashMap<String, Vec<usize>>,
+}
+
+impl<'a> RuntimeEvalContext<'a> {
+    fn with_other<'b>(&'b self, other_instance: &'b RuntimeInstance) -> RuntimeEvalContext<'b>
+    where
+        'a: 'b,
+    {
+        RuntimeEvalContext {
+            current_room_id: self.current_room_id,
+            button_states: self.button_states,
+            room_instances: self.room_instances,
+            room_order: self.room_order,
+            known_files: self.known_files,
+            other_instance: Some(other_instance),
+            place_target_ids_by_name: self.place_target_ids_by_name,
+        }
+    }
 }
 
 pub(crate) fn apply_view_globals_to_room(
