@@ -447,21 +447,24 @@ impl RuntimeCore {
             let mut scope = crate::logic::RuntimeExecutionScope::default();
             let mut with_updates = Vec::new();
             for statement in &entry.statements {
+                let mut statement_env = crate::logic::RuntimeStatementEnvironment {
+                    script_entries: &script_entries,
+                    globals: &mut self.globals,
+                    pending_room_transition: &mut self.pending_room_transition,
+                    pending_room_reset: &mut self.pending_room_reset,
+                    host: &mut *host,
+                    diagnostics: &mut self.diagnostics,
+                    room_instance_updates: &mut with_updates,
+                    room_instance_creates: &mut instance_creates,
+                };
                 crate::logic::apply_runtime_statement(
                     statement,
                     &mut instance,
                     instance_idx,
-                    &script_entries,
-                    &mut self.globals,
-                    &mut self.pending_room_transition,
-                    &mut self.pending_room_reset,
-                    host,
-                    &mut self.diagnostics,
                     &mut scope,
                     &destroy_event_entries,
                     Some(&eval_context),
-                    &mut with_updates,
-                    &mut instance_creates,
+                    &mut statement_env,
                 );
                 if self.pending_room_reset || self.pending_room_transition.is_some() {
                     break;
