@@ -8,9 +8,9 @@ use crate::event_dispatch::{
 };
 use crate::helpers::{as_number, collides_at, is_player_instance};
 use crate::{
-    LoweredLogicEntry, LoweredLogicStatement, RuntimeCoreError, RuntimeInputTraceSnapshot,
-    RuntimeInstance, RuntimeJumpSnapshot, RuntimePackage, RuntimePlayerSnapshot, RuntimeRoomState,
-    RuntimeSnapshot, RuntimeStatus, RuntimeTickPhaseSnapshot, RuntimeValue,
+    LoweredLogicEntry, RuntimeCoreError, RuntimeInputTraceSnapshot, RuntimeInstance,
+    RuntimeJumpSnapshot, RuntimePackage, RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot,
+    RuntimeStatus, RuntimeTickPhaseSnapshot, RuntimeValue,
 };
 
 #[derive(Debug)]
@@ -401,10 +401,6 @@ impl RuntimeCore {
             .filter_map(|block_id| self.lowered_logic_entry(block_id).cloned())
             .collect();
 
-        let statements: Vec<LoweredLogicStatement> = entries
-            .iter()
-            .flat_map(|entry| entry.statements.clone())
-            .collect();
         let script_entries = self.lowered_script_entries();
         let button_states = host
             .active_buttons()
@@ -444,18 +440,25 @@ impl RuntimeCore {
             instance.clone()
         };
 
-        for statement in &statements {
-            crate::logic::apply_runtime_statement(
-                statement,
-                &mut instance,
-                &script_entries,
-                &mut self.globals,
-                &mut self.pending_room_transition,
-                &mut self.pending_room_reset,
-                host,
-                &mut self.diagnostics,
-                Some(&eval_context),
-            );
+        for entry in &entries {
+            let mut scope = crate::logic::RuntimeExecutionScope::default();
+            for statement in &entry.statements {
+                crate::logic::apply_runtime_statement(
+                    statement,
+                    &mut instance,
+                    &script_entries,
+                    &mut self.globals,
+                    &mut self.pending_room_transition,
+                    &mut self.pending_room_reset,
+                    host,
+                    &mut self.diagnostics,
+                    &mut scope,
+                    Some(&eval_context),
+                );
+                if self.pending_room_reset || self.pending_room_transition.is_some() {
+                    break;
+                }
+            }
             if self.pending_room_reset || self.pending_room_transition.is_some() {
                 break;
             }

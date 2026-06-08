@@ -46,6 +46,73 @@ fn core_dispatches_held_keyboard_event_blocks() {
 }
 
 #[test]
+fn event_block_locals_do_not_leak_between_lowered_entries() {
+    let mut package = sample_package();
+    package.objects[0]
+        .events
+        .push(iwm_runtime_model::ObjectEventEntry {
+            event_type: 5,
+            sub_event: 0x41,
+            event_tag: "keyboard:a".into(),
+            block_id: "object:0:event:5:65:a".into(),
+            action_count: 0,
+        });
+    package.objects[0]
+        .events
+        .push(iwm_runtime_model::ObjectEventEntry {
+            event_type: 5,
+            sub_event: 0x41,
+            event_tag: "keyboard:a".into(),
+            block_id: "object:0:event:5:65:b".into(),
+            action_count: 0,
+        });
+    super::support::append_lowered_entry(
+        &mut package,
+        "object:0:event:5:65:a".into(),
+        vec![
+            LoweredLogicStatement::VariableDeclaration {
+                names: vec!["tmp_key".into()],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("tmp_key".into()),
+                value: LoweredLogicExpr::LiteralNumber(7.0),
+            },
+        ],
+    );
+    super::support::append_lowered_entry(
+        &mut package,
+        "object:0:event:5:65:b".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("leaked_key".into()),
+            value: LoweredLogicExpr::Identifier("tmp_key".into()),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x41),
+        ButtonState {
+            pressed: true,
+            just_pressed: false,
+            just_released: false,
+        },
+    );
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("tmp_key"), None);
+    assert_eq!(player.vars.get("leaked_key"), None);
+}
+
+#[test]
 fn core_dispatches_keyboard_press_event_blocks() {
     let mut package = sample_package();
     add_keyboard_press_block(

@@ -132,6 +132,7 @@ impl RuntimeCore {
                 };
 
                 for entry in &entries {
+                    let mut scope = RuntimeExecutionScope::default();
                     for statement in &entry.statements {
                         apply_runtime_statement(
                             statement,
@@ -142,6 +143,7 @@ impl RuntimeCore {
                             &mut self.pending_room_reset,
                             host,
                             &mut self.diagnostics,
+                            &mut scope,
                             Some(&eval_context),
                         );
                         if self.pending_room_reset || self.pending_room_transition.is_some() {
@@ -319,7 +321,7 @@ impl RuntimeCore {
 
         match statement {
             LoweredLogicStatement::Assignment { target, value } => {
-                if let Some(key) = assignable_key(target, Some(&instance_snapshot)) {
+                if let Some(key) = assignable_key(target, Some(&instance_snapshot), None) {
                     let button_states = HashMap::new();
                     let known_files = HashSet::new();
                     let eval_context = RuntimeEvalContext {
@@ -335,6 +337,7 @@ impl RuntimeCore {
                         value,
                         Some(&instance_snapshot),
                         &self.globals,
+                        None,
                         Some(&eval_context),
                     ) {
                         if let Some(instance) = room_state.instances.get_mut(instance_index) {
@@ -363,6 +366,7 @@ impl RuntimeCore {
                     condition,
                     Some(&instance_snapshot),
                     &self.globals,
+                    None,
                     Some(&eval_context),
                 );
                 let branch = if is_truthy(condition_value) {
@@ -446,12 +450,28 @@ impl RuntimeCore {
         };
         let x = args
             .first()
-            .and_then(|arg| evaluate_expr(arg, source_instance, &self.globals, Some(&eval_context)))
+            .and_then(|arg| {
+                evaluate_expr(
+                    arg,
+                    source_instance,
+                    &self.globals,
+                    None,
+                    Some(&eval_context),
+                )
+            })
             .and_then(|value| as_number(&value))
             .unwrap_or(0.0);
         let y = args
             .get(1)
-            .and_then(|arg| evaluate_expr(arg, source_instance, &self.globals, Some(&eval_context)))
+            .and_then(|arg| {
+                evaluate_expr(
+                    arg,
+                    source_instance,
+                    &self.globals,
+                    None,
+                    Some(&eval_context),
+                )
+            })
             .and_then(|value| as_number(&value))
             .unwrap_or(0.0);
         let object_name = args.get(2).and_then(|arg| match arg {
@@ -506,13 +526,16 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     pending_room_reset: &mut bool,
     host: &mut H,
     diagnostics: &mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
+    scope: &mut RuntimeExecutionScope,
     eval_context: Option<&RuntimeEvalContext<'_>>,
 ) {
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
-            if let Some(key) = assignable_key(target, Some(instance)) {
-                if let Some(value) = evaluate_expr(value, Some(instance), globals, eval_context) {
-                    assign_instance_or_global(key, value, instance, globals);
+            if let Some(key) = assignable_key(target, Some(instance), Some(scope)) {
+                if let Some(value) =
+                    evaluate_expr(value, Some(instance), globals, Some(scope), eval_context)
+                {
+                    assign_runtime_value(key, value, instance, globals, scope);
                 }
             }
         }
@@ -521,7 +544,13 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             then_branch,
             else_branch,
         } => {
-            let condition_value = evaluate_expr(condition, Some(instance), globals, eval_context);
+            let condition_value = evaluate_expr(
+                condition,
+                Some(instance),
+                globals,
+                Some(scope),
+                eval_context,
+            );
             let branch = if is_truthy(condition_value) {
                 then_branch
             } else {
@@ -537,17 +566,24 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     pending_room_reset,
                     host,
                     diagnostics,
+                    scope,
                     eval_context,
                 );
             }
         }
-        LoweredLogicStatement::VariableDeclaration { .. } => {}
+        LoweredLogicStatement::VariableDeclaration { names } => {
+            for name in names {
+                scope.declare(name);
+            }
+        }
         LoweredLogicStatement::Return { .. } => {}
         LoweredLogicStatement::FunctionCall { name, args } => match name.as_str() {
             "room_goto" => {
                 if let Some(room_id) = args
                     .first()
-                    .and_then(|arg| evaluate_expr(arg, Some(instance), globals, eval_context))
+                    .and_then(|arg| {
+                        evaluate_expr(arg, Some(instance), globals, Some(scope), eval_context)
+                    })
                     .and_then(|value| runtime_value_to_room_id(&value))
                 {
                     *pending_room_transition = Some(room_id);
@@ -585,6 +621,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             }
             _ => {
                 if let Some(entry) = script_entries.get(name) {
+                    let mut script_scope = RuntimeExecutionScope::default();
                     for nested in &entry.statements {
                         apply_runtime_statement(
                             nested,
@@ -595,6 +632,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             pending_room_reset,
                             host,
                             diagnostics,
+                            &mut script_scope,
                             eval_context,
                         );
                         if *pending_room_reset || pending_room_transition.is_some() {
@@ -692,6 +730,51 @@ fn expr_is_global_jumpbutton(expr: &LoweredLogicExpr) -> bool {
     )
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct RuntimeExecutionScope {
+    locals: HashMap<String, Option<RuntimeValue>>,
+}
+
+impl RuntimeExecutionScope {
+    fn declare(&mut self, name: &str) {
+        self.locals.entry(name.to_string()).or_insert(None);
+    }
+
+    fn get(&self, key: &str) -> Option<RuntimeValue> {
+        self.locals.get(key).and_then(Clone::clone)
+    }
+
+    fn assign(&mut self, key: &str, value: RuntimeValue) -> bool {
+        if self.is_local_key(key) {
+            self.locals.insert(key.to_string(), Some(value));
+            true
+        } else {
+            false
+        }
+    }
+
+    fn is_local_key(&self, key: &str) -> bool {
+        self.locals.contains_key(key)
+            || key
+                .split_once('[')
+                .map(|(base, _)| self.locals.contains_key(base))
+                .unwrap_or(false)
+    }
+}
+
+fn assign_runtime_value(
+    key: String,
+    value: RuntimeValue,
+    instance: &mut RuntimeInstance,
+    globals: &mut HashMap<String, RuntimeValue>,
+    scope: &mut RuntimeExecutionScope,
+) {
+    if scope.assign(&key, value.clone()) {
+        return;
+    }
+    assign_instance_or_global(key, value, instance, globals);
+}
+
 fn assign_instance_or_global(
     key: String,
     value: RuntimeValue,
@@ -759,16 +842,17 @@ fn is_truthy(value: Option<RuntimeValue>) -> bool {
 pub(crate) fn assignable_key(
     expr: &LoweredLogicExpr,
     instance: Option<&RuntimeInstance>,
+    scope: Option<&RuntimeExecutionScope>,
 ) -> Option<String> {
     match expr {
         LoweredLogicExpr::Identifier(name) => Some(name.clone()),
         LoweredLogicExpr::MemberAccess { target, member } => {
-            let base = assignable_key(target, instance)?;
+            let base = assignable_key(target, instance, scope)?;
             Some(format!("{base}.{member}"))
         }
         LoweredLogicExpr::IndexAccess { target, index } => {
-            let base = assignable_key(target, instance)?;
-            let suffix = expr_key_fragment(index, instance)?;
+            let base = assignable_key(target, instance, scope)?;
+            let suffix = expr_key_fragment(index, instance, scope)?;
             Some(format!("{base}[{suffix}]"))
         }
         _ => None,
@@ -778,6 +862,7 @@ pub(crate) fn assignable_key(
 fn expr_key_fragment(
     expr: &LoweredLogicExpr,
     instance: Option<&RuntimeInstance>,
+    scope: Option<&RuntimeExecutionScope>,
 ) -> Option<String> {
     match expr {
         LoweredLogicExpr::Identifier(name) => Some(name.clone()),
@@ -788,7 +873,7 @@ fn expr_key_fragment(
         }),
         LoweredLogicExpr::LiteralBool(flag) => Some(flag.to_string()),
         LoweredLogicExpr::LiteralText(text) => Some(text.clone()),
-        _ => evaluate_expr(expr, instance, &HashMap::new(), None).map(|value| match value {
+        _ => evaluate_expr(expr, instance, &HashMap::new(), scope, None).map(|value| match value {
             RuntimeValue::Number(number) if number.fract() == 0.0 => format!("{}", number as i64),
             RuntimeValue::Number(number) => number.to_string(),
             RuntimeValue::Bool(flag) => flag.to_string(),
@@ -856,8 +941,8 @@ fn apply_statement_to_globals_map(
 ) {
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
-            if let Some(key) = assignable_key(target, None) {
-                if let Some(value) = evaluate_expr(value, None, globals, None) {
+            if let Some(key) = assignable_key(target, None, None) {
+                if let Some(value) = evaluate_expr(value, None, globals, None, None) {
                     globals.insert(key, value);
                 }
             }
@@ -867,7 +952,7 @@ fn apply_statement_to_globals_map(
             then_branch,
             else_branch,
         } => {
-            let condition_value = evaluate_expr(condition, None, globals, None);
+            let condition_value = evaluate_expr(condition, None, globals, None, None);
             let branch = if is_truthy(condition_value) {
                 then_branch
             } else {
@@ -906,7 +991,7 @@ fn block_references_global_assignments(statements: &[LoweredLogicStatement]) -> 
 
 fn statement_references_global_assignment(statement: &LoweredLogicStatement) -> bool {
     match statement {
-        LoweredLogicStatement::Assignment { target, .. } => assignable_key(target, None)
+        LoweredLogicStatement::Assignment { target, .. } => assignable_key(target, None, None)
             .map(|key| key.starts_with("global."))
             .unwrap_or(false),
         LoweredLogicStatement::Conditional {
@@ -932,10 +1017,16 @@ fn evaluate_expr(
     expr: &LoweredLogicExpr,
     instance: Option<&RuntimeInstance>,
     globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<RuntimeValue> {
     match expr {
         LoweredLogicExpr::Identifier(name) => {
+            if let Some(scope) = scope {
+                if scope.is_local_key(name) {
+                    return scope.get(name);
+                }
+            }
             if let Some(instance) = instance {
                 if let Some(value) = instance.vars.get(name) {
                     return Some(value.clone());
@@ -953,16 +1044,13 @@ fn evaluate_expr(
                 return Some(RuntimeValue::Number(key_code as f64));
             }
 
-            globals
-                .get(name)
-                .cloned()
-                .or_else(|| parse_runtime_value(name))
+            globals.get(name).cloned()
         }
         LoweredLogicExpr::LiteralNumber(number) => Some(RuntimeValue::Number(*number)),
         LoweredLogicExpr::LiteralBool(flag) => Some(RuntimeValue::Bool(*flag)),
         LoweredLogicExpr::LiteralText(text) => Some(RuntimeValue::Text(text.clone())),
         LoweredLogicExpr::UnaryExpr { op, child } => {
-            let value = evaluate_expr(child, instance, globals, eval_context)?;
+            let value = evaluate_expr(child, instance, globals, scope, eval_context)?;
             match op.as_str() {
                 "-" => Some(RuntimeValue::Number(-as_number(&value)?)),
                 "+" => Some(RuntimeValue::Number(as_number(&value)?)),
@@ -973,23 +1061,27 @@ fn evaluate_expr(
         LoweredLogicExpr::Call { name, args } => match name.as_str() {
             "room_goto" => args
                 .first()
-                .and_then(|arg| evaluate_expr(arg, instance, globals, eval_context)),
+                .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context)),
             "ord" => evaluate_ord_call(args),
             "floor" => args
                 .first()
-                .and_then(|arg| evaluate_expr(arg, instance, globals, eval_context))
+                .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
                 .and_then(|value| as_number(&value))
                 .map(|value| RuntimeValue::Number(value.floor())),
-            "file_exists" => evaluate_file_exists(args, instance, globals, eval_context),
+            "file_exists" => evaluate_file_exists(args, instance, globals, scope, eval_context),
             "instance_exists" => evaluate_instance_exists(args, eval_context),
             "keyboard_check"
             | "keyboard_check_direct"
             | "keyboard_check_pressed"
             | "keyboard_check_released" => {
-                evaluate_keyboard_query(name, args, instance, globals, eval_context)
+                evaluate_keyboard_query(name, args, instance, globals, scope, eval_context)
             }
-            "place_meeting" => evaluate_place_query(args, instance, globals, eval_context, true),
-            "place_free" => evaluate_place_query(args, instance, globals, eval_context, false),
+            "place_meeting" => {
+                evaluate_place_query(args, instance, globals, scope, eval_context, true)
+            }
+            "place_free" => {
+                evaluate_place_query(args, instance, globals, scope, eval_context, false)
+            }
             _ => None,
         },
         LoweredLogicExpr::MemberAccess { target, member } => {
@@ -1023,43 +1115,43 @@ fn evaluate_expr(
                     }
                 }
             }
-            let base = assignable_key(target, instance)?;
+            let base = assignable_key(target, instance, scope)?;
             let key = format!("{base}.{member}");
-            globals
-                .get(&key)
-                .cloned()
+            scope
+                .and_then(|scope| scope.get(&key))
+                .or_else(|| globals.get(&key).cloned())
                 .or_else(|| instance.and_then(|instance| instance.vars.get(&key).cloned()))
         }
         LoweredLogicExpr::IndexAccess { target, index } => {
-            let base = assignable_key(target, instance)?;
-            let suffix = expr_key_fragment(index, instance)?;
+            let base = assignable_key(target, instance, scope)?;
+            let suffix = expr_key_fragment(index, instance, scope)?;
             let key = format!("{base}[{suffix}]");
-            globals
-                .get(&key)
-                .cloned()
+            scope
+                .and_then(|scope| scope.get(&key))
+                .or_else(|| globals.get(&key).cloned())
                 .or_else(|| instance.and_then(|instance| instance.vars.get(&key).cloned()))
         }
         LoweredLogicExpr::BinaryExpr { op, left, right } => {
             if op == "&&" {
-                let left = evaluate_expr(left, instance, globals, eval_context)?;
+                let left = evaluate_expr(left, instance, globals, scope, eval_context)?;
                 if !is_truthy(Some(left)) {
                     return Some(RuntimeValue::Bool(false));
                 }
-                let right = evaluate_expr(right, instance, globals, eval_context)?;
+                let right = evaluate_expr(right, instance, globals, scope, eval_context)?;
                 return Some(RuntimeValue::Bool(is_truthy(Some(right))));
             }
 
             if op == "||" {
-                let left = evaluate_expr(left, instance, globals, eval_context)?;
+                let left = evaluate_expr(left, instance, globals, scope, eval_context)?;
                 if is_truthy(Some(left)) {
                     return Some(RuntimeValue::Bool(true));
                 }
-                let right = evaluate_expr(right, instance, globals, eval_context)?;
+                let right = evaluate_expr(right, instance, globals, scope, eval_context)?;
                 return Some(RuntimeValue::Bool(is_truthy(Some(right))));
             }
 
-            let left = evaluate_expr(left, instance, globals, eval_context)?;
-            let right = evaluate_expr(right, instance, globals, eval_context)?;
+            let left = evaluate_expr(left, instance, globals, scope, eval_context)?;
+            let right = evaluate_expr(right, instance, globals, scope, eval_context)?;
             eval_binary_expr(op, &left, &right)
         }
         LoweredLogicExpr::Raw { source } => parse_runtime_value(source),
@@ -1115,12 +1207,13 @@ fn evaluate_keyboard_query(
     args: &[LoweredLogicExpr],
     instance: Option<&RuntimeInstance>,
     globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<RuntimeValue> {
     let context = eval_context?;
     let key_code = args
         .first()
-        .and_then(|arg| evaluate_expr(arg, instance, globals, eval_context))
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
         .and_then(|value| as_number(&value))
         .map(|value| value.round() as u16)?;
     let state = context
@@ -1141,6 +1234,7 @@ fn evaluate_place_query(
     args: &[LoweredLogicExpr],
     instance: Option<&RuntimeInstance>,
     globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
     want_meeting: bool,
 ) -> Option<RuntimeValue> {
@@ -1148,12 +1242,12 @@ fn evaluate_place_query(
     let instance = instance?;
     let x = args
         .first()
-        .and_then(|arg| evaluate_expr(arg, Some(instance), globals, eval_context))
+        .and_then(|arg| evaluate_expr(arg, Some(instance), globals, scope, eval_context))
         .and_then(|value| as_number(&value))
         .map(|value| value.round() as i32)?;
     let y = args
         .get(1)
-        .and_then(|arg| evaluate_expr(arg, Some(instance), globals, eval_context))
+        .and_then(|arg| evaluate_expr(arg, Some(instance), globals, scope, eval_context))
         .and_then(|value| as_number(&value))
         .map(|value| value.round() as i32)?;
     let object_name = args.get(2).and_then(|arg| match arg {
@@ -1209,12 +1303,13 @@ fn evaluate_file_exists(
     args: &[LoweredLogicExpr],
     instance: Option<&RuntimeInstance>,
     globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<RuntimeValue> {
     let context = eval_context?;
     let path = args
         .first()
-        .and_then(|arg| evaluate_expr(arg, instance, globals, eval_context))
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
         .and_then(|value| match value {
             RuntimeValue::Text(text) => Some(text),
             _ => None,

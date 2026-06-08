@@ -15,6 +15,7 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, and it now also dispatches alarm, held-key, key-press, and key-release slices with parent fallback lookup for event dispatch.
 - The runtime core now uses a variable-height jump state machine on the IWanna-critical path, including held jump differentiation, release-cut tracking, ceiling-hit phase clearing, and landing reset state clearing.
 - The runtime core now also evaluates `keyboard_check`, `keyboard_check_direct`, `keyboard_check_pressed`, `keyboard_check_released`, `place_meeting`, `place_free`, `&&`, `||`, and single-`=` GM comparisons on the current lowered path, and player motion now preserves floating-point `x/y/hspeed/vspeed` plus subpixel axis deltas instead of rounding assignments or movement back to integers.
+- The runtime core now executes `var` declarations through a per-lowered-entry local scope for runtime event execution. Local variables can feed later expressions in the same block without leaking into instance variables, script calls receive their own local scope, and unresolved identifiers no longer silently become text values during ordinary variable reads.
 - The browser/input path no longer needs jump to be hardcoded to Space for runtime-core fallback movement; runtime fallback input now prefers package-initialized bindings such as `global.leftbutton`, `global.rightbutton`, and `global.jumpbutton`, while the browser-facing host can also forward raw virtual-key hold/press/release state alongside the shell's semantic controls.
 - The browser shell no longer maps `W` / `ArrowUp` / `Space` into a shell-side semantic jump boolean, and the web-runtime host no longer aliases semantic jump edges onto `VK_SPACE`; jump intent now reaches runtime primarily through raw forwarded GM key codes so package-owned bindings such as `global.jumpbutton = vk_shift` can control which physical key actually jumps.
 - The runtime core now also re-resolves the package-bound jump key after lowered `step` logic runs, so a same-tick script update such as `global.jumpbutton = vk_shift` can affect builtin fallback movement on that same frame instead of one frame late.
@@ -91,13 +92,20 @@ Current runtime instances already carry a small hardcoded state set such as `x`,
 
 Missing pieces include:
 
-- `global.var`
-- instance-local variables
-- `var tmp` locals
+- broader `global.var` coverage beyond the current lowered assignment/read slice
+- broader instance-local variable behavior beyond the current runtime `vars` map and hardcoded movement fields
+- full `var tmp` behavior beyond the current per-entry runtime local scope
 - array access such as `array[0] = value`
 - property access on objects and instances
 
-This gap is partly runtime-side and partly parser-side. The parser now carries structured member/index/binary nodes on the critical path, but runtime execution still does not consume the full dynamic variable model.
+Current status:
+
+- lowered runtime execution now has a scoped local store for `var` declarations inside event/script execution
+- locals can be assigned and read by later expressions in the same lowered entry
+- script calls use an isolated local scope instead of leaking `var` state back into the caller
+- ordinary unresolved identifiers no longer fall back to text values; symbol-name function arguments such as object names are still handled by the specific runtime helper that consumes them
+
+This gap is partly runtime-side and partly parser-side. The parser now carries structured member/index/binary nodes on the critical path, and runtime execution consumes a small scoped-variable slice, but it still does not consume the full dynamic variable model.
 
 ### 4. Sprite Animation
 

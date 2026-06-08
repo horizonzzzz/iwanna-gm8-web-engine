@@ -160,6 +160,94 @@ fn core_applies_lowered_step_assignments_before_player_movement() {
 }
 
 #[test]
+fn lowered_step_locals_feed_later_expressions_without_polluting_instance_vars() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::VariableDeclaration {
+                names: vec!["tmp_speed".into()],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("tmp_speed".into()),
+                value: LoweredLogicExpr::LiteralNumber(4.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("moveSpeed".into()),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "+".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("tmp_speed".into())),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(2.0)),
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("moveSpeed"),
+        Some(&RuntimeValue::Number(6.0))
+    );
+    assert_eq!(player.vars.get("tmp_speed"), None);
+}
+
+#[test]
+fn lowered_script_locals_do_not_leak_into_calling_event_scope() {
+    let mut package = sample_package();
+    add_script_block(
+        &mut package,
+        10,
+        "setTemp",
+        vec![
+            LoweredLogicStatement::VariableDeclaration {
+                names: vec!["tmp_speed".into()],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("tmp_speed".into()),
+                value: LoweredLogicExpr::LiteralNumber(4.0),
+            },
+        ],
+    );
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "setTemp".into(),
+                args: vec![],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("moveSpeed".into()),
+                value: LoweredLogicExpr::Identifier("tmp_speed".into()),
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("moveSpeed"), None);
+    assert_eq!(player.vars.get("tmp_speed"), None);
+}
+
+#[test]
 fn core_updates_active_view_from_lowered_camera_step() {
     let mut package = sample_package();
     package.rooms[0].width = 2400;
