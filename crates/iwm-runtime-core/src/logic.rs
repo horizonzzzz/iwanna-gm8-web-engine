@@ -98,6 +98,7 @@ impl RuntimeCore {
         let mut player_motion_changed = false;
         let mut player_jump_owned_by_script = false;
         let mut instance_updates: Vec<(usize, RuntimeInstance)> = Vec::new();
+        let mut instance_creates: Vec<RuntimeInstanceCreateRequest> = Vec::new();
 
         for (index, entries) in dispatches {
             let Some(mut instance) = instance_updates
@@ -158,6 +159,7 @@ impl RuntimeCore {
                             &destroy_event_entries,
                             Some(&eval_context),
                             &mut with_updates,
+                            &mut instance_creates,
                         );
                         if self.pending_room_reset || self.pending_room_transition.is_some() {
                             instance_updates.push((index, instance));
@@ -169,6 +171,7 @@ impl RuntimeCore {
                                     }
                                 }
                             }
+                            self.apply_runtime_instance_creates(host, &mut instance_creates);
                             return Ok(StepExecutionResult {
                                 interrupted: true,
                                 player_motion_changed,
@@ -195,6 +198,7 @@ impl RuntimeCore {
                 }
             }
         }
+        self.apply_runtime_instance_creates(host, &mut instance_creates);
 
         Ok(StepExecutionResult {
             interrupted: false,
@@ -233,6 +237,113 @@ impl RuntimeCore {
                 let entries = object_event_block_ids(&self.package, object.id, selector.clone())
                     .iter()
                     .filter_map(|block_id| self.lowered_logic_entry(block_id).cloned())
+                    .collect::<Vec<_>>();
+                if entries.is_empty() {
+                    None
+                } else {
+                    Some((object.id, entries))
+                }
+            })
+            .collect()
+    }
+
+    pub(crate) fn apply_runtime_instance_creates<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+        creates: &mut Vec<RuntimeInstanceCreateRequest>,
+    ) {
+        let create_event_entries = self.lowered_event_entries_by_tag_for_runtime("create");
+        while let Some(create) = creates.first().cloned() {
+            creates.remove(0);
+            let Some((runtime_id, current_room_id, room_instances)) = self
+                .current_room
+                .as_ref()
+                .map(|room| (room.instances.len(), room.room_id, room.instances.clone()))
+            else {
+                return;
+            };
+            let Some(mut instance) =
+                self.instantiate_runtime_object(create.object_id, runtime_id, create.x, create.y)
+            else {
+                continue;
+            };
+
+            if let Some(entries) = create_event_entries.get(&instance.object_id) {
+                let script_entries = &self.cached_script_entries;
+                let button_states = HashMap::new();
+                let known_files = HashSet::new();
+                let room_order = self.cached_room_order.clone();
+                let eval_context = RuntimeEvalContext {
+                    current_room_id,
+                    button_states: &button_states,
+                    room_instances: &room_instances,
+                    room_order: &room_order,
+                    known_files: &known_files,
+                    other_instance: None,
+                    place_target_ids_by_name: &self.place_target_ids_by_name,
+                };
+                let destroy_event_entries =
+                    self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
+                let mut room_instance_updates = Vec::new();
+                for entry in entries {
+                    let mut scope = RuntimeExecutionScope::default();
+                    for statement in &entry.statements {
+                        apply_runtime_statement(
+                            statement,
+                            &mut instance,
+                            runtime_id,
+                            script_entries,
+                            &mut self.globals,
+                            &mut self.pending_room_transition,
+                            &mut self.pending_room_reset,
+                            host,
+                            &mut self.diagnostics,
+                            &mut scope,
+                            &destroy_event_entries,
+                            Some(&eval_context),
+                            &mut room_instance_updates,
+                            creates,
+                        );
+                        if self.pending_room_reset || self.pending_room_transition.is_some() {
+                            break;
+                        }
+                    }
+                    if self.pending_room_reset || self.pending_room_transition.is_some() {
+                        break;
+                    }
+                }
+                if let Some(room) = self.current_room.as_mut() {
+                    for (update_index, updated_instance) in room_instance_updates {
+                        if let Some(slot) = room.instances.get_mut(update_index) {
+                            *slot = updated_instance;
+                        }
+                    }
+                }
+            }
+
+            if let Some(room) = self.current_room.as_mut() {
+                room.instances.push(instance);
+            }
+
+            if self.pending_room_reset || self.pending_room_transition.is_some() {
+                break;
+            }
+        }
+    }
+
+    fn lowered_event_entries_by_tag_for_runtime(
+        &self,
+        event_tag: &str,
+    ) -> HashMap<usize, Vec<LoweredLogicEntry>> {
+        self.package
+            .objects
+            .iter()
+            .filter_map(|object| {
+                let entries = object
+                    .events
+                    .iter()
+                    .filter(|event| event.event_tag == event_tag)
+                    .filter_map(|event| self.lowered_logic_entry(&event.block_id).cloned())
                     .collect::<Vec<_>>();
                 if entries.is_empty() {
                     None
@@ -567,6 +678,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     destroy_event_entries: &HashMap<usize, Vec<LoweredLogicEntry>>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
     room_instance_updates: &mut Vec<(usize, RuntimeInstance)>,
+    room_instance_creates: &mut Vec<RuntimeInstanceCreateRequest>,
 ) {
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
@@ -610,6 +722,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     destroy_event_entries,
                     eval_context,
                     room_instance_updates,
+                    room_instance_creates,
                 );
             }
         }
@@ -685,6 +798,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                                 &nested_destroy_entries,
                                 eval_context,
                                 room_instance_updates,
+                                room_instance_creates,
                             );
                             if *pending_room_reset || pending_room_transition.is_some() {
                                 break;
@@ -695,6 +809,13 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         }
                     }
                     instance.alive = false;
+                }
+            }
+            "instance_create" => {
+                if let Some(create) =
+                    runtime_instance_create_request(args, instance, globals, scope, eval_context)
+                {
+                    room_instance_creates.push(create);
                 }
             }
             _ => {
@@ -715,6 +836,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             destroy_event_entries,
                             eval_context,
                             room_instance_updates,
+                            room_instance_creates,
                         );
                         if *pending_room_reset || pending_room_transition.is_some() {
                             break;
@@ -747,6 +869,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             destroy_event_entries,
                             Some(&with_context),
                             room_instance_updates,
+                            room_instance_creates,
                         );
                         if *pending_room_reset || pending_room_transition.is_some() {
                             break;
@@ -780,6 +903,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         destroy_event_entries,
                         Some(&with_context),
                         room_instance_updates,
+                        room_instance_creates,
                     );
                     if *pending_room_reset || pending_room_transition.is_some() {
                         break;
@@ -930,6 +1054,13 @@ pub(crate) struct RuntimeExecutionScope {
     locals: HashMap<String, Option<RuntimeValue>>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct RuntimeInstanceCreateRequest {
+    object_id: usize,
+    x: f64,
+    y: f64,
+}
+
 impl RuntimeExecutionScope {
     fn declare(&mut self, name: &str) {
         self.locals.entry(name.to_string()).or_insert(None);
@@ -955,6 +1086,35 @@ impl RuntimeExecutionScope {
                 .map(|(base, _)| self.locals.contains_key(base))
                 .unwrap_or(false)
     }
+}
+
+fn runtime_instance_create_request(
+    args: &[LoweredLogicExpr],
+    instance: &RuntimeInstance,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeInstanceCreateRequest> {
+    let context = eval_context?;
+    let x = args
+        .first()
+        .and_then(|arg| evaluate_expr(arg, Some(instance), globals, Some(scope), eval_context))
+        .and_then(|value| as_number(&value))
+        .unwrap_or(0.0);
+    let y = args
+        .get(1)
+        .and_then(|arg| evaluate_expr(arg, Some(instance), globals, Some(scope), eval_context))
+        .and_then(|value| as_number(&value))
+        .unwrap_or(0.0);
+    let object_name = args.get(2).and_then(|arg| match arg {
+        LoweredLogicExpr::Identifier(name) => Some(name.as_str()),
+        _ => None,
+    })?;
+    let object_id = context
+        .place_target_ids_by_name
+        .get(&object_name.to_ascii_lowercase())
+        .and_then(|ids| ids.first().copied())?;
+    Some(RuntimeInstanceCreateRequest { object_id, x, y })
 }
 
 fn assign_runtime_value(

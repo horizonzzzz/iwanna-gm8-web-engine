@@ -442,6 +442,7 @@ impl RuntimeCore {
             instance.clone()
         };
 
+        let mut instance_creates = Vec::new();
         for entry in &entries {
             let mut scope = crate::logic::RuntimeExecutionScope::default();
             let mut with_updates = Vec::new();
@@ -460,6 +461,7 @@ impl RuntimeCore {
                     &destroy_event_entries,
                     Some(&eval_context),
                     &mut with_updates,
+                    &mut instance_creates,
                 );
                 if self.pending_room_reset || self.pending_room_transition.is_some() {
                     break;
@@ -476,6 +478,7 @@ impl RuntimeCore {
                 break;
             }
         }
+        self.apply_runtime_instance_creates(host, &mut instance_creates);
 
         let Some(room) = self.current_room.as_mut() else {
             return;
