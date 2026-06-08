@@ -17,6 +17,7 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - The runtime core now also evaluates `keyboard_check`, `keyboard_check_direct`, `keyboard_check_pressed`, `keyboard_check_released`, `place_meeting`, `place_free`, `&&`, `||`, and single-`=` GM comparisons on the current lowered path, and player motion now preserves floating-point `x/y/hspeed/vspeed` plus subpixel axis deltas instead of rounding assignments or movement back to integers.
 - The runtime core now executes `var` declarations through a per-lowered-entry local scope for runtime event execution. Local variables can feed later expressions in the same block without leaking into instance variables, script calls receive their own local scope, and unresolved identifiers no longer silently become text values during ordinary variable reads.
 - The runtime core now executes lowered `with` blocks on the current runtime event path for object-name targets plus `self`, `other`, and `all`. Body assignments run against the selected target instances, `other` resolves back to the caller, and writes are persisted to the room instance table instead of leaking onto the caller.
+- The runtime core now handles `instance_destroy()` on the lowered runtime event path. The call dispatches the target instance's `Destroy` event before marking that instance non-live, and `with (...) { instance_destroy(); }` applies to the current `with` target rather than the caller.
 - The browser/input path no longer needs jump to be hardcoded to Space for runtime-core fallback movement; runtime fallback input now prefers package-initialized bindings such as `global.leftbutton`, `global.rightbutton`, and `global.jumpbutton`, while the browser-facing host can also forward raw virtual-key hold/press/release state alongside the shell's semantic controls.
 - The browser shell no longer maps `W` / `ArrowUp` / `Space` into a shell-side semantic jump boolean, and the web-runtime host no longer aliases semantic jump edges onto `VK_SPACE`; jump intent now reaches runtime primarily through raw forwarded GM key codes so package-owned bindings such as `global.jumpbutton = vk_shift` can control which physical key actually jumps.
 - The runtime core now also re-resolves the package-bound jump key after lowered `step` logic runs, so a same-tick script update such as `global.jumpbutton = vk_shift` can affect builtin fallback movement on that same frame instead of one frame late.
@@ -148,11 +149,15 @@ Missing pieces include:
 - per-frame `Step`
 - `Draw event` logic execution
 - collision event dispatch beyond selector and lookup coverage
-- `instance_destroy()` -> `Destroy`
 - `Clean Up`
 - full room creation code execution beyond the currently lowered bootstrap subset
 - full instance creation code execution beyond the currently lowered bootstrap subset
 - full Other-event coverage beyond the current `other:room-start` spawn path
+
+Current status:
+
+- `instance_destroy()` now marks the current lowered runtime execution instance dead after running that instance's `Destroy` event on the shared event path
+- full death / respawn presentation still depends on broader collision dispatch, object creation semantics, sprite animation, draw handling, and sample-specific R-key/restart lifecycle parity
 
 For current planning purposes, `keyboard`, `collision`, `alarm`, and room-start handling should be treated as part of the first IWanna-critical lifecycle slice rather than as optional polish. Keyboard, alarm, and room-start dispatch now exist in the current runtime slice; collision lookup is wired for selection and test coverage, but full runtime collision dispatch remains deferred.
 

@@ -11,8 +11,9 @@ use iwm_runtime_host::{
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
 
 use super::support::{
-    add_alarm_block, add_create_block, add_keyboard_block, add_room_create_block, add_script_block,
-    add_step_block, append_lowered_entry, host, real_sample_package, sample_package,
+    add_alarm_block, add_create_block, add_destroy_block, add_keyboard_block,
+    add_room_create_block, add_script_block, add_step_block, append_lowered_entry, host,
+    real_sample_package, sample_package,
 };
 use iwm_runtime_model::{ObjectDefinition, ObjectEventEntry};
 
@@ -2461,4 +2462,96 @@ fn real_sample_step_events_alone_show_second_shift_playerjump_effect() {
         "step events alone should apply upward jump velocity, got {:?}",
         player.vspeed
     );
+}
+
+#[test]
+fn instance_destroy_in_step_marks_current_instance_not_alive() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "instance_destroy".into(),
+            args: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.runtime_id == 0)
+        .unwrap();
+    assert!(!player.alive);
+}
+
+#[test]
+fn instance_destroy_dispatches_destroy_event_before_marking_dead() {
+    let mut package = sample_package();
+    add_destroy_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "destroy_ran".into(),
+            },
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "instance_destroy".into(),
+            args: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    assert_eq!(
+        core.globals.get("global.destroy_ran"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn instance_destroy_inside_with_marks_target_instance_not_caller() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::With {
+            target: LoweredLogicExpr::Identifier("obj_block".into()),
+            body: vec![LoweredLogicStatement::FunctionCall {
+                name: "instance_destroy".into(),
+                args: vec![],
+            }],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let caller = room
+        .instances
+        .iter()
+        .find(|instance| instance.runtime_id == 0)
+        .unwrap();
+    let target = room
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "obj_block")
+        .unwrap();
+    assert!(caller.alive);
+    assert!(!target.alive);
 }

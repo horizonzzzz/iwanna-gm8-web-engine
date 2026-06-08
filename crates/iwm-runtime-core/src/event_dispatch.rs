@@ -4,6 +4,7 @@ use crate::{RuntimePackage, RuntimeRoomState};
 
 #[derive(Clone)]
 pub(crate) enum RuntimeEventSelector {
+    Destroy,
     Alarm(u32),
     KeyboardHeld(u16),
     KeyboardPressed(u16),
@@ -20,6 +21,7 @@ pub(crate) fn object_event_block_ids(
     selector: RuntimeEventSelector,
 ) -> Vec<String> {
     let (event_type, sub_event, wanted) = match selector {
+        RuntimeEventSelector::Destroy => (1usize, 0u32, "destroy".to_string()),
         RuntimeEventSelector::Alarm(slot) => (2usize, slot, format!("alarm:{slot}")),
         RuntimeEventSelector::KeyboardHeld(key) => (
             5usize,

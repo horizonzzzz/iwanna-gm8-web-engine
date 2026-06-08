@@ -402,6 +402,8 @@ impl RuntimeCore {
             .collect();
 
         let script_entries = self.lowered_script_entries();
+        let destroy_event_entries =
+            self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
         let button_states = host
             .active_buttons()
             .into_iter()
@@ -455,6 +457,7 @@ impl RuntimeCore {
                     host,
                     &mut self.diagnostics,
                     &mut scope,
+                    &destroy_event_entries,
                     Some(&eval_context),
                     &mut with_updates,
                 );

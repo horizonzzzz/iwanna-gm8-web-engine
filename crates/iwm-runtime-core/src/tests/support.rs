@@ -432,6 +432,20 @@ pub(super) fn add_step_block(package: &mut RuntimePackage, statements: Vec<Lower
     append_lowered_entry(package, "object:0:event:3:0".into(), statements);
 }
 
+pub(super) fn add_destroy_block(
+    package: &mut RuntimePackage,
+    statements: Vec<LoweredLogicStatement>,
+) {
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type: 1,
+        sub_event: 0,
+        event_tag: "destroy".into(),
+        block_id: "object:0:event:1:0".into(),
+        action_count: 0,
+    });
+    append_lowered_entry(package, "object:0:event:1:0".into(), statements);
+}
+
 pub(super) fn add_room_create_block(
     package: &mut RuntimePackage,
     statements: Vec<LoweredLogicStatement>,

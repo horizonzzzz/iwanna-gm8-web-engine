@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use iwm_runtime_host::{RuntimeButton, RuntimeHost};
 use iwm_runtime_model::{ObjectDefinition, RoomDefinition};
 
+use crate::event_dispatch::{object_event_block_ids, RuntimeEventSelector};
 use crate::helpers::{as_number, parse_room_id, parse_runtime_value, record_host_diagnostic};
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeCoreError,
@@ -63,6 +64,8 @@ impl RuntimeCore {
         let step_event_blocks = &self.cached_step_event_blocks;
         let script_entries = &self.cached_script_entries;
         let room_order = &self.cached_room_order;
+        let destroy_event_entries =
+            self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
         let button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
         let known_files = sample_known_files(host);
         let (current_room_id, dispatches) = {
@@ -152,6 +155,7 @@ impl RuntimeCore {
                             host,
                             &mut self.diagnostics,
                             &mut scope,
+                            &destroy_event_entries,
                             Some(&eval_context),
                             &mut with_updates,
                         );
@@ -216,6 +220,27 @@ impl RuntimeCore {
                 (object.id, block_ids)
             })
             .collect::<HashMap<_, _>>()
+    }
+
+    pub(crate) fn lowered_event_entries_by_selector(
+        &self,
+        selector: RuntimeEventSelector,
+    ) -> HashMap<usize, Vec<LoweredLogicEntry>> {
+        self.package
+            .objects
+            .iter()
+            .filter_map(|object| {
+                let entries = object_event_block_ids(&self.package, object.id, selector.clone())
+                    .iter()
+                    .filter_map(|block_id| self.lowered_logic_entry(block_id).cloned())
+                    .collect::<Vec<_>>();
+                if entries.is_empty() {
+                    None
+                } else {
+                    Some((object.id, entries))
+                }
+            })
+            .collect()
     }
 
     /// Precomputes, for each lowercased object name, the set of object ids that
@@ -539,6 +564,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     host: &mut H,
     diagnostics: &mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
     scope: &mut RuntimeExecutionScope,
+    destroy_event_entries: &HashMap<usize, Vec<LoweredLogicEntry>>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
     room_instance_updates: &mut Vec<(usize, RuntimeInstance)>,
 ) {
@@ -581,6 +607,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     host,
                     diagnostics,
                     scope,
+                    destroy_event_entries,
                     eval_context,
                     room_instance_updates,
                 );
@@ -634,6 +661,42 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             "game_restart" => {
                 *pending_room_reset = true;
             }
+            "instance_destroy" => {
+                if instance.alive {
+                    let entries = destroy_event_entries
+                        .get(&instance.object_id)
+                        .cloned()
+                        .unwrap_or_default();
+                    for entry in &entries {
+                        let mut destroy_scope = RuntimeExecutionScope::default();
+                        let nested_destroy_entries = HashMap::new();
+                        for nested in &entry.statements {
+                            apply_runtime_statement(
+                                nested,
+                                instance,
+                                instance_index,
+                                script_entries,
+                                globals,
+                                pending_room_transition,
+                                pending_room_reset,
+                                host,
+                                diagnostics,
+                                &mut destroy_scope,
+                                &nested_destroy_entries,
+                                eval_context,
+                                room_instance_updates,
+                            );
+                            if *pending_room_reset || pending_room_transition.is_some() {
+                                break;
+                            }
+                        }
+                        if *pending_room_reset || pending_room_transition.is_some() {
+                            break;
+                        }
+                    }
+                    instance.alive = false;
+                }
+            }
             _ => {
                 if let Some(entry) = script_entries.get(name) {
                     let mut script_scope = RuntimeExecutionScope::default();
@@ -649,6 +712,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             host,
                             diagnostics,
                             &mut script_scope,
+                            destroy_event_entries,
                             eval_context,
                             room_instance_updates,
                         );
@@ -680,6 +744,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             host,
                             diagnostics,
                             scope,
+                            destroy_event_entries,
                             Some(&with_context),
                             room_instance_updates,
                         );
@@ -712,6 +777,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         host,
                         diagnostics,
                         scope,
+                        destroy_event_entries,
                         Some(&with_context),
                         room_instance_updates,
                     );
