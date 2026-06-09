@@ -591,3 +591,96 @@ fn core_evaluates_string_calls_in_lowered_expressions() {
         Some(&RuntimeValue::Text("true".into()))
     );
 }
+
+#[test]
+fn core_evaluates_distance_to_object_against_nearest_target_bbox() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("marker_distance".into()),
+            value: LoweredLogicExpr::Call {
+                name: "distance_to_object".into(),
+                args: vec![LoweredLogicExpr::Identifier("obj_marker".into())],
+            },
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.x = 12.0;
+        player.y = 24.0;
+
+        let marker = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "obj_marker")
+            .unwrap();
+        marker.x = 48.0;
+        marker.y = 64.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("marker_distance"),
+        Some(&RuntimeValue::Number(
+            (21.0_f64.powi(2) + 25.0_f64.powi(2)).sqrt()
+        ))
+    );
+}
+
+#[test]
+fn core_evaluates_distance_to_object_as_gm_default_when_target_missing() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("missing_distance".into()),
+            value: LoweredLogicExpr::Call {
+                name: "distance_to_object".into(),
+                args: vec![LoweredLogicExpr::Identifier("obj_marker".into())],
+            },
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let marker = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "obj_marker")
+            .unwrap();
+        marker.alive = false;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("missing_distance"),
+        Some(&RuntimeValue::Number(1_000_000.0))
+    );
+}

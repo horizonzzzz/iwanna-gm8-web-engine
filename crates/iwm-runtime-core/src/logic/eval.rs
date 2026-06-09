@@ -130,6 +130,9 @@ pub(super) fn evaluate_expr(
                 .map(RuntimeValue::Text),
             "file_exists" => evaluate_file_exists(args, instance, globals, scope, eval_context),
             "instance_exists" => evaluate_instance_exists(args, eval_context),
+            "distance_to_object" => {
+                evaluate_distance_to_object(args, instance, globals, scope, eval_context)
+            }
             "keyboard_check"
             | "keyboard_check_direct"
             | "keyboard_check_pressed"
@@ -374,6 +377,75 @@ fn evaluate_instance_exists(
         instance.alive && instance.object_name.eq_ignore_ascii_case(object_name)
     });
     Some(RuntimeValue::Bool(exists))
+}
+
+fn evaluate_distance_to_object(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    _globals: &HashMap<String, RuntimeValue>,
+    _scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let context = eval_context?;
+    let instance = instance?;
+    let object_name = args.first().and_then(|arg| match arg {
+        LoweredLogicExpr::Identifier(name) => Some(name.as_str()),
+        _ => None,
+    })?;
+    let target_object_ids = context
+        .place_target_ids_by_name
+        .get(&object_name.to_ascii_lowercase())?;
+    let distance = context
+        .room_instances_iter()
+        .filter(|(_, candidate)| {
+            candidate.alive
+                && candidate.runtime_id != instance.runtime_id
+                && target_object_ids.contains(&candidate.object_id)
+        })
+        .map(|(_, candidate)| instance_bbox_distance(instance, candidate))
+        .fold(1_000_000.0, f64::min);
+
+    Some(RuntimeValue::Number(distance))
+}
+
+fn instance_bbox_distance(
+    left_instance: &RuntimeInstance,
+    right_instance: &RuntimeInstance,
+) -> f64 {
+    let (left, top, right, bottom) = inclusive_bounds_at(left_instance);
+    let (other_left, other_top, other_right, other_bottom) = inclusive_bounds_at(right_instance);
+    let dx = if left > other_right {
+        left - other_right
+    } else if other_left > right {
+        other_left - right
+    } else {
+        0
+    };
+    let dy = if top > other_bottom {
+        top - other_bottom
+    } else if other_top > bottom {
+        other_top - bottom
+    } else {
+        0
+    };
+
+    match (dx, dy) {
+        (0, 0) => 0.0,
+        (x, 0) => x as f64,
+        (0, y) => y as f64,
+        (x, y) => (x as f64).hypot(y as f64),
+    }
+}
+
+fn inclusive_bounds_at(instance: &RuntimeInstance) -> (i32, i32, i32, i32) {
+    let x = instance.x.round() as i32;
+    let y = instance.y.round() as i32;
+    (
+        x - instance.origin_x + instance.bbox_left,
+        y - instance.origin_y + instance.bbox_top,
+        x - instance.origin_x + instance.bbox_right,
+        y - instance.origin_y + instance.bbox_bottom,
+    )
 }
 pub(crate) fn sample_known_files<H: RuntimeHost>(host: &H) -> HashSet<String> {
     let mut files = HashSet::new();

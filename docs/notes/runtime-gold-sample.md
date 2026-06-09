@@ -67,9 +67,8 @@ Important validation note:
   preserve a `2400x1824` room with one visible `800x600` view; runtime-core now
   submits an `800x600` frame and can move the active view through the sample's
   `camera` object `view_xview` / `view_yview` logic.
-- Runtime unsupported diagnostics are now available on the lowered execution path. After adding runtime-core support for the pure `abs()` and `string()` helpers, the current local run against `sampleroom01` (`room_id = 143`) with `cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --select-room 143 --ticks 60 --press-keys 16` ranks the remaining first blocker set as:
+- Runtime unsupported diagnostics are now available on the lowered execution path. After adding runtime-core support for `abs()`, `string()`, and object-name `distance_to_object()`, the current local run against `sampleroom01` (`room_id = 143`) with `cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --select-room 143 --ticks 60 --press-keys 16` ranks the remaining first blocker set as:
   - `runtime-unsupported-function:collision_line`, count `61`, first seen in `object:0:event:3:0`, `object=player`, `event_tag=step`
-  - `runtime-unsupported-function:distance_to_object`, count `61`, first seen in `object:0:event:3:0`, `object=player`, `event_tag=step`
   - `runtime-unsupported-statement:for`, count `61`, first seen in `object:4:event:3:0`, `object=world`, `event_tag=step`
 
 The sample-room trace starts at tick `0` when manual room selection settles the selected room before the first explicit tick. That is expected for this diagnostics command and still gives the first executing block/object/event/runtime-instance context.
