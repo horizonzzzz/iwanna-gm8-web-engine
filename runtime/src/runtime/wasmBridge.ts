@@ -1,4 +1,5 @@
 import type { RuntimePackage } from '../types';
+import { createWebAudioHost, type WasmAudioHost, type WasmSoundMode } from './wasmAudioHost';
 
 export type WasmRuntimeTickPhases = {
   inputDiagNanos: number;
@@ -77,7 +78,7 @@ export type WasmRuntimeFrame = {
 
 export type WasmRuntimeBridge = {
   backend: 'opengmk-wasm';
-  boot: (pkg: RuntimePackage) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
+  boot: (pkg: RuntimePackage, options?: { basePath?: string }) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   snapshot: () => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   frame: () => Promise<WasmRuntimeFrame> | WasmRuntimeFrame;
   setInput: (input: WasmRuntimeInputState) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
@@ -227,7 +228,8 @@ export async function loadWasmRuntimeBridge(
 
 export async function instantiateWasmRuntimeBridge(
   source: RequestInfo | URL,
-  imports: WebAssembly.Imports = {}
+  imports: WebAssembly.Imports = {},
+  options: WasmRuntimeHostImportOptions = {}
 ): Promise<WasmRuntimeBridge> {
   const response = await fetch(source);
   if (!response.ok) {
@@ -235,7 +237,7 @@ export async function instantiateWasmRuntimeBridge(
   }
 
   const bytes = await response.arrayBuffer();
-  const instantiated = await WebAssembly.instantiate(bytes, mergeWasmRuntimeImports(imports));
+  const instantiated = await WebAssembly.instantiate(bytes, mergeWasmRuntimeImports(imports, options));
   const exported = instantiated.instance.exports;
   if (!isWasmRuntimeExports(exported)) {
     throw new Error('WASM module does not expose the expected iwm runtime bridge exports');
@@ -244,18 +246,43 @@ export async function instantiateWasmRuntimeBridge(
   return makeWasmRuntimeBridge(exported);
 }
 
+export type WasmRuntimeHostImportOptions = {
+  now?: () => number;
+  audioHost?: Pick<WasmAudioHost, 'playSound' | 'stopSound'>;
+};
+
 export function makeWasmRuntimeHostImports(
-  now: () => number = () => globalThis.performance?.now() ?? Date.now()
+  options: WasmRuntimeHostImportOptions | (() => number) = {}
 ): WebAssembly.Imports {
+  const now = typeof options === 'function'
+    ? options
+    : options.now ?? (() => globalThis.performance?.now() ?? Date.now());
+  const audioHost = typeof options === 'function' ? undefined : options.audioHost;
   return {
     env: {
-      iwm_host_now_nanos: () => Math.max(0, now() * 1_000_000)
+      iwm_host_now_nanos: () => Math.max(0, now() * 1_000_000),
+      iwm_host_play_sound: (soundId: number, mode: number) => {
+        const result = audioHost?.playSound(soundId, wasmSoundMode(mode));
+        if (result instanceof Promise) {
+          void result.catch(() => undefined);
+        }
+      },
+      iwm_host_stop_sound: (soundId: number) => {
+        audioHost?.stopSound(soundId);
+      }
     }
   };
 }
 
-function mergeWasmRuntimeImports(overrides: WebAssembly.Imports): WebAssembly.Imports {
-  const defaults = makeWasmRuntimeHostImports();
+function wasmSoundMode(mode: number): WasmSoundMode {
+  return mode === 1 ? 'loop' : 'once';
+}
+
+function mergeWasmRuntimeImports(
+  overrides: WebAssembly.Imports,
+  options: WasmRuntimeHostImportOptions = {}
+): WebAssembly.Imports {
+  const defaults = makeWasmRuntimeHostImports(options);
   return {
     ...defaults,
     ...overrides,
@@ -267,7 +294,19 @@ function mergeWasmRuntimeImports(overrides: WebAssembly.Imports): WebAssembly.Im
 }
 
 export async function loadDefaultWasmRuntimeBridge(): Promise<WasmRuntimeBridge> {
-  return instantiateWasmRuntimeBridge('/wasm/iwm_runtime_web.wasm');
+  const audioHost = createWebAudioHost();
+  const bridge = await instantiateWasmRuntimeBridge(
+    '/wasm/iwm_runtime_web.wasm',
+    {},
+    { audioHost }
+  );
+  return {
+    ...bridge,
+    boot: async (pkg, options) => {
+      audioHost.configurePackage(pkg, options?.basePath ?? '');
+      return bridge.boot(pkg);
+    }
+  };
 }
 
 export function describeWasmBridgeAvailability(bridge: WasmRuntimeBridge | null, error: unknown): string {

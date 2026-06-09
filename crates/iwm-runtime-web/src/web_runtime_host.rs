@@ -1,12 +1,33 @@
 use iwm_runtime_core::{RuntimeCore, RuntimePackage};
-use iwm_runtime_host::{ButtonState, HeadlessHost, RuntimeButton};
+use iwm_runtime_host::{
+    ButtonState, ExternalSignature, ExternalValue, HeadlessHost, RuntimeAudioHost, RuntimeButton,
+    RuntimeDiagnostic, RuntimeDiagnosticsHost, RuntimeExternalHost, RuntimeFileHost,
+    RuntimeHostError, RuntimeInputHost, RuntimeRenderFrame, RuntimeRenderHost, RuntimeSoundMode,
+    RuntimeTimeHost,
+};
+use std::path::{Path, PathBuf};
 
 use crate::translate::{bridge_snapshot, format_core_error};
-use crate::{BridgeFrameSnapshot, BridgeSnapshot, WebInputState};
+use crate::{BridgeFrameSnapshot, BridgeSnapshot, WebAudioHost, WebInputState};
+
+#[derive(Debug)]
+struct WebRuntimeHostBoundary {
+    headless: HeadlessHost,
+    audio: WebAudioHost,
+}
+
+impl WebRuntimeHostBoundary {
+    fn new() -> Self {
+        Self {
+            headless: HeadlessHost::new("runtime-web"),
+            audio: WebAudioHost::default(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct WebRuntimeHost {
-    host: HeadlessHost,
+    host: WebRuntimeHostBoundary,
     core: Option<RuntimeCore>,
     package: Option<RuntimePackage>,
     previous_left: bool,
@@ -17,7 +38,7 @@ pub struct WebRuntimeHost {
 impl WebRuntimeHost {
     pub fn new() -> Self {
         Self {
-            host: HeadlessHost::new("runtime-web"),
+            host: WebRuntimeHostBoundary::new(),
             core: None,
             package: None,
             previous_left: false,
@@ -28,7 +49,7 @@ impl WebRuntimeHost {
 
     pub fn boot(&mut self, package: RuntimePackage) -> Result<BridgeSnapshot, String> {
         let mut core = RuntimeCore::load(package.clone()).map_err(format_core_error)?;
-        let mut host = HeadlessHost::new("runtime-web");
+        let mut host = WebRuntimeHostBoundary::new();
         core.render(&mut host).map_err(format_core_error)?;
         let snapshot = bridge_snapshot(core.snapshot());
         self.core = Some(core);
@@ -119,7 +140,7 @@ impl WebRuntimeHost {
             },
         );
 
-        self.host.input.replace_button_states(states);
+        self.host.headless.input.replace_button_states(states);
         self.previous_left = input.left;
         self.previous_right = input.right;
         self.previous_restart = input.restart;
@@ -132,9 +153,9 @@ impl WebRuntimeHost {
 
         let frame_count = frames.max(1);
         for _ in 0..frame_count {
-            self.host.clock.advance_frames(1);
+            self.host.headless.clock.advance_frames(1);
             core.tick(&mut self.host).map_err(format_core_error)?;
-            self.host.input.clear_transitions();
+            self.host.headless.input.clear_transitions();
         }
 
         Ok(bridge_snapshot(core.snapshot()))
@@ -145,7 +166,7 @@ impl WebRuntimeHost {
             return Err("runtime core is not booted".into());
         };
 
-        let mut host = HeadlessHost::new("runtime-web");
+        let mut host = WebRuntimeHostBoundary::new();
         let mut core = RuntimeCore::load(package).map_err(format_core_error)?;
         core.render(&mut host).map_err(format_core_error)?;
         let snapshot = bridge_snapshot(core.snapshot());
@@ -181,6 +202,7 @@ impl WebRuntimeHost {
 
     pub fn frame_snapshot(&self) -> Result<&BridgeFrameSnapshot, String> {
         self.host
+            .headless
             .renderer
             .submitted_frames
             .last()
@@ -188,7 +210,101 @@ impl WebRuntimeHost {
     }
 
     pub fn host_frame_count(&self) -> usize {
-        self.host.renderer.submitted_frames.len()
+        self.host.headless.renderer.submitted_frames.len()
+    }
+
+    pub fn audio_events(&self) -> &[String] {
+        self.host.audio.events()
+    }
+}
+
+impl RuntimeTimeHost for WebRuntimeHostBoundary {
+    fn now_nanos(&self) -> u128 {
+        self.headless.now_nanos()
+    }
+
+    fn diagnostic_now_nanos(&self) -> Option<u128> {
+        self.headless.diagnostic_now_nanos()
+    }
+
+    fn tick_rate_hz(&self) -> u32 {
+        self.headless.tick_rate_hz()
+    }
+}
+
+impl RuntimeInputHost for WebRuntimeHostBoundary {
+    fn button_state(&self, button: RuntimeButton) -> ButtonState {
+        self.headless.button_state(button)
+    }
+
+    fn active_buttons(&self) -> Vec<(RuntimeButton, iwm_runtime_host::ButtonState)> {
+        self.headless.active_buttons()
+    }
+
+    fn mouse_position(&self) -> (i32, i32) {
+        self.headless.mouse_position()
+    }
+}
+
+impl RuntimeRenderHost for WebRuntimeHostBoundary {
+    fn submit_frame(&mut self, frame: RuntimeRenderFrame) -> Result<(), RuntimeHostError> {
+        self.headless.submit_frame(frame)
+    }
+}
+
+impl RuntimeAudioHost for WebRuntimeHostBoundary {
+    fn play_sound(
+        &mut self,
+        sound_id: i32,
+        mode: RuntimeSoundMode,
+    ) -> Result<(), RuntimeHostError> {
+        self.audio.play_sound(sound_id, mode)
+    }
+
+    fn stop_sound(&mut self, sound_id: i32) -> Result<(), RuntimeHostError> {
+        self.audio.stop_sound(sound_id)
+    }
+}
+
+impl RuntimeFileHost for WebRuntimeHostBoundary {
+    fn read(&self, path: &Path) -> Result<Vec<u8>, RuntimeHostError> {
+        self.headless.read(path)
+    }
+
+    fn write_temp(
+        &mut self,
+        relative_path: &Path,
+        bytes: &[u8],
+    ) -> Result<PathBuf, RuntimeHostError> {
+        self.headless.write_temp(relative_path, bytes)
+    }
+
+    fn remove_temp(&mut self, relative_path: &Path) -> Result<(), RuntimeHostError> {
+        self.headless.remove_temp(relative_path)
+    }
+}
+
+impl RuntimeExternalHost for WebRuntimeHostBoundary {
+    fn define(&mut self, signature: ExternalSignature) -> Result<u32, RuntimeHostError> {
+        self.headless.define(signature)
+    }
+
+    fn call(
+        &mut self,
+        handle: u32,
+        args: &[ExternalValue],
+    ) -> Result<ExternalValue, RuntimeHostError> {
+        self.headless.call(handle, args)
+    }
+
+    fn free_library(&mut self, library: &str) -> Result<(), RuntimeHostError> {
+        self.headless.free_library(library)
+    }
+}
+
+impl RuntimeDiagnosticsHost for WebRuntimeHostBoundary {
+    fn record(&mut self, diagnostic: RuntimeDiagnostic) {
+        self.headless.record(diagnostic);
     }
 }
 

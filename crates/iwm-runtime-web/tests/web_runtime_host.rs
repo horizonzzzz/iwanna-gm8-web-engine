@@ -368,6 +368,56 @@ fn web_runtime_host_snapshot_formats_runtime_unsupported_diagnostics() {
 }
 
 #[test]
+fn web_runtime_host_records_audio_events_from_lowered_sound_calls() {
+    let mut package = sample_package();
+    package.resources.sounds[0].id = 42;
+    package.resources.sounds[0].name = "sndJump".into();
+    package.lowered_logic = Some(iwm_runtime_core::LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![iwm_runtime_core::LoweredLogicEntry {
+            block_id: "object:0:event:3:0".into(),
+            statements: vec![
+                iwm_runtime_core::LoweredLogicStatement::FunctionCall {
+                    name: "sound_play".into(),
+                    args: vec![iwm_runtime_core::LoweredLogicExpr::Identifier(
+                        "sndJump".into(),
+                    )],
+                },
+                iwm_runtime_core::LoweredLogicStatement::FunctionCall {
+                    name: "sound_loop".into(),
+                    args: vec![iwm_runtime_core::LoweredLogicExpr::Identifier(
+                        "sndJump".into(),
+                    )],
+                },
+                iwm_runtime_core::LoweredLogicStatement::FunctionCall {
+                    name: "sound_stop".into(),
+                    args: vec![iwm_runtime_core::LoweredLogicExpr::Identifier(
+                        "sndJump".into(),
+                    )],
+                },
+            ],
+        }],
+    });
+    package.objects[0]
+        .events
+        .push(iwm_runtime_model::ObjectEventEntry {
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            block_id: "object:0:event:3:0".into(),
+            action_count: 0,
+        });
+
+    let mut host = WebRuntimeHost::new();
+    host.boot(package).unwrap();
+
+    assert_eq!(
+        host.audio_events(),
+        vec!["play:42:once", "play:42:loop", "stop:42"]
+    );
+}
+
+#[test]
 fn web_runtime_host_accepts_input_and_returns_render_frame_json() {
     let mut host = WebRuntimeHost::new();
     host.boot(sample_package()).unwrap();

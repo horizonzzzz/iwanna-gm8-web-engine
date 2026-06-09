@@ -569,7 +569,7 @@ describe('main runtime shell', () => {
     await flushAsyncWork();
 
     expect(loadWasmBridge).toHaveBeenCalledTimes(1);
-    expect(wasmBridge.boot).toHaveBeenCalledWith(samplePackage);
+    expect(wasmBridge.boot).toHaveBeenCalledWith(samplePackage, { basePath: '/packages/sample' });
     expect(wasmBridge.frame).toHaveBeenCalled();
     expect(renderWasmFrame).toHaveBeenCalled();
     expect(collectText(doc.body)).toContain('WASM bridge available');

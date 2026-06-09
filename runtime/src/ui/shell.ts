@@ -596,7 +596,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       if (resolved.loadWasmBridge) {
         try {
           const wasmBridge = await resolved.loadWasmBridge();
-          const snapshot = await wasmBridge.boot(pkg);
+          const snapshot = await wasmBridge.boot(pkg, { basePath: input.value });
           nextBackend = {
             kind: 'wasm',
             bridge: wasmBridge,

@@ -1,9 +1,11 @@
+mod audio_host;
 mod bridge_types;
 mod ffi;
 mod result_store;
 mod translate;
 mod web_runtime_host;
 
+pub use audio_host::WebAudioHost;
 pub use bridge_types::{
     BridgeDrawCommand, BridgeFrameSnapshot, BridgeInputTraceSnapshot, BridgeJumpSnapshot,
     BridgePlayerSnapshot, BridgeRgba8, BridgeSnapshot, BridgeTickPhaseSnapshot, WebInputState,
