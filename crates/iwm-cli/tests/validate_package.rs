@@ -54,6 +54,42 @@ fn validate_package_exits_nonzero_for_invalid_fixture() {
     fs::remove_dir_all(temp_root).expect("temporary fixture should be removed");
 }
 
+#[test]
+fn runtime_diagnostics_trace_player_includes_comparable_summary() {
+    let temp_root = copy_fixture_to_temp();
+    make_fixture_player_traceable(&temp_root);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_iwm-cli"))
+        .arg("runtime-diagnostics")
+        .arg("--input")
+        .arg(&temp_root)
+        .arg("--ticks")
+        .arg("3")
+        .arg("--trace-player")
+        .arg("--trace-every")
+        .arg("1")
+        .output()
+        .expect("cli should run");
+
+    assert!(output.status.success(), "stderr={}", stderr(&output));
+    let diagnostics: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("diagnostics output should be json");
+    let trace = diagnostics["player_trace"]
+        .as_array()
+        .expect("player trace should be present");
+    let summary = &diagnostics["trace_summary"];
+
+    assert_eq!(summary["sample_count"], trace.len());
+    assert_eq!(summary["first"]["tick"], trace[0]["tick"]);
+    assert_eq!(summary["last"]["tick"], trace.last().unwrap()["tick"]);
+    assert_eq!(summary["last"]["x"], trace.last().unwrap()["x"]);
+    assert_eq!(summary["last"]["y"], trace.last().unwrap()["y"]);
+    assert!(summary["max_abs_vspeed"].is_number());
+    assert_eq!(summary["rooms"][0]["room_id"], trace[0]["room_id"]);
+
+    fs::remove_dir_all(temp_root).expect("temporary fixture should be removed");
+}
+
 fn copy_fixture_to_temp() -> PathBuf {
     let suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -77,6 +113,19 @@ fn copy_dir(source: &Path, target: &Path) {
             fs::copy(&source_path, &target_path).expect("fixture file should be copied");
         }
     }
+}
+
+fn make_fixture_player_traceable(root: &Path) {
+    let objects_path = root.join("objects.json");
+    let mut objects: serde_json::Value =
+        serde_json::from_slice(&fs::read(&objects_path).expect("objects fixture should read"))
+            .expect("objects fixture should parse");
+    objects[0]["name"] = serde_json::json!("obj_player");
+    fs::write(
+        &objects_path,
+        serde_json::to_vec_pretty(&objects).expect("objects fixture should serialize"),
+    )
+    .expect("objects fixture should write");
 }
 
 fn stdout(output: &std::process::Output) -> String {

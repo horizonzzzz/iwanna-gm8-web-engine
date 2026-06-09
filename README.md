@@ -145,11 +145,11 @@ Useful options:
 - `--ticks <n>` controls how many headless runtime ticks to run
 - `--press-keys 16,39` sends one-tick key press edges by GM virtual-key code
 - `--hold-keys 16,39` holds keys for the whole run
-- `--trace-player` adds a `player_trace` array to the same diagnostics JSON, recording the selected player instance's room, tick, object/runtime id, position, velocity, alive flag, grounded flag, jump phase, input trace, and diagnostic count
+- `--trace-player` adds `trace_summary` plus a `player_trace` array to the same diagnostics JSON, recording the selected player instance's room, tick, object/runtime id, position, velocity, alive flag, grounded flag, jump phase, input trace, and diagnostic count
 - `--trace-every <n>` samples player trace every `n` ticks; it defaults to `1` when tracing is enabled
 - `--trace-output <path>` writes the full diagnostics JSON to a file instead of stdout, useful for longer behavior traces
 
-The JSON output groups runtime blockers such as `runtime-unsupported-function:abs` or `runtime-unsupported-statement:for`, and preserves the first triggering `room`, `tick`, `block_id`, `object`, `event_tag`, and `runtime_id`.
+The JSON output groups runtime blockers such as `runtime-unsupported-function:abs` or `runtime-unsupported-statement:for`, and preserves the first triggering `room`, `tick`, `block_id`, `object`, `event_tag`, and `runtime_id`. When player tracing is enabled, `trace_summary` gives a compact behavior-baseline record with first/last frames, coordinate ranges, peak absolute speeds, sample count, and room segments before you inspect the full row-level trace.
 
 ### 5. Launch the browser shell
 

@@ -224,6 +224,7 @@ fn main() {
             });
             if trace_player {
                 output["trace_every"] = json!(trace_every);
+                output["trace_summary"] = json!(summarize_player_trace(&player_trace));
                 output["player_trace"] = json!(player_trace);
             }
 
@@ -302,6 +303,53 @@ struct PlayerTraceEntry {
     diagnostic_count: usize,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct PlayerTraceSummary {
+    sample_count: usize,
+    first: Option<PlayerTraceComparableFrame>,
+    last: Option<PlayerTraceComparableFrame>,
+    min_x: Option<f64>,
+    max_x: Option<f64>,
+    min_y: Option<f64>,
+    max_y: Option<f64>,
+    max_abs_hspeed: f64,
+    max_abs_vspeed: f64,
+    rooms: Vec<PlayerTraceRoomSegment>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PlayerTraceComparableFrame {
+    tick: u64,
+    room_id: Option<usize>,
+    room: Option<String>,
+    runtime_id: usize,
+    instance_id: i32,
+    object_id: usize,
+    object: String,
+    x: f64,
+    y: f64,
+    hspeed: f64,
+    vspeed: f64,
+    alive: bool,
+    grounded: bool,
+    jump_active: bool,
+    jump_hold_frames: u32,
+    jump_cut_applied: bool,
+    jump_pressed: bool,
+    jump_just_pressed: bool,
+    jump_just_released: bool,
+    diagnostic_count: usize,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PlayerTraceRoomSegment {
+    room_id: Option<usize>,
+    room: Option<String>,
+    first_tick: u64,
+    last_tick: u64,
+    sample_count: usize,
+}
+
 fn maybe_collect_player_trace(
     core: &RuntimeCore,
     trace_every: u32,
@@ -341,6 +389,79 @@ fn maybe_collect_player_trace(
         active_keys: snapshot.input_trace.active_keys,
         diagnostic_count: snapshot.diagnostics.len(),
     });
+}
+
+fn summarize_player_trace(trace: &[PlayerTraceEntry]) -> PlayerTraceSummary {
+    let first = trace.first().map(comparable_trace_frame);
+    let last = trace.last().map(comparable_trace_frame);
+    let mut min_x: Option<f64> = None;
+    let mut max_x: Option<f64> = None;
+    let mut min_y: Option<f64> = None;
+    let mut max_y: Option<f64> = None;
+    let mut max_abs_hspeed = 0.0_f64;
+    let mut max_abs_vspeed = 0.0_f64;
+    let mut rooms = Vec::<PlayerTraceRoomSegment>::new();
+
+    for entry in trace {
+        min_x = Some(min_x.map_or(entry.x, |value| value.min(entry.x)));
+        max_x = Some(max_x.map_or(entry.x, |value| value.max(entry.x)));
+        min_y = Some(min_y.map_or(entry.y, |value| value.min(entry.y)));
+        max_y = Some(max_y.map_or(entry.y, |value| value.max(entry.y)));
+        max_abs_hspeed = max_abs_hspeed.max(entry.hspeed.abs());
+        max_abs_vspeed = max_abs_vspeed.max(entry.vspeed.abs());
+
+        match rooms.last_mut() {
+            Some(segment) if segment.room_id == entry.room_id && segment.room == entry.room => {
+                segment.last_tick = entry.tick;
+                segment.sample_count += 1;
+            }
+            _ => rooms.push(PlayerTraceRoomSegment {
+                room_id: entry.room_id,
+                room: entry.room.clone(),
+                first_tick: entry.tick,
+                last_tick: entry.tick,
+                sample_count: 1,
+            }),
+        }
+    }
+
+    PlayerTraceSummary {
+        sample_count: trace.len(),
+        first,
+        last,
+        min_x,
+        max_x,
+        min_y,
+        max_y,
+        max_abs_hspeed,
+        max_abs_vspeed,
+        rooms,
+    }
+}
+
+fn comparable_trace_frame(entry: &PlayerTraceEntry) -> PlayerTraceComparableFrame {
+    PlayerTraceComparableFrame {
+        tick: entry.tick,
+        room_id: entry.room_id,
+        room: entry.room.clone(),
+        runtime_id: entry.runtime_id,
+        instance_id: entry.instance_id,
+        object_id: entry.object_id,
+        object: entry.object.clone(),
+        x: entry.x,
+        y: entry.y,
+        hspeed: entry.hspeed,
+        vspeed: entry.vspeed,
+        alive: entry.alive,
+        grounded: entry.grounded,
+        jump_active: entry.jump_active,
+        jump_hold_frames: entry.jump_hold_frames,
+        jump_cut_applied: entry.jump_cut_applied,
+        jump_pressed: entry.jump_pressed,
+        jump_just_pressed: entry.jump_just_pressed,
+        jump_just_released: entry.jump_just_released,
+        diagnostic_count: entry.diagnostic_count,
+    }
 }
 
 fn collect_runtime_blockers(
