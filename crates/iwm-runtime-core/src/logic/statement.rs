@@ -368,6 +368,7 @@ fn is_supported_eval_function(name: &str) -> bool {
             | "file_exists"
             | "instance_exists"
             | "distance_to_object"
+            | "collision_line"
             | "keyboard_check"
             | "keyboard_check_direct"
             | "keyboard_check_pressed"

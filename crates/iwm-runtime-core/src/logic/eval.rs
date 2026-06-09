@@ -9,7 +9,7 @@ use crate::{LoweredLogicExpr, RuntimeInstance, RuntimeValue};
 pub(super) fn is_truthy(value: Option<RuntimeValue>) -> bool {
     match value {
         Some(RuntimeValue::Bool(b)) => b,
-        Some(RuntimeValue::Number(n)) => n != 0.0,
+        Some(RuntimeValue::Number(n)) => n >= 0.5,
         Some(RuntimeValue::Text(s)) => !s.is_empty(),
         None => false,
     }
@@ -132,6 +132,9 @@ pub(super) fn evaluate_expr(
             "instance_exists" => evaluate_instance_exists(args, eval_context),
             "distance_to_object" => {
                 evaluate_distance_to_object(args, instance, globals, scope, eval_context)
+            }
+            "collision_line" => {
+                evaluate_collision_line(args, instance, globals, scope, eval_context)
             }
             "keyboard_check"
             | "keyboard_check_direct"
@@ -408,6 +411,62 @@ fn evaluate_distance_to_object(
     Some(RuntimeValue::Number(distance))
 }
 
+fn evaluate_collision_line(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let context = eval_context?;
+    let x1 = args
+        .first()
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?;
+    let y1 = args
+        .get(1)
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?;
+    let x2 = args
+        .get(2)
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?;
+    let y2 = args
+        .get(3)
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?;
+    let object_name = args.get(4).and_then(|arg| match arg {
+        LoweredLogicExpr::Identifier(name) => Some(name.as_str()),
+        _ => None,
+    })?;
+    let precise = args
+        .get(5)
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .map(|value| is_truthy(Some(value)))
+        .unwrap_or(false);
+    let exclude_self = args
+        .get(6)
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .map(|value| is_truthy(Some(value)))
+        .unwrap_or(false);
+    let current_runtime_id = instance.map(|instance| instance.runtime_id);
+    let target_object_ids = context
+        .place_target_ids_by_name
+        .get(&object_name.to_ascii_lowercase())?;
+    let hit = context
+        .room_instances_iter()
+        .find(|(_, candidate)| {
+            candidate.alive
+                && (!exclude_self || current_runtime_id != Some(candidate.runtime_id))
+                && target_object_ids.contains(&candidate.object_id)
+                && line_intersects_instance(candidate, x1, y1, x2, y2, precise)
+        })
+        .map(|(_, candidate)| candidate.instance_id as f64)
+        .unwrap_or(-4.0);
+
+    Some(RuntimeValue::Number(hit))
+}
+
 fn instance_bbox_distance(
     left_instance: &RuntimeInstance,
     right_instance: &RuntimeInstance,
@@ -446,6 +505,113 @@ fn inclusive_bounds_at(instance: &RuntimeInstance) -> (i32, i32, i32, i32) {
         x - instance.origin_x + instance.bbox_right,
         y - instance.origin_y + instance.bbox_bottom,
     )
+}
+
+fn line_intersects_instance(
+    instance: &RuntimeInstance,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    precise: bool,
+) -> bool {
+    let (left, top, right, bottom) = inclusive_bounds_at(instance);
+    if !line_intersects_inclusive_rect(x1, y1, x2, y2, left, top, right, bottom) {
+        return false;
+    }
+    if !precise || instance.collision_masks.is_empty() {
+        return true;
+    }
+    line_points(x1, y1, x2, y2).any(|(x, y)| instance_mask_contains_point(instance, x, y))
+}
+
+fn line_intersects_inclusive_rect(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+) -> bool {
+    let rect_left = left as f64;
+    let rect_top = top as f64;
+    let rect_right = (right + 1) as f64;
+    let rect_bottom = (bottom + 1) as f64;
+    let mut t0 = 0.0;
+    let mut t1 = 1.0;
+    clip_line_axis(-(x2 - x1), x1 - rect_left, &mut t0, &mut t1)
+        && clip_line_axis(x2 - x1, rect_right - x1, &mut t0, &mut t1)
+        && clip_line_axis(-(y2 - y1), y1 - rect_top, &mut t0, &mut t1)
+        && clip_line_axis(y2 - y1, rect_bottom - y1, &mut t0, &mut t1)
+}
+
+fn clip_line_axis(p: f64, q: f64, t0: &mut f64, t1: &mut f64) -> bool {
+    if p == 0.0 {
+        return q >= 0.0;
+    }
+    let r = q / p;
+    if p < 0.0 {
+        if r > *t1 {
+            return false;
+        }
+        if r > *t0 {
+            *t0 = r;
+        }
+    } else {
+        if r < *t0 {
+            return false;
+        }
+        if r < *t1 {
+            *t1 = r;
+        }
+    }
+    true
+}
+
+fn line_points(x1: f64, y1: f64, x2: f64, y2: f64) -> impl Iterator<Item = (i32, i32)> {
+    let x1 = x1.round() as i32;
+    let y1 = y1.round() as i32;
+    let x2 = x2.round() as i32;
+    let y2 = y2.round() as i32;
+    let steps = (x2 - x1).abs().max((y2 - y1).abs());
+    (0..=steps).map(move |step| {
+        if steps == 0 {
+            (x1, y1)
+        } else {
+            let t = step as f64 / steps as f64;
+            (
+                (x1 as f64 + (x2 - x1) as f64 * t).round() as i32,
+                (y1 as f64 + (y2 - y1) as f64 * t).round() as i32,
+            )
+        }
+    })
+}
+
+fn instance_mask_contains_point(instance: &RuntimeInstance, world_x: i32, world_y: i32) -> bool {
+    let Some(mask) = instance.collision_masks.first() else {
+        return false;
+    };
+    let expected_len = mask.width.checked_mul(mask.height).unwrap_or(0) as usize;
+    if mask.width == 0 || mask.height == 0 || mask.data.len() < expected_len {
+        return false;
+    }
+    let local_x = world_x - instance.x.round() as i32 + instance.origin_x;
+    let local_y = world_y - instance.y.round() as i32 + instance.origin_y;
+    if local_x < mask.bbox_left
+        || local_x > mask.bbox_right
+        || local_y < mask.bbox_top
+        || local_y > mask.bbox_bottom
+        || local_x < 0
+        || local_y < 0
+        || local_x >= mask.width as i32
+        || local_y >= mask.height as i32
+    {
+        return false;
+    }
+    let index = local_y as usize * mask.width as usize + local_x as usize;
+    mask.data.get(index).copied().unwrap_or(false)
 }
 pub(crate) fn sample_known_files<H: RuntimeHost>(host: &H) -> HashSet<String> {
     let mut files = HashSet::new();

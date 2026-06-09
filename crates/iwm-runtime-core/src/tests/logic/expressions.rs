@@ -684,3 +684,190 @@ fn core_evaluates_distance_to_object_as_gm_default_when_target_missing() {
         Some(&RuntimeValue::Number(1_000_000.0))
     );
 }
+
+#[test]
+fn core_evaluates_collision_line_against_object_name_targets() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("line_hit".into()),
+            value: LoweredLogicExpr::Call {
+                name: "collision_line".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(40.0),
+                    LoweredLogicExpr::LiteralNumber(72.0),
+                    LoweredLogicExpr::LiteralNumber(80.0),
+                    LoweredLogicExpr::LiteralNumber(72.0),
+                    LoweredLogicExpr::Identifier("obj_marker".into()),
+                    LoweredLogicExpr::LiteralBool(false),
+                    LoweredLogicExpr::LiteralBool(true),
+                ],
+            },
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let marker = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "obj_marker")
+            .unwrap();
+        marker.x = 48.0;
+        marker.y = 64.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("line_hit"),
+        Some(&RuntimeValue::Number(12.0))
+    );
+}
+
+#[test]
+fn core_evaluates_collision_line_as_noone_when_no_target_intersects() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("line_hit".into()),
+            value: LoweredLogicExpr::Call {
+                name: "collision_line".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::LiteralNumber(8.0),
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::Identifier("obj_marker".into()),
+                    LoweredLogicExpr::LiteralBool(false),
+                    LoweredLogicExpr::LiteralBool(true),
+                ],
+            },
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("line_hit"),
+        Some(&RuntimeValue::Number(-4.0))
+    );
+}
+
+#[test]
+fn core_treats_collision_line_noone_result_as_false_in_conditionals() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::Call {
+                name: "collision_line".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::LiteralNumber(8.0),
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::Identifier("obj_marker".into()),
+                    LoweredLogicExpr::LiteralBool(false),
+                    LoweredLogicExpr::LiteralBool(true),
+                ],
+            },
+            then_branch: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("line_branch".into()),
+                value: LoweredLogicExpr::LiteralText("hit".into()),
+            }],
+            else_branch: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("line_branch".into()),
+                value: LoweredLogicExpr::LiteralText("miss".into()),
+            }],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("line_branch"),
+        Some(&RuntimeValue::Text("miss".into()))
+    );
+}
+
+#[test]
+fn core_evaluates_collision_line_notme_by_skipping_current_instance() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("line_hit".into()),
+            value: LoweredLogicExpr::Call {
+                name: "collision_line".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(12.0),
+                    LoweredLogicExpr::LiteralNumber(24.0),
+                    LoweredLogicExpr::LiteralNumber(24.0),
+                    LoweredLogicExpr::LiteralNumber(24.0),
+                    LoweredLogicExpr::Identifier("obj_player".into()),
+                    LoweredLogicExpr::LiteralBool(false),
+                    LoweredLogicExpr::LiteralBool(true),
+                ],
+            },
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.x = 12.0;
+        player.y = 24.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("line_hit"),
+        Some(&RuntimeValue::Number(-4.0))
+    );
+}
