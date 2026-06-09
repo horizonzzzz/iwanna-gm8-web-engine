@@ -88,9 +88,9 @@ Impact:
 
 Background music and sound effects now have a first browser-hosted path.
 
-Runtime-core resolves package sound identifiers for `sound_play()`, `sound_loop()`, and `sound_stop()` and dispatches them through `RuntimeAudioHost`. The browser runtime-web path now forwards those host calls through WASM imports to a minimal Web Audio host that loads package sound resources, plays one-shot sounds, loops sounds, and stops active loops.
+Runtime-core resolves package sound identifiers for `sound_play()`, `sound_loop()`, `sound_stop()`, `sound_stop_all()`, and `sound_isplaying()` and dispatches them through `RuntimeAudioHost`. The browser runtime-web path now forwards those host calls through WASM imports to a minimal Web Audio host that loads package sound resources, plays one-shot sounds, loops sounds, queries active sound state, stops active loops, and stops all active sounds.
 
-Remaining audio gaps include browser autoplay/user-gesture handling, volume/pan/mixing controls, `sound_stop_all()`, and broader GM sound API coverage.
+Remaining audio gaps include browser autoplay/user-gesture handling, volume/pan/mixing controls, channel/priority semantics, and broader GM sound API coverage.
 
 ### 3. Variable System
 
