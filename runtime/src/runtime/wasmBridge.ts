@@ -248,7 +248,7 @@ export async function instantiateWasmRuntimeBridge(
 
 export type WasmRuntimeHostImportOptions = {
   now?: () => number;
-  audioHost?: Pick<WasmAudioHost, 'playSound' | 'stopSound'>;
+  audioHost?: Pick<WasmAudioHost, 'playSound' | 'stopSound' | 'stopAllSounds' | 'isSoundPlaying'>;
 };
 
 export function makeWasmRuntimeHostImports(
@@ -269,6 +269,12 @@ export function makeWasmRuntimeHostImports(
       },
       iwm_host_stop_sound: (soundId: number) => {
         audioHost?.stopSound(soundId);
+      },
+      iwm_host_stop_all_sounds: () => {
+        audioHost?.stopAllSounds();
+      },
+      iwm_host_is_sound_playing: (soundId: number) => {
+        return audioHost?.isSoundPlaying(soundId) ? 1 : 0;
       }
     }
   };

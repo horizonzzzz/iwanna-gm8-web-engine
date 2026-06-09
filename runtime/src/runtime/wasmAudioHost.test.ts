@@ -5,6 +5,7 @@ import type { RuntimePackage } from '../types';
 class FakeBufferSource {
   buffer: unknown = null;
   loop = false;
+  onended: (() => void) | null = null;
   connect = vi.fn();
   start = vi.fn();
   stop = vi.fn();
@@ -58,5 +59,24 @@ describe('wasm web audio host', () => {
     expect(context.createdSources[0].stop).toHaveBeenCalledTimes(1);
     expect(context.createdSources[1].loop).toBe(false);
     expect(context.createdSources[1].start).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports active loop state and stops all sounds', async () => {
+    const context = new FakeAudioContext();
+    const fetchSound = vi.fn(async () => new Response(new Uint8Array([1, 2, 3])));
+    const host = createWebAudioHost({
+      audioContext: context as unknown as AudioContext,
+      fetch: fetchSound
+    });
+
+    host.configurePackage(packageWithSound, '/packages/sample');
+    expect(host.isSoundPlaying(42)).toBe(false);
+
+    await host.playSound(42, 'loop');
+    expect(host.isSoundPlaying(42)).toBe(true);
+
+    host.stopAllSounds();
+    expect(host.isSoundPlaying(42)).toBe(false);
+    expect(context.createdSources[0].stop).toHaveBeenCalledTimes(1);
   });
 });

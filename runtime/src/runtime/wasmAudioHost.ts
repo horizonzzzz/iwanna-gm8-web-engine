@@ -6,6 +6,8 @@ export type WasmAudioHost = {
   configurePackage: (pkg: RuntimePackage, basePath: string) => void;
   playSound: (soundId: number, mode: WasmSoundMode) => Promise<void> | void;
   stopSound: (soundId: number) => void;
+  stopAllSounds: () => void;
+  isSoundPlaying: (soundId: number) => boolean;
 };
 
 type WebAudioHostOptions = {
@@ -18,6 +20,7 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
   const fetchSound = options.fetch ?? fetch.bind(globalThis);
   const buffers = new Map<number, Promise<AudioBuffer>>();
   const activeLoops = new Map<number, AudioBufferSourceNode>();
+  const playingSounds = new Set<number>();
   let packageBasePath = '';
   let packageSounds = new Map<number, string>();
 
@@ -49,28 +52,45 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
       return;
     }
     if (mode === 'loop') {
-      activeLoops.get(soundId)?.stop();
+      stopSource(activeLoops.get(soundId));
     }
 
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.loop = mode === 'loop';
+    source.onended = () => {
+      if (mode !== 'loop') {
+        playingSounds.delete(soundId);
+      }
+    };
     source.connect(context.destination);
+    playingSounds.add(soundId);
     source.start();
     if (mode === 'loop') {
       activeLoops.set(soundId, source);
     }
   }
 
+  function stopSource(source: AudioBufferSourceNode | undefined): void {
+    try {
+      source?.stop();
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== 'InvalidStateError') {
+        throw error;
+      }
+    }
+  }
+
   return {
     configurePackage(pkg, basePath) {
       for (const source of activeLoops.values()) {
-        source.stop();
+        stopSource(source);
       }
       packageBasePath = basePath.replace(/\/$/, '');
       packageSounds = new Map(pkg.resources.sounds.map((sound) => [sound.id, sound.file_path]));
       buffers.clear();
       activeLoops.clear();
+      playingSounds.clear();
     },
     async playSound(soundId, mode) {
       const buffer = await loadBuffer(soundId);
@@ -79,8 +99,19 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
       }
     },
     stopSound(soundId) {
-      activeLoops.get(soundId)?.stop();
+      stopSource(activeLoops.get(soundId));
       activeLoops.delete(soundId);
+      playingSounds.delete(soundId);
+    },
+    stopAllSounds() {
+      for (const source of activeLoops.values()) {
+        stopSource(source);
+      }
+      activeLoops.clear();
+      playingSounds.clear();
+    },
+    isSoundPlaying(soundId) {
+      return playingSounds.has(soundId);
     }
   };
 }
