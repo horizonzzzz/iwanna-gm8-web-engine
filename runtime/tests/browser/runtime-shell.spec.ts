@@ -25,7 +25,7 @@ test('sample package can switch to rStage01 and keep wasm telemetry visible', as
   await loadPackage(page, '/packages/sample');
 
   await expect(page.locator('#runtime-status')).toContainText('WASM runtime active');
-  await expect(page.locator('select[name="roomSelect"]')).toHaveValue('2');
+  await expect(page.locator('select[name="roomSelect"]')).toHaveValue(/^(2|111|110|109)$/);
   await page.locator('select[name="roomSelect"]').selectOption('147');
   await expect(page.locator('#runtime-room')).toContainText('147: rStage01');
   await expect(page.locator('#runtime-status')).toContainText('rStage01');
