@@ -823,6 +823,154 @@ fn core_treats_collision_line_noone_result_as_false_in_conditionals() {
 }
 
 #[test]
+fn core_executes_lowered_for_loop_assignments() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("sum".into()),
+                value: LoweredLogicExpr::LiteralNumber(0.0),
+            },
+            LoweredLogicStatement::For {
+                init: LoweredLogicExpr::BinaryExpr {
+                    op: "=".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+                },
+                condition: LoweredLogicExpr::BinaryExpr {
+                    op: "<".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(3.0)),
+                },
+                step: LoweredLogicExpr::BinaryExpr {
+                    op: "=".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                    right: Box::new(LoweredLogicExpr::BinaryExpr {
+                        op: "+".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                    }),
+                },
+                body: vec![LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("sum".into()),
+                    value: LoweredLogicExpr::BinaryExpr {
+                        op: "+".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("sum".into())),
+                        right: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                    },
+                }],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("sum"), Some(&RuntimeValue::Number(3.0)));
+    assert_eq!(player.vars.get("i"), Some(&RuntimeValue::Number(3.0)));
+}
+
+#[test]
+fn core_executes_lowered_for_loop_with_local_iterator_scope() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::VariableDeclaration {
+                names: vec!["i".into()],
+            },
+            LoweredLogicStatement::For {
+                init: LoweredLogicExpr::BinaryExpr {
+                    op: "=".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+                },
+                condition: LoweredLogicExpr::BinaryExpr {
+                    op: "<".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(2.0)),
+                },
+                step: LoweredLogicExpr::BinaryExpr {
+                    op: "=".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                    right: Box::new(LoweredLogicExpr::BinaryExpr {
+                        op: "+".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                    }),
+                },
+                body: vec![LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("last_i".into()),
+                    value: LoweredLogicExpr::Identifier("i".into()),
+                }],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("last_i"), Some(&RuntimeValue::Number(1.0)));
+    assert_eq!(player.vars.get("i"), None);
+}
+
+#[test]
+fn core_stops_lowered_for_loop_when_body_requests_room_transition() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::For {
+            init: LoweredLogicExpr::BinaryExpr {
+                op: "=".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+            },
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: "<".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(3.0)),
+            },
+            step: LoweredLogicExpr::BinaryExpr {
+                op: "=".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                right: Box::new(LoweredLogicExpr::BinaryExpr {
+                    op: "+".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("i".into())),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                }),
+            },
+            body: vec![LoweredLogicStatement::FunctionCall {
+                name: "room_goto".into(),
+                args: vec![LoweredLogicExpr::LiteralNumber(9.0)],
+            }],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(core.snapshot().room_id, Some(9));
+}
+
+#[test]
 fn core_evaluates_collision_line_notme_by_skipping_current_instance() {
     let mut package = sample_package();
     add_step_block(

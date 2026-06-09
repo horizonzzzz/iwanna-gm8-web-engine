@@ -286,6 +286,56 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
             }
         }
+        LoweredLogicStatement::For {
+            init,
+            condition,
+            step,
+            body,
+        } => {
+            execute_assignment_expression(init, instance, scope, eval_context, env);
+            let mut iteration_count = 0usize;
+            while is_truthy(evaluate_with_diagnostics(
+                condition,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )) {
+                for nested in body {
+                    apply_runtime_statement(
+                        nested,
+                        instance,
+                        instance_index,
+                        scope,
+                        destroy_event_entries,
+                        eval_context,
+                        env,
+                    );
+                    if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                        break;
+                    }
+                }
+                if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                    break;
+                }
+                execute_assignment_expression(step, instance, scope, eval_context, env);
+                iteration_count += 1;
+                if iteration_count >= 10_000 {
+                    record_host_diagnostic(
+                        env.host,
+                        env.diagnostics,
+                        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                        "runtime-for-iteration-limit",
+                        format!(
+                            "{} iteration_limit=10000",
+                            trace_message(&env.trace, instance)
+                        ),
+                    );
+                    break;
+                }
+            }
+        }
         _ => {
             record_unsupported_statement(env, statement, instance);
         }
@@ -304,6 +354,31 @@ fn record_unsupported_function<H: RuntimeHost>(
         "runtime-unsupported-function",
         format!("{} function={}", trace_message(&env.trace, instance), name),
     );
+}
+
+fn execute_assignment_expression<H: RuntimeHost>(
+    expr: &LoweredLogicExpr,
+    instance: &mut RuntimeInstance,
+    scope: &mut RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) {
+    if let LoweredLogicExpr::BinaryExpr { op, left, right } = expr {
+        if op == "=" {
+            if let Some(key) = assignable_key(left, Some(instance), Some(scope)) {
+                if let Some(value) = evaluate_with_diagnostics(
+                    right,
+                    Some(instance),
+                    Some(scope),
+                    eval_context,
+                    env,
+                    instance,
+                ) {
+                    assign_runtime_value(key, value, instance, env.globals, scope);
+                }
+            }
+        }
+    }
 }
 
 fn evaluate_with_diagnostics<H: RuntimeHost>(
