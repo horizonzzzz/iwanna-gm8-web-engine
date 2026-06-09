@@ -146,6 +146,78 @@ fn instance_create_in_step_creates_duplicate_instances_and_runs_create_event() {
 }
 
 #[test]
+fn runtime_instance_create_event_can_see_created_instance() {
+    let mut package = sample_package();
+    package.objects.push(ObjectDefinition {
+        id: 4,
+        name: "obj_spawned".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 0,
+            sub_event: 0,
+            event_tag: "create".into(),
+            block_id: "object:4:event:0:0".into(),
+            action_count: 0,
+        }],
+    });
+    package.manifest.object_count = package.objects.len();
+    append_lowered_entry(
+        &mut package,
+        "object:4:event:0:0".into(),
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::Call {
+                name: "instance_exists".into(),
+                args: vec![LoweredLogicExpr::Identifier("obj_spawned".into())],
+            },
+            then_branch: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("saw_self_object".into()),
+                value: LoweredLogicExpr::LiteralBool(true),
+            }],
+            else_branch: vec![],
+        }],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "instance_create".into(),
+            args: vec![
+                LoweredLogicExpr::LiteralNumber(80.0),
+                LoweredLogicExpr::LiteralNumber(96.0),
+                LoweredLogicExpr::Identifier("obj_spawned".into()),
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let created = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| {
+            instance.object_name == "obj_spawned" && (instance.x, instance.y) == (80.0, 96.0)
+        })
+        .unwrap();
+    assert_eq!(
+        created.vars.get("saw_self_object"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
 fn collision_instance_destroy_dispatches_destroy_and_marks_owner_dead() {
     let mut package = sample_package();
     package.objects[0].name = "player".into();

@@ -223,10 +223,10 @@ impl RuntimeCore {
         let create_event_entries = self.lowered_event_entries_by_tag_for_runtime("create");
         while let Some(create) = creates.first().cloned() {
             creates.remove(0);
-            let Some((runtime_id, current_room_id, room_instances)) = self
+            let Some((runtime_id, current_room_id)) = self
                 .current_room
                 .as_ref()
-                .map(|room| (room.instances.len(), room.room_id, room.instances.clone()))
+                .map(|room| (room.instances.len(), room.room_id))
             else {
                 return;
             };
@@ -235,6 +235,14 @@ impl RuntimeCore {
             else {
                 continue;
             };
+            let Some(mut room_instances) = self
+                .current_room
+                .as_ref()
+                .map(|room| room.instances.clone())
+            else {
+                return;
+            };
+            room_instances.push(instance.clone());
 
             if let Some(entries) = create_event_entries.get(&instance.object_id) {
                 let script_entries = &self.cached_script_entries;
