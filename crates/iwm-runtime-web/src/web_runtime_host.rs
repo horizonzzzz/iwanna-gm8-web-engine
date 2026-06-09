@@ -264,6 +264,14 @@ impl RuntimeAudioHost for WebRuntimeHostBoundary {
     fn stop_sound(&mut self, sound_id: i32) -> Result<(), RuntimeHostError> {
         self.audio.stop_sound(sound_id)
     }
+
+    fn stop_all_sounds(&mut self) -> Result<(), RuntimeHostError> {
+        self.audio.stop_all_sounds()
+    }
+
+    fn is_sound_playing(&self, sound_id: i32) -> Result<bool, RuntimeHostError> {
+        self.audio.is_sound_playing(sound_id)
+    }
 }
 
 impl RuntimeFileHost for WebRuntimeHostBoundary {

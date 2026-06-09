@@ -2,7 +2,8 @@ mod support;
 
 use std::path::Path;
 
-use iwm_runtime_web::{BridgeDrawCommand, WebInputState, WebRuntimeHost};
+use iwm_runtime_host::{RuntimeAudioHost, RuntimeSoundMode};
+use iwm_runtime_web::{BridgeDrawCommand, WebAudioHost, WebInputState, WebRuntimeHost};
 use serde_json::json;
 
 use support::sample_package;
@@ -415,6 +416,27 @@ fn web_runtime_host_records_audio_events_from_lowered_sound_calls() {
         host.audio_events(),
         vec!["play:42:once", "play:42:loop", "stop:42"]
     );
+}
+
+#[test]
+fn web_audio_host_records_stop_all_events() {
+    let mut host = WebAudioHost::default();
+
+    host.play_sound(7, RuntimeSoundMode::Loop).unwrap();
+    host.stop_all_sounds().unwrap();
+
+    assert_eq!(host.events(), &["play:7:loop", "stop-all"]);
+}
+
+#[test]
+fn web_audio_host_reports_playing_state_for_native_tests() {
+    let mut host = WebAudioHost::default();
+
+    assert!(!host.is_sound_playing(7).unwrap());
+    host.play_sound(7, RuntimeSoundMode::Loop).unwrap();
+    assert!(host.is_sound_playing(7).unwrap());
+    host.stop_sound(7).unwrap();
+    assert!(!host.is_sound_playing(7).unwrap());
 }
 
 #[test]
