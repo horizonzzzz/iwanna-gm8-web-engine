@@ -79,7 +79,7 @@ impl RuntimeCore {
                 let Some(entry) = self.lowered_logic_entry(block_id) else {
                     continue;
                 };
-                if !block_references_global_assignments(&entry.statements) {
+                if !block_references_global_assignments(&entry.statements, &script_entries) {
                     continue;
                 }
                 for statement in &entry.statements {
@@ -401,13 +401,19 @@ fn apply_statement_to_globals_map(
     }
 }
 
-fn block_references_global_assignments(statements: &[LoweredLogicStatement]) -> bool {
+fn block_references_global_assignments(
+    statements: &[LoweredLogicStatement],
+    script_entries: &HashMap<String, LoweredLogicEntry>,
+) -> bool {
     statements
         .iter()
-        .any(statement_references_global_assignment)
+        .any(|statement| statement_references_global_assignment(statement, script_entries))
 }
 
-fn statement_references_global_assignment(statement: &LoweredLogicStatement) -> bool {
+fn statement_references_global_assignment(
+    statement: &LoweredLogicStatement,
+    script_entries: &HashMap<String, LoweredLogicEntry>,
+) -> bool {
     match statement {
         LoweredLogicStatement::Assignment { target, .. } => assignable_key(target, None, None)
             .map(|key| key.starts_with("global."))
@@ -417,15 +423,20 @@ fn statement_references_global_assignment(statement: &LoweredLogicStatement) -> 
             else_branch,
             ..
         } => {
-            block_references_global_assignments(then_branch)
-                || block_references_global_assignments(else_branch)
+            block_references_global_assignments(then_branch, script_entries)
+                || block_references_global_assignments(else_branch, script_entries)
         }
         LoweredLogicStatement::With { body, .. }
         | LoweredLogicStatement::Repeat { body, .. }
         | LoweredLogicStatement::While { body, .. }
-        | LoweredLogicStatement::For { body, .. } => block_references_global_assignments(body),
-        LoweredLogicStatement::FunctionCall { .. }
-        | LoweredLogicStatement::VariableDeclaration { .. }
+        | LoweredLogicStatement::For { body, .. } => {
+            block_references_global_assignments(body, script_entries)
+        }
+        LoweredLogicStatement::FunctionCall { name, .. } => script_entries
+            .get(name)
+            .map(|entry| block_references_global_assignments(&entry.statements, script_entries))
+            .unwrap_or(false),
+        LoweredLogicStatement::VariableDeclaration { .. }
         | LoweredLogicStatement::Return { .. }
         | LoweredLogicStatement::Raw { .. } => false,
     }

@@ -6,6 +6,7 @@ use iwm_runtime_host::{ButtonState, HeadlessHost, RuntimeButton, RuntimeDiagnost
 use iwm_runtime_model::{read_runtime_package_dir, validate_runtime_package};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -42,6 +43,14 @@ enum Commands {
         hold_keys: Vec<u16>,
         #[arg(long)]
         select_room: Option<usize>,
+        #[arg(long, default_value_t = 0)]
+        preselect_ticks: u32,
+        #[arg(long, default_value_t = false)]
+        trace_player: bool,
+        #[arg(long, default_value_t = 1)]
+        trace_every: u32,
+        #[arg(long)]
+        trace_output: Option<PathBuf>,
     },
 }
 
@@ -113,7 +122,15 @@ fn main() {
             press_keys,
             hold_keys,
             select_room,
+            preselect_ticks,
+            trace_player,
+            trace_every,
+            trace_output,
         } => {
+            if trace_player && trace_every == 0 {
+                eprintln!("--trace-every must be greater than 0");
+                std::process::exit(2);
+            }
             let package = match read_runtime_package_dir(&input) {
                 Ok(package) => {
                     let lowered_logic = match serde_json::to_value(package.lowered_logic)
@@ -148,6 +165,17 @@ fn main() {
                 }
             };
             let mut host = HeadlessHost::new("runtime-diagnostics");
+            for _ in 0..preselect_ticks {
+                apply_cli_input(&mut host, core.tick_count(), &[], &[]);
+                if let Err(err) = core.tick(&mut host) {
+                    eprintln!(
+                        "runtime preselect tick failed at tick {}: {err:?}",
+                        core.tick_count()
+                    );
+                    std::process::exit(1);
+                }
+                host.input.clear_transitions();
+            }
             if let Some(room_id) = select_room {
                 if let Err(err) = core.reload_room(room_id) {
                     eprintln!("failed to select room {room_id}: {err:?}");
@@ -160,14 +188,22 @@ fn main() {
             }
             let mut seen_messages = HashSet::new();
             let mut blockers: HashMap<String, RuntimeBlockerSummary> = HashMap::new();
+            let mut player_trace = Vec::new();
 
-            for _ in 0..ticks {
-                apply_cli_input(&mut host, core.tick_count(), &press_keys, &hold_keys);
+            if trace_player {
+                maybe_collect_player_trace(&core, trace_every, &mut player_trace);
+            }
+
+            for run_tick in 0..ticks {
+                apply_cli_input(&mut host, u64::from(run_tick), &press_keys, &hold_keys);
                 if let Err(err) = core.tick(&mut host) {
                     eprintln!("runtime tick failed at tick {}: {err:?}", core.tick_count());
                     std::process::exit(1);
                 }
                 collect_runtime_blockers(core.diagnostics(), &mut seen_messages, &mut blockers);
+                if trace_player {
+                    maybe_collect_player_trace(&core, trace_every, &mut player_trace);
+                }
                 host.input.clear_transitions();
             }
 
@@ -179,17 +215,27 @@ fn main() {
                     .then_with(|| left.key.cmp(&right.key))
             });
 
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&json!({
-                    "ticks": ticks,
-                    "current_room": core.snapshot().room_name,
-                    "current_room_id": core.snapshot().room_id,
-                    "current_tick": core.tick_count(),
-                    "runtime_blockers": ranked,
-                }))
-                .unwrap()
-            );
+            let mut output = json!({
+                "ticks": ticks,
+                "current_room": core.snapshot().room_name,
+                "current_room_id": core.snapshot().room_id,
+                "current_tick": core.tick_count(),
+                "runtime_blockers": ranked,
+            });
+            if trace_player {
+                output["trace_every"] = json!(trace_every);
+                output["player_trace"] = json!(player_trace);
+            }
+
+            let output = serde_json::to_string_pretty(&output).unwrap();
+            if let Some(path) = trace_output {
+                if let Err(err) = fs::write(&path, output) {
+                    eprintln!("failed to write trace output {}: {err}", path.display());
+                    std::process::exit(1);
+                }
+            } else {
+                println!("{output}");
+            }
         }
     }
 }
@@ -227,6 +273,74 @@ struct RuntimeBlockerSummary {
     code: String,
     count: usize,
     first: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PlayerTraceEntry {
+    tick: u64,
+    room_id: Option<usize>,
+    room: Option<String>,
+    runtime_id: usize,
+    instance_id: i32,
+    object_id: usize,
+    object: String,
+    x: f64,
+    y: f64,
+    hspeed: f64,
+    vspeed: f64,
+    facing_left: bool,
+    alive: bool,
+    grounded: bool,
+    jump_active: bool,
+    jump_hold_frames: u32,
+    jump_cut_applied: bool,
+    jump_button_key: u16,
+    jump_pressed: bool,
+    jump_just_pressed: bool,
+    jump_just_released: bool,
+    active_keys: Vec<String>,
+    diagnostic_count: usize,
+}
+
+fn maybe_collect_player_trace(
+    core: &RuntimeCore,
+    trace_every: u32,
+    player_trace: &mut Vec<PlayerTraceEntry>,
+) {
+    let tick = core.tick_count();
+    if tick % u64::from(trace_every) != 0 {
+        return;
+    }
+
+    let snapshot = core.snapshot();
+    let Some(player) = snapshot.player else {
+        return;
+    };
+    player_trace.push(PlayerTraceEntry {
+        tick,
+        room_id: snapshot.room_id,
+        room: snapshot.room_name,
+        runtime_id: player.runtime_id,
+        instance_id: player.instance_id,
+        object_id: player.object_id,
+        object: player.object_name,
+        x: player.x,
+        y: player.y,
+        hspeed: player.hspeed,
+        vspeed: player.vspeed,
+        facing_left: player.facing_left,
+        alive: player.alive,
+        grounded: player.jump.grounded,
+        jump_active: player.jump.active,
+        jump_hold_frames: player.jump.hold_frames,
+        jump_cut_applied: player.jump.cut_applied,
+        jump_button_key: snapshot.input_trace.jump_button_key,
+        jump_pressed: snapshot.input_trace.jump_pressed,
+        jump_just_pressed: snapshot.input_trace.jump_just_pressed,
+        jump_just_released: snapshot.input_trace.jump_just_released,
+        active_keys: snapshot.input_trace.active_keys,
+        diagnostic_count: snapshot.diagnostics.len(),
+    });
 }
 
 fn collect_runtime_blockers(

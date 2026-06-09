@@ -19,11 +19,17 @@ export type WasmRuntimeBridgeSnapshot = {
   roomName?: string | null;
   instanceCount?: number;
   player?: {
+    runtimeId?: number;
+    instanceId?: number;
+    objectId?: number;
+    objectName?: string;
     x: number;
     y: number;
     hspeed: number;
     vspeed: number;
-    facing_left: boolean;
+    facingLeft?: boolean;
+    facing_left?: boolean;
+    alive?: boolean;
     jump: {
       grounded: boolean;
       active: boolean;

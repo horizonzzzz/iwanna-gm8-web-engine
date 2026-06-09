@@ -163,11 +163,16 @@ impl RuntimeCore {
                     .iter()
                     .find(|instance| is_player_instance(instance))
                     .map(|instance| RuntimePlayerSnapshot {
+                        runtime_id: instance.runtime_id,
+                        instance_id: instance.instance_id,
+                        object_id: instance.object_id,
+                        object_name: instance.object_name.clone(),
                         x: instance.x,
                         y: instance.y,
                         hspeed: instance.hspeed,
                         vspeed: instance.vspeed,
                         facing_left: instance.facing_left,
+                        alive: instance.alive,
                         jump: RuntimeJumpSnapshot {
                             grounded: collides_at(
                                 instance,

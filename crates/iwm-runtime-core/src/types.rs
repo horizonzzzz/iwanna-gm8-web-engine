@@ -239,11 +239,16 @@ pub struct RuntimeRoomState {
 
 #[derive(Debug, Clone)]
 pub struct RuntimePlayerSnapshot {
+    pub runtime_id: usize,
+    pub instance_id: i32,
+    pub object_id: usize,
+    pub object_name: String,
     pub x: f64,
     pub y: f64,
     pub hspeed: f64,
     pub vspeed: f64,
     pub facing_left: bool,
+    pub alive: bool,
     pub jump: RuntimeJumpSnapshot,
 }
 

@@ -25,11 +25,16 @@ pub fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
 
 pub fn bridge_player_snapshot(snapshot: RuntimePlayerSnapshot) -> BridgePlayerSnapshot {
     BridgePlayerSnapshot {
+        runtime_id: snapshot.runtime_id,
+        instance_id: snapshot.instance_id,
+        object_id: snapshot.object_id,
+        object_name: snapshot.object_name,
         x: snapshot.x,
         y: snapshot.y,
         hspeed: snapshot.hspeed,
         vspeed: snapshot.vspeed,
         facing_left: snapshot.facing_left,
+        alive: snapshot.alive,
         jump: bridge_jump_snapshot(snapshot.jump),
     }
 }

@@ -263,7 +263,10 @@ function formatRuntimePlayer(snapshot: WasmRuntimeBridgeSnapshot): string {
     jumpJustReleased: false,
     activeKeys: []
   };
-  return `Player: x=${snapshot.player.x} y=${snapshot.player.y} hspeed=${snapshot.player.hspeed} vspeed=${snapshot.player.vspeed} grounded=${jump.grounded} jumpActive=${jump.active} hold=${jump.holdFrames} cut=${jump.cutApplied} jumpKey=0x${trace.jumpButtonKey.toString(16)} jp=${trace.jumpPressed} jjp=${trace.jumpJustPressed} jjr=${trace.jumpJustReleased} keys=[${trace.activeKeys.join(',')}]`;
+  const playerLabel = snapshot.player.objectName
+    ? `${snapshot.player.objectName}#${snapshot.player.runtimeId ?? '?'}`
+    : 'unknown';
+  return `Player: x=${snapshot.player.x} y=${snapshot.player.y} hspeed=${snapshot.player.hspeed} vspeed=${snapshot.player.vspeed} object=${playerLabel} alive=${snapshot.player.alive ?? true} grounded=${jump.grounded} jumpActive=${jump.active} hold=${jump.holdFrames} cut=${jump.cutApplied} jumpKey=0x${trace.jumpButtonKey.toString(16)} jp=${trace.jumpPressed} jjp=${trace.jumpJustPressed} jjr=${trace.jumpJustReleased} keys=[${trace.activeKeys.join(',')}]`;
 }
 
 function formatNanosAsMs(nanos: number): string {

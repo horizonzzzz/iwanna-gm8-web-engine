@@ -32,6 +32,46 @@ fn core_applies_room_create_script_calls_to_globals_for_control_bootstrap() {
 }
 
 #[test]
+fn manual_room_reload_hydrates_globals_from_create_script_calls() {
+    let mut package = sample_package();
+    package.rooms.push(package.rooms[0].clone());
+    package.rooms[1].id = 42;
+    package.rooms[1].name = "target".into();
+    package.rooms[1].creation_block_id = None;
+
+    package.rooms[0].instances[0].creation_block_id = Some("instance:0:create".into());
+    append_lowered_entry(
+        &mut package,
+        "instance:0:create".into(),
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "defControls".into(),
+            args: vec![],
+        }],
+    );
+    add_script_block(
+        &mut package,
+        16,
+        "defControls",
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "jumpbutton".into(),
+            },
+            value: LoweredLogicExpr::Identifier("vk_shift".into()),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    core.globals.clear();
+    core.reload_room(42).unwrap();
+
+    assert_eq!(
+        core.globals.get("global.jumpbutton"),
+        Some(&RuntimeValue::Number(0x10 as f64))
+    );
+}
+
+#[test]
 fn create_logic_instance_create_bootstraps_world_globals_immediately() {
     let mut package = sample_package();
     package.objects[0].name = "player".into();

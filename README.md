@@ -135,14 +135,19 @@ After a package validates, use the CLI diagnostics command to run the headless r
 ```powershell
 cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --ticks 600
 cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --select-room 143 --ticks 240 --press-keys 16
+cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --preselect-ticks 2 --select-room 143 --ticks 240 --press-keys 16 --trace-player --trace-every 10 --trace-output .\runtime-trace-room143.json
 ```
 
 Useful options:
 
 - `--select-room <room_id>` manually enters a room before ticking, useful when default boot/menu rooms do not reach gameplay without broader menu semantics
+- `--preselect-ticks <n>` advances the default boot room before `--select-room`, useful for matching the Web runtime path when package bootstrap logic initializes globals such as `global.jumpbutton`
 - `--ticks <n>` controls how many headless runtime ticks to run
 - `--press-keys 16,39` sends one-tick key press edges by GM virtual-key code
 - `--hold-keys 16,39` holds keys for the whole run
+- `--trace-player` adds a `player_trace` array to the same diagnostics JSON, recording the selected player instance's room, tick, object/runtime id, position, velocity, alive flag, grounded flag, jump phase, input trace, and diagnostic count
+- `--trace-every <n>` samples player trace every `n` ticks; it defaults to `1` when tracing is enabled
+- `--trace-output <path>` writes the full diagnostics JSON to a file instead of stdout, useful for longer behavior traces
 
 The JSON output groups runtime blockers such as `runtime-unsupported-function:abs` or `runtime-unsupported-statement:for`, and preserves the first triggering `room`, `tick`, `block_id`, `object`, `event_tag`, and `runtime_id`.
 
