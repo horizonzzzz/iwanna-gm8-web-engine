@@ -12,12 +12,14 @@ impl RuntimeCore {
                 .ok_or(RuntimeCoreError::NoRooms)?;
             self.pending_room_reset = false;
             self.current_room = Some(self.build_room(room_id)?);
+            self.room_needs_first_render_settle = true;
             self.reset_player_to_spawn();
             self.status = RuntimeStatus::Ready;
         }
 
         if let Some(room_id) = self.pending_room_transition.take() {
             self.current_room = Some(self.build_room(room_id)?);
+            self.room_needs_first_render_settle = true;
             self.status = RuntimeStatus::Ready;
         }
 

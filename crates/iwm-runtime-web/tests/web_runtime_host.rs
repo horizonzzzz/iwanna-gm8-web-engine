@@ -655,3 +655,23 @@ fn real_sample_shift_jump_retriggers_after_landing_in_sampleroom01() {
         "second jump should leave ground again, last_player={last_player:?}, second_jump={second_jump:?}"
     );
 }
+
+#[test]
+fn real_sample_manual_room_select_does_not_render_bow_in_sampleroom03() {
+    let Some(package) = load_real_sample_package() else {
+        return;
+    };
+
+    let mut host = WebRuntimeHost::new();
+    host.boot(package).unwrap();
+
+    let snapshot = host.select_room(146).unwrap();
+    assert_eq!(snapshot.room_id, Some(146));
+    assert_eq!(snapshot.room_name.as_deref(), Some("sampleroom03"));
+
+    let frame = host.frame_snapshot().unwrap();
+    assert!(!frame.commands.iter().any(|command| matches!(
+        command,
+        BridgeDrawCommand::DrawSprite { sprite_id: 25, .. }
+    )));
+}

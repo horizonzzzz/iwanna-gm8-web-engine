@@ -160,6 +160,9 @@ impl RuntimeCore {
         );
 
         for instance in &room.instances {
+            if !instance.alive {
+                continue;
+            }
             let Some(object) = self
                 .object_index
                 .get(&instance.object_id)

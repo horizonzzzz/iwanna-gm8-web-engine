@@ -16,6 +16,7 @@ impl RuntimeCore {
             .ok_or(RuntimeCoreError::NoRooms)?;
 
         self.current_room = Some(self.build_room(room_id)?);
+        self.room_needs_first_render_settle = true;
         self.status = crate::RuntimeStatus::Ready;
         Ok(())
     }

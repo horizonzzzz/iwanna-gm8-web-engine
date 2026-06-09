@@ -1,8 +1,9 @@
 use iwm_runtime_host::RuntimeDrawCommand;
+use iwm_runtime_model::{ObjectDefinition, ObjectEventEntry, RoomInstancePlacement};
 
-use crate::RuntimeCore;
+use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore};
 
-use super::support::{host, sample_package};
+use super::support::{add_step_block, append_lowered_entry, host, sample_package};
 
 #[test]
 fn runtime_core_emits_browser_consumable_draw_commands() {
@@ -66,6 +67,27 @@ fn runtime_core_mirrors_player_sprite_when_facing_left() {
 }
 
 #[test]
+fn runtime_core_skips_dead_instances_when_rendering_sprites() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+    let room = core.current_room.as_mut().unwrap();
+    let sparse_sprite = room
+        .instances
+        .iter_mut()
+        .find(|instance| instance.object_id == 705)
+        .unwrap();
+    sparse_sprite.alive = false;
+
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert!(!frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawSprite { sprite_id: 1, .. }
+    )));
+}
+
+#[test]
 fn runtime_core_renders_visible_view_as_canvas_frame() {
     let mut package = sample_package();
     package.rooms[0].width = 2400;
@@ -120,10 +142,10 @@ fn runtime_core_renders_visible_view_as_canvas_frame() {
         command,
         RuntimeDrawCommand::DrawSprite {
             sprite_id: 0,
-            x: 12,
-            y: 16,
+            x,
+            y,
             ..
-        }
+        } if *x >= 0 && *x <= 32 && *y >= 0 && *y <= 32
     )));
     assert!(!frame.commands.iter().any(|command| matches!(
         command,
@@ -134,4 +156,71 @@ fn runtime_core_renders_visible_view_as_canvas_frame() {
             ..
         }
     )));
+}
+
+#[test]
+fn runtime_core_does_not_render_new_room_pre_step_transients_after_room_goto() {
+    let mut package = sample_package();
+    package.objects.push(ObjectDefinition {
+        id: 8,
+        name: "obj_transient".into(),
+        sprite_index: 1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            block_id: "object:8:event:3:0".into(),
+            action_count: 0,
+        }],
+    });
+    package.rooms[1].instances.push(RoomInstancePlacement {
+        instance_id: 99,
+        object_id: 8,
+        x: 32,
+        y: 32,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "room_goto".into(),
+            args: vec![LoweredLogicExpr::LiteralNumber(9.0)],
+        }],
+    );
+    append_lowered_entry(
+        &mut package,
+        "object:8:event:3:0".into(),
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "instance_destroy".into(),
+            args: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert_eq!(frame.room_id, Some(9));
+    assert!(!frame
+        .commands
+        .iter()
+        .any(|command| matches!(command, RuntimeDrawCommand::DrawSprite { sprite_id: 1, .. })));
 }

@@ -39,6 +39,7 @@ pub struct RuntimeCore {
     pub(crate) diagnostics: Vec<iwm_runtime_host::RuntimeDiagnostic>,
     pub(crate) pending_room_transition: Option<usize>,
     pub(crate) pending_room_reset: bool,
+    pub(crate) room_needs_first_render_settle: bool,
     pub(crate) globals: HashMap<String, RuntimeValue>,
     pub(crate) package_bootstrap_globals: HashMap<String, RuntimeValue>,
     pub(crate) last_input_trace: RuntimeInputTraceSnapshot,
@@ -99,6 +100,7 @@ impl RuntimeCore {
             diagnostics: Vec::new(),
             pending_room_transition: None,
             pending_room_reset: false,
+            room_needs_first_render_settle: false,
             globals: HashMap::new(),
             package_bootstrap_globals: HashMap::new(),
             last_input_trace: RuntimeInputTraceSnapshot {
@@ -191,6 +193,7 @@ impl RuntimeCore {
     }
 
     pub fn render<H: RuntimeHost>(&mut self, host: &mut H) -> Result<(), RuntimeCoreError> {
+        self.settle_current_room_before_first_render(host)?;
         self.sync_current_room_views_from_globals();
         let frame = self.build_render_frame()?;
         host.submit_frame(frame)?;
@@ -228,6 +231,7 @@ impl RuntimeCore {
         tick_phases.input_diag_nanos += mark_phase_elapsed(host, &mut phase_start);
 
         self.apply_pending_room_change()?;
+        self.room_needs_first_render_settle = false;
         tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
         let Some(room) = self.current_room.as_ref() else {
@@ -325,6 +329,62 @@ impl RuntimeCore {
         Ok(())
     }
 
+    fn settle_current_room_before_first_render<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+    ) -> Result<(), RuntimeCoreError> {
+        if !self.room_needs_first_render_settle {
+            return Ok(());
+        }
+        self.room_needs_first_render_settle = false;
+
+        let Some(room) = self.current_room.as_ref() else {
+            return Err(RuntimeCoreError::NoRooms);
+        };
+        if room.instances.is_empty() {
+            return Ok(());
+        }
+
+        let left = self.bound_button_state(host, "global.leftbutton", 0x25);
+        let right = self.bound_button_state(host, "global.rightbutton", 0x27);
+        let jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
+        let step_result = self.execute_lowered_step_events(host)?;
+        self.sync_current_room_views_from_globals();
+
+        if step_result.interrupted {
+            self.apply_pending_room_change()?;
+            return Ok(());
+        }
+
+        if !step_result.player_motion_changed || step_result.player_jump_owned_by_script {
+            self.step_player(
+                host,
+                left.pressed,
+                right.pressed,
+                jump,
+                !step_result.player_jump_owned_by_script,
+            )?;
+        }
+
+        if self.pending_room_reset || self.pending_room_transition.is_some() {
+            self.apply_pending_room_change()?;
+            return Ok(());
+        }
+
+        self.dispatch_collision_events(host)?;
+        if self.pending_room_reset || self.pending_room_transition.is_some() {
+            self.apply_pending_room_change()?;
+            return Ok(());
+        }
+
+        self.process_alarm_countdowns(host)?;
+        if self.pending_room_reset || self.pending_room_transition.is_some() {
+            self.apply_pending_room_change()?;
+        }
+
+        Ok(())
+    }
+
     fn sync_current_room_views_from_globals(&mut self) {
         if let Some(room) = self.current_room.as_mut() {
             crate::logic::apply_view_globals_to_room(room, &self.globals);
@@ -349,6 +409,7 @@ impl RuntimeCore {
     pub fn reload_room(&mut self, room_id: usize) -> Result<(), RuntimeCoreError> {
         self.hydrate_missing_package_bootstrap_globals();
         self.current_room = Some(self.build_room(room_id)?);
+        self.room_needs_first_render_settle = true;
         self.status = RuntimeStatus::Ready;
         Ok(())
     }
