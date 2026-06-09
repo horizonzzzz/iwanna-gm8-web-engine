@@ -196,6 +196,150 @@ fn lowered_with_executes_body_against_matching_instances_with_other_as_caller() 
 }
 
 #[test]
+fn lowered_with_writes_are_visible_to_later_statements_in_same_event() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::With {
+                target: LoweredLogicExpr::Identifier("obj_block".into()),
+                body: vec![LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("with_value".into()),
+                    value: LoweredLogicExpr::LiteralNumber(42.0),
+                }],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("observed_with_value".into()),
+                value: LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("obj_block".into())),
+                    member: "with_value".into(),
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("observed_with_value"),
+        Some(&RuntimeValue::Number(42.0))
+    );
+}
+
+#[test]
+fn nested_with_other_restores_immediate_caller_context() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::With {
+            target: LoweredLogicExpr::Identifier("obj_block".into()),
+            body: vec![
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("outer_other_x".into()),
+                    value: LoweredLogicExpr::MemberAccess {
+                        target: Box::new(LoweredLogicExpr::Identifier("other".into())),
+                        member: "x".into(),
+                    },
+                },
+                LoweredLogicStatement::With {
+                    target: LoweredLogicExpr::Identifier("other".into()),
+                    body: vec![LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::Identifier("nested_other_x".into()),
+                        value: LoweredLogicExpr::MemberAccess {
+                            target: Box::new(LoweredLogicExpr::Identifier("other".into())),
+                            member: "x".into(),
+                        },
+                    }],
+                },
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    let block = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "obj_block")
+        .unwrap();
+
+    assert_eq!(
+        block.vars.get("outer_other_x"),
+        Some(&RuntimeValue::Number(12.0))
+    );
+    assert_eq!(
+        player.vars.get("nested_other_x"),
+        Some(&RuntimeValue::Number(block.x))
+    );
+}
+
+#[test]
+fn with_other_member_reads_see_updates_made_through_other_handle() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::With {
+            target: LoweredLogicExpr::Identifier("obj_block".into()),
+            body: vec![
+                LoweredLogicStatement::With {
+                    target: LoweredLogicExpr::Identifier("other".into()),
+                    body: vec![LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::Identifier("x".into()),
+                        value: LoweredLogicExpr::LiteralNumber(99.0),
+                    }],
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("updated_other_x".into()),
+                    value: LoweredLogicExpr::MemberAccess {
+                        target: Box::new(LoweredLogicExpr::Identifier("other".into())),
+                        member: "x".into(),
+                    },
+                },
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let block = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "obj_block")
+        .unwrap();
+    assert_eq!(
+        block.vars.get("updated_other_x"),
+        Some(&RuntimeValue::Number(99.0))
+    );
+}
+
+#[test]
 fn core_updates_active_view_from_lowered_camera_step() {
     let mut package = sample_package();
     package.rooms[0].width = 2400;

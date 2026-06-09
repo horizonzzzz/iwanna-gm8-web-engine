@@ -115,9 +115,11 @@ impl RuntimeCore {
                         current_room_id: room_state.room_id,
                         button_states: &button_states,
                         room_instances: &room_state.instances,
+                        room_instance_overlay: &[],
                         room_order: &[],
                         known_files: &known_files,
                         other_instance: None,
+                        other_runtime_id: None,
                         place_target_ids_by_name: &self.place_target_ids_by_name,
                     };
                     if let Some(value) = evaluate_expr(
@@ -144,9 +146,11 @@ impl RuntimeCore {
                     current_room_id: room_state.room_id,
                     button_states: &button_states,
                     room_instances: &room_state.instances,
+                    room_instance_overlay: &[],
                     room_order: &[],
                     known_files: &known_files,
                     other_instance: None,
+                    other_runtime_id: None,
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                 };
                 let condition_value = evaluate_expr(
@@ -230,9 +234,11 @@ impl RuntimeCore {
             current_room_id: room_state.room_id,
             button_states: &button_states,
             room_instances: &room_state.instances,
+            room_instance_overlay: &[],
             room_order: &[],
             known_files: &known_files,
             other_instance: None,
+            other_runtime_id: None,
             place_target_ids_by_name: &self.place_target_ids_by_name,
         };
         let x = args

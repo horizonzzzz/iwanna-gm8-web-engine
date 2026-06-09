@@ -487,9 +487,11 @@ impl RuntimeCore {
             current_room_id,
             button_states: &button_states,
             room_instances: &room_instances,
+            room_instance_overlay: &[],
             room_order: &room_order,
             known_files: &known_files,
             other_instance: other_instance.as_ref(),
+            other_runtime_id: other_instance.as_ref().map(|instance| instance.runtime_id),
             place_target_ids_by_name: &self.place_target_ids_by_name,
         };
 

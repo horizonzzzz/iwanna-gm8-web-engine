@@ -92,63 +92,69 @@ impl RuntimeCore {
                 player_jump_owned_by_script = true;
             }
 
-            {
-                let Some(room) = self.current_room.as_ref() else {
-                    return Err(RuntimeCoreError::NoRooms);
-                };
-                let eval_context = RuntimeEvalContext {
-                    current_room_id,
-                    button_states: &button_states,
-                    room_instances: &room.instances,
-                    room_order: room_order.as_slice(),
-                    known_files: &known_files,
-                    other_instance: None,
-                    place_target_ids_by_name: &self.place_target_ids_by_name,
-                };
-
-                for entry in &entries {
-                    let mut scope = RuntimeExecutionScope::default();
-                    let mut with_updates = Vec::new();
-                    for statement in &entry.statements {
-                        let mut statement_env = RuntimeStatementEnvironment {
-                            script_entries,
-                            globals: &mut self.globals,
-                            pending_room_transition: &mut self.pending_room_transition,
-                            pending_room_reset: &mut self.pending_room_reset,
-                            host: &mut *host,
-                            diagnostics: &mut self.diagnostics,
-                            room_instance_updates: &mut with_updates,
-                            room_instance_creates: &mut instance_creates,
-                        };
-                        apply_runtime_statement(
-                            statement,
-                            &mut instance,
-                            index,
-                            &mut scope,
-                            &destroy_event_entries,
-                            Some(&eval_context),
-                            &mut statement_env,
-                        );
-                        if self.pending_room_reset || self.pending_room_transition.is_some() {
-                            instance_updates.push((index, instance));
-                            instance_updates.append(&mut with_updates);
-                            if let Some(room) = self.current_room.as_mut() {
-                                for (update_index, updated_instance) in instance_updates {
-                                    if let Some(slot) = room.instances.get_mut(update_index) {
-                                        *slot = updated_instance;
-                                    }
+            for entry in &entries {
+                let mut scope = RuntimeExecutionScope::default();
+                let mut with_updates = Vec::new();
+                for statement in &entry.statements {
+                    let Some(room) = self.current_room.as_ref() else {
+                        return Err(RuntimeCoreError::NoRooms);
+                    };
+                    let eval_overlay = merged_room_instance_overlay(
+                        &instance_updates,
+                        &with_updates,
+                        index,
+                        &instance,
+                    );
+                    let eval_context = RuntimeEvalContext {
+                        current_room_id,
+                        button_states: &button_states,
+                        room_instances: &room.instances,
+                        room_instance_overlay: &eval_overlay,
+                        room_order: room_order.as_slice(),
+                        known_files: &known_files,
+                        other_instance: None,
+                        other_runtime_id: None,
+                        place_target_ids_by_name: &self.place_target_ids_by_name,
+                    };
+                    let mut statement_env = RuntimeStatementEnvironment {
+                        script_entries,
+                        globals: &mut self.globals,
+                        pending_room_transition: &mut self.pending_room_transition,
+                        pending_room_reset: &mut self.pending_room_reset,
+                        host: &mut *host,
+                        diagnostics: &mut self.diagnostics,
+                        room_instance_updates: &mut with_updates,
+                        room_instance_creates: &mut instance_creates,
+                    };
+                    apply_runtime_statement(
+                        statement,
+                        &mut instance,
+                        index,
+                        &mut scope,
+                        &destroy_event_entries,
+                        Some(&eval_context),
+                        &mut statement_env,
+                    );
+                    sync_current_instance_from_updates(index, &mut instance, &mut with_updates);
+                    if self.pending_room_reset || self.pending_room_transition.is_some() {
+                        instance_updates.push((index, instance));
+                        instance_updates.append(&mut with_updates);
+                        if let Some(room) = self.current_room.as_mut() {
+                            for (update_index, updated_instance) in instance_updates {
+                                if let Some(slot) = room.instances.get_mut(update_index) {
+                                    *slot = updated_instance;
                                 }
                             }
-                            self.apply_runtime_instance_creates(host, &mut instance_creates);
-                            return Ok(StepExecutionResult {
-                                interrupted: true,
-                                player_motion_changed,
-                                player_jump_owned_by_script,
-                            });
                         }
+                        self.apply_runtime_instance_creates(host, &mut instance_creates);
+                        return Ok(StepExecutionResult {
+                            interrupted: true,
+                            player_motion_changed,
+                            player_jump_owned_by_script,
+                        });
                     }
-                    instance_updates.append(&mut with_updates);
                 }
+                instance_updates.append(&mut with_updates);
             }
 
             if is_player
@@ -253,9 +259,11 @@ impl RuntimeCore {
                     current_room_id,
                     button_states: &button_states,
                     room_instances: &room_instances,
+                    room_instance_overlay: &[],
                     room_order: &room_order,
                     known_files: &known_files,
                     other_instance: None,
+                    other_runtime_id: None,
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                 };
                 let destroy_event_entries =
@@ -409,6 +417,35 @@ fn object_matches_or_inherits_from(
             .and_then(|object| usize::try_from(object.parent_index).ok());
     }
     false
+}
+
+fn merged_room_instance_overlay(
+    committed_updates: &[(usize, RuntimeInstance)],
+    pending_updates: &[(usize, RuntimeInstance)],
+    current_index: usize,
+    current_instance: &RuntimeInstance,
+) -> Vec<(usize, RuntimeInstance)> {
+    committed_updates
+        .iter()
+        .chain(pending_updates.iter())
+        .chain(std::iter::once(&(current_index, current_instance.clone())))
+        .map(|(index, instance)| (*index, instance.clone()))
+        .collect()
+}
+
+fn sync_current_instance_from_updates(
+    current_index: usize,
+    current_instance: &mut RuntimeInstance,
+    pending_updates: &mut Vec<(usize, RuntimeInstance)>,
+) {
+    let Some(last_update_index) = pending_updates
+        .iter()
+        .rposition(|(index, _)| *index == current_index)
+    else {
+        return;
+    };
+    *current_instance = pending_updates[last_update_index].1.clone();
+    pending_updates.retain(|(index, _)| *index != current_index);
 }
 
 fn statements_reference_jump_queries(statements: &[LoweredLogicStatement]) -> bool {

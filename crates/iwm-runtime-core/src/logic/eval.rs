@@ -130,7 +130,7 @@ pub(super) fn evaluate_expr(
         },
         LoweredLogicExpr::MemberAccess { target, member } => {
             if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "other") {
-                let other = eval_context?.other_instance?;
+                let other = eval_context?.other_instance()?;
                 return match member.as_str() {
                     "x" => Some(RuntimeValue::Number(other.x)),
                     "y" => Some(RuntimeValue::Number(other.y)),
@@ -142,8 +142,8 @@ pub(super) fn evaluate_expr(
             if let LoweredLogicExpr::Identifier(object_name) = target.as_ref() {
                 if object_name != "global" {
                     if let Some(context) = eval_context {
-                        if let Some(target_instance) =
-                            context.room_instances.iter().find(|candidate| {
+                        if let Some((_, target_instance)) =
+                            context.room_instances_iter().find(|(_, candidate)| {
                                 candidate.alive
                                     && candidate.object_name.eq_ignore_ascii_case(object_name)
                             })
@@ -303,9 +303,11 @@ fn evaluate_place_query(
         .get(&object_name.to_ascii_lowercase())
     {
         Some(target_object_ids) => context
-            .room_instances
-            .iter()
-            .filter(|candidate| candidate.alive && target_object_ids.contains(&candidate.object_id))
+            .room_instances_iter()
+            .filter(|(_, candidate)| {
+                candidate.alive && target_object_ids.contains(&candidate.object_id)
+            })
+            .map(|(_, candidate)| candidate)
             .cloned()
             .collect::<Vec<_>>(),
         None => Vec::new(),
@@ -352,10 +354,9 @@ fn evaluate_instance_exists(
         LoweredLogicExpr::Identifier(name) => Some(name.as_str()),
         _ => None,
     })?;
-    let exists = context
-        .room_instances
-        .iter()
-        .any(|instance| instance.alive && instance.object_name.eq_ignore_ascii_case(object_name));
+    let exists = context.room_instances_iter().any(|(_, instance)| {
+        instance.alive && instance.object_name.eq_ignore_ascii_case(object_name)
+    });
     Some(RuntimeValue::Bool(exists))
 }
 pub(crate) fn sample_known_files<H: RuntimeHost>(host: &H) -> HashSet<String> {

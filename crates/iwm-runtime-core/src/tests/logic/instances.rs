@@ -93,6 +93,47 @@ fn instance_destroy_inside_with_marks_target_instance_not_caller() {
 }
 
 #[test]
+fn with_destroyed_target_is_not_visible_to_later_instance_exists_in_same_event() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::With {
+                target: LoweredLogicExpr::Identifier("obj_block".into()),
+                body: vec![LoweredLogicStatement::FunctionCall {
+                    name: "instance_destroy".into(),
+                    args: vec![],
+                }],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("block_still_exists".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "instance_exists".into(),
+                    args: vec![LoweredLogicExpr::Identifier("obj_block".into())],
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("block_still_exists"),
+        Some(&RuntimeValue::Bool(false))
+    );
+}
+
+#[test]
 fn instance_create_in_step_creates_duplicate_instances_and_runs_create_event() {
     let mut package = sample_package();
     package.objects[1].events.push(ObjectEventEntry {
@@ -143,6 +184,65 @@ fn instance_create_in_step_creates_duplicate_instances_and_runs_create_event() {
         created.vars.get("created_by_event"),
         Some(&RuntimeValue::Bool(true))
     );
+}
+
+#[test]
+fn instance_created_inside_with_all_does_not_run_same_with_iteration() {
+    let mut package = sample_package();
+    package.objects[1].events.push(ObjectEventEntry {
+        event_type: 0,
+        sub_event: 0,
+        event_tag: "create".into(),
+        block_id: "object:1:event:0:0".into(),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:1:event:0:0".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("created_by_event".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::With {
+            target: LoweredLogicExpr::Identifier("all".into()),
+            body: vec![
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("visited_by_with_all".into()),
+                    value: LoweredLogicExpr::LiteralBool(true),
+                },
+                LoweredLogicStatement::FunctionCall {
+                    name: "instance_create".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralNumber(80.0),
+                        LoweredLogicExpr::LiteralNumber(96.0),
+                        LoweredLogicExpr::Identifier("obj_marker".into()),
+                    ],
+                },
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let created_marker = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .filter(|instance| instance.object_name == "obj_marker")
+        .max_by_key(|instance| instance.runtime_id)
+        .unwrap();
+    assert_eq!(
+        created_marker.vars.get("created_by_event"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert_eq!(created_marker.vars.get("visited_by_with_all"), None);
 }
 
 #[test]

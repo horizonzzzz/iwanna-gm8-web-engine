@@ -188,9 +188,16 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             let target_indices = with_target_indices(target, instance_index, context);
             let other_snapshot = instance.clone();
             for target_index in target_indices {
-                let with_context = context.with_other(&other_snapshot);
                 if target_index == instance_index {
                     for nested in body {
+                        let overlay = merged_statement_overlay(
+                            context.room_instance_overlay,
+                            env.room_instance_updates,
+                            instance_index,
+                            instance,
+                        );
+                        let with_context =
+                            context.with_other_and_overlay(&other_snapshot, &overlay);
                         apply_runtime_statement(
                             nested,
                             instance,
@@ -199,6 +206,11 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             destroy_event_entries,
                             Some(&with_context),
                             env,
+                        );
+                        sync_instance_from_updates(
+                            instance_index,
+                            instance,
+                            env.room_instance_updates,
                         );
                         if *env.pending_room_reset || env.pending_room_transition.is_some() {
                             break;
@@ -210,14 +222,20 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     continue;
                 }
 
-                let Some(mut target_instance) = context.room_instances.get(target_index).cloned()
-                else {
+                let Some(mut target_instance) = context.room_instance(target_index).cloned() else {
                     continue;
                 };
                 if !target_instance.alive {
                     continue;
                 }
                 for nested in body {
+                    let overlay = merged_statement_overlay(
+                        context.room_instance_overlay,
+                        env.room_instance_updates,
+                        target_index,
+                        &target_instance,
+                    );
+                    let with_context = context.with_other_and_overlay(&other_snapshot, &overlay);
                     apply_runtime_statement(
                         nested,
                         &mut target_instance,
@@ -226,6 +244,11 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         destroy_event_entries,
                         Some(&with_context),
                         env,
+                    );
+                    sync_instance_from_updates(
+                        target_index,
+                        &mut target_instance,
+                        env.room_instance_updates,
                     );
                     if *env.pending_room_reset || env.pending_room_transition.is_some() {
                         break;
@@ -242,6 +265,35 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     }
 }
 
+fn merged_statement_overlay(
+    base_overlay: &[(usize, RuntimeInstance)],
+    pending_updates: &[(usize, RuntimeInstance)],
+    current_index: usize,
+    current_instance: &RuntimeInstance,
+) -> Vec<(usize, RuntimeInstance)> {
+    base_overlay
+        .iter()
+        .chain(pending_updates.iter())
+        .chain(std::iter::once(&(current_index, current_instance.clone())))
+        .map(|(index, instance)| (*index, instance.clone()))
+        .collect()
+}
+
+fn sync_instance_from_updates(
+    current_index: usize,
+    current_instance: &mut RuntimeInstance,
+    pending_updates: &mut Vec<(usize, RuntimeInstance)>,
+) {
+    let Some(last_update_index) = pending_updates
+        .iter()
+        .rposition(|(index, _)| *index == current_index)
+    else {
+        return;
+    };
+    *current_instance = pending_updates[last_update_index].1.clone();
+    pending_updates.retain(|(index, _)| *index != current_index);
+}
+
 fn with_target_indices(
     target: &LoweredLogicExpr,
     instance_index: usize,
@@ -252,19 +304,17 @@ fn with_target_indices(
             vec![instance_index]
         }
         LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("other") => context
-            .other_instance
+            .other_instance()
             .and_then(|other| {
                 context
-                    .room_instances
-                    .iter()
-                    .position(|instance| instance.runtime_id == other.runtime_id)
+                    .room_instances_iter()
+                    .find(|(_, instance)| instance.runtime_id == other.runtime_id)
+                    .map(|(index, _)| index)
             })
             .into_iter()
             .collect(),
         LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("all") => context
-            .room_instances
-            .iter()
-            .enumerate()
+            .room_instances_iter()
             .filter(|(_, instance)| instance.alive)
             .map(|(index, _)| index)
             .collect(),
@@ -275,9 +325,7 @@ fn with_target_indices(
                 .cloned()
                 .unwrap_or_default();
             context
-                .room_instances
-                .iter()
-                .enumerate()
+                .room_instances_iter()
                 .filter(|(_, instance)| {
                     instance.alive && wanted_object_ids.contains(&instance.object_id)
                 })

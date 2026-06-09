@@ -81,10 +81,10 @@ fn runtime_core_skips_dead_instances_when_rendering_sprites() {
     core.render(&mut host).unwrap();
 
     let frame = host.renderer.submitted_frames.last().unwrap();
-    assert!(!frame.commands.iter().any(|command| matches!(
-        command,
-        RuntimeDrawCommand::DrawSprite { sprite_id: 1, .. }
-    )));
+    assert!(!frame
+        .commands
+        .iter()
+        .any(|command| matches!(command, RuntimeDrawCommand::DrawSprite { sprite_id: 1, .. })));
 }
 
 #[test]
