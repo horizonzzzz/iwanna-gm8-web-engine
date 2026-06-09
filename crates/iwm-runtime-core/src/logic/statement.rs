@@ -9,6 +9,15 @@ use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeInstance, RuntimeValue,
 };
 
+#[derive(Debug, Clone)]
+pub(crate) struct RuntimeExecutionTrace {
+    pub(crate) room_id: usize,
+    pub(crate) tick: u64,
+    pub(crate) block_id: String,
+    pub(crate) object_name: String,
+    pub(crate) event_tag: String,
+}
+
 pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) script_entries: &'a HashMap<String, LoweredLogicEntry>,
     pub(crate) globals: &'a mut HashMap<String, RuntimeValue>,
@@ -18,6 +27,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) diagnostics: &'a mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
     pub(crate) room_instance_updates: &'a mut Vec<(usize, RuntimeInstance)>,
     pub(crate) room_instance_creates: &'a mut Vec<RuntimeInstanceCreateRequest>,
+    pub(crate) trace: RuntimeExecutionTrace,
 }
 
 pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
@@ -32,12 +42,13 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
             if let Some(key) = assignable_key(target, Some(instance), Some(scope)) {
-                if let Some(value) = evaluate_expr(
+                if let Some(value) = evaluate_with_diagnostics(
                     value,
                     Some(instance),
-                    env.globals,
                     Some(scope),
                     eval_context,
+                    env,
+                    instance,
                 ) {
                     assign_runtime_value(key, value, instance, env.globals, scope);
                 }
@@ -48,12 +59,13 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             then_branch,
             else_branch,
         } => {
-            let condition_value = evaluate_expr(
+            let condition_value = evaluate_with_diagnostics(
                 condition,
                 Some(instance),
-                env.globals,
                 Some(scope),
                 eval_context,
+                env,
+                instance,
             );
             let branch = if is_truthy(condition_value) {
                 then_branch
@@ -83,7 +95,14 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 if let Some(room_id) = args
                     .first()
                     .and_then(|arg| {
-                        evaluate_expr(arg, Some(instance), env.globals, Some(scope), eval_context)
+                        evaluate_with_diagnostics(
+                            arg,
+                            Some(instance),
+                            Some(scope),
+                            eval_context,
+                            env,
+                            instance,
+                        )
                     })
                     .and_then(|value| runtime_value_to_room_id(&value))
                 {
@@ -164,6 +183,9 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             _ => {
                 if let Some(entry) = env.script_entries.get(name) {
                     let mut script_scope = RuntimeExecutionScope::default();
+                    let previous_trace = env.trace.clone();
+                    env.trace.block_id.clone_from(&entry.block_id);
+                    env.trace.event_tag = "script".into();
                     for nested in &entry.statements {
                         apply_runtime_statement(
                             nested,
@@ -178,6 +200,9 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             break;
                         }
                     }
+                    env.trace = previous_trace;
+                } else {
+                    record_unsupported_function(env, name, instance);
                 }
             }
         },
@@ -261,7 +286,136 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
             }
         }
-        _ => {}
+        _ => {
+            record_unsupported_statement(env, statement, instance);
+        }
+    }
+}
+
+fn record_unsupported_function<H: RuntimeHost>(
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+    name: &str,
+    instance: &RuntimeInstance,
+) {
+    record_host_diagnostic(
+        env.host,
+        env.diagnostics,
+        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+        "runtime-unsupported-function",
+        format!("{} function={}", trace_message(&env.trace, instance), name),
+    );
+}
+
+fn evaluate_with_diagnostics<H: RuntimeHost>(
+    expr: &LoweredLogicExpr,
+    instance: Option<&RuntimeInstance>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+    trace_instance: &RuntimeInstance,
+) -> Option<RuntimeValue> {
+    let value = evaluate_expr(expr, instance, env.globals, scope, eval_context);
+    if value.is_none() {
+        record_unsupported_expr_functions(env, expr, trace_instance);
+    }
+    value
+}
+
+fn record_unsupported_expr_functions<H: RuntimeHost>(
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+    expr: &LoweredLogicExpr,
+    instance: &RuntimeInstance,
+) {
+    match expr {
+        LoweredLogicExpr::Call { name, args } => {
+            if !is_supported_eval_function(name) {
+                record_unsupported_function(env, name, instance);
+            }
+            for arg in args {
+                record_unsupported_expr_functions(env, arg, instance);
+            }
+        }
+        LoweredLogicExpr::UnaryExpr { child, .. } => {
+            record_unsupported_expr_functions(env, child, instance);
+        }
+        LoweredLogicExpr::BinaryExpr { left, right, .. } => {
+            record_unsupported_expr_functions(env, left, instance);
+            record_unsupported_expr_functions(env, right, instance);
+        }
+        LoweredLogicExpr::MemberAccess { target, .. } => {
+            record_unsupported_expr_functions(env, target, instance);
+        }
+        LoweredLogicExpr::IndexAccess { target, index } => {
+            record_unsupported_expr_functions(env, target, instance);
+            record_unsupported_expr_functions(env, index, instance);
+        }
+        LoweredLogicExpr::Identifier(_)
+        | LoweredLogicExpr::LiteralNumber(_)
+        | LoweredLogicExpr::LiteralBool(_)
+        | LoweredLogicExpr::LiteralText(_)
+        | LoweredLogicExpr::Raw { .. } => {}
+    }
+}
+
+fn is_supported_eval_function(name: &str) -> bool {
+    matches!(
+        name,
+        "room_goto"
+            | "ord"
+            | "floor"
+            | "file_exists"
+            | "instance_exists"
+            | "keyboard_check"
+            | "keyboard_check_direct"
+            | "keyboard_check_pressed"
+            | "keyboard_check_released"
+            | "place_meeting"
+            | "place_free"
+    )
+}
+
+fn record_unsupported_statement<H: RuntimeHost>(
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+    statement: &LoweredLogicStatement,
+    instance: &RuntimeInstance,
+) {
+    record_host_diagnostic(
+        env.host,
+        env.diagnostics,
+        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+        "runtime-unsupported-statement",
+        format!(
+            "{} statement_kind={}",
+            trace_message(&env.trace, instance),
+            statement_kind(statement)
+        ),
+    );
+}
+
+fn trace_message(trace: &RuntimeExecutionTrace, instance: &RuntimeInstance) -> String {
+    format!(
+        "room={} tick={} block_id={} object={} event_tag={} runtime_id={}",
+        trace.room_id,
+        trace.tick,
+        trace.block_id,
+        trace.object_name,
+        trace.event_tag,
+        instance.runtime_id
+    )
+}
+
+fn statement_kind(statement: &LoweredLogicStatement) -> &'static str {
+    match statement {
+        LoweredLogicStatement::Assignment { .. } => "assignment",
+        LoweredLogicStatement::VariableDeclaration { .. } => "variable-declaration",
+        LoweredLogicStatement::Return { .. } => "return",
+        LoweredLogicStatement::FunctionCall { .. } => "function-call",
+        LoweredLogicStatement::Conditional { .. } => "conditional",
+        LoweredLogicStatement::With { .. } => "with",
+        LoweredLogicStatement::Repeat { .. } => "repeat",
+        LoweredLogicStatement::While { .. } => "while",
+        LoweredLogicStatement::For { .. } => "for",
+        LoweredLogicStatement::Raw { .. } => "raw",
     }
 }
 

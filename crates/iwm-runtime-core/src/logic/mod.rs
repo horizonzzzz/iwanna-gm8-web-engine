@@ -19,7 +19,9 @@ use crate::{
 pub(crate) use bootstrap::apply_view_globals_to_room;
 pub(crate) use context::{RuntimeEvalContext, RuntimeExecutionScope, StepExecutionResult};
 pub(crate) use eval::sample_known_files;
-pub(crate) use statement::{apply_runtime_statement, RuntimeStatementEnvironment};
+pub(crate) use statement::{
+    apply_runtime_statement, RuntimeExecutionTrace, RuntimeStatementEnvironment,
+};
 
 impl RuntimeCore {
     pub(crate) fn execute_lowered_step_events<H: RuntimeHost>(
@@ -93,6 +95,15 @@ impl RuntimeCore {
             }
 
             for entry in &entries {
+                crate::diagnostics::record_execution_trace(
+                    host,
+                    &mut self.diagnostics,
+                    current_room_id,
+                    self.tick,
+                    &instance,
+                    &entry.block_id,
+                    "step",
+                );
                 let mut scope = RuntimeExecutionScope::default();
                 let mut with_updates = Vec::new();
                 for statement in &entry.statements {
@@ -125,6 +136,13 @@ impl RuntimeCore {
                         diagnostics: &mut self.diagnostics,
                         room_instance_updates: &mut with_updates,
                         room_instance_creates: &mut instance_creates,
+                        trace: RuntimeExecutionTrace {
+                            room_id: current_room_id,
+                            tick: self.tick,
+                            block_id: entry.block_id.clone(),
+                            object_name: instance.object_name.clone(),
+                            event_tag: "step".into(),
+                        },
                     };
                     apply_runtime_statement(
                         statement,
@@ -270,6 +288,15 @@ impl RuntimeCore {
                     self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
                 let mut room_instance_updates = Vec::new();
                 for entry in entries {
+                    crate::diagnostics::record_execution_trace(
+                        host,
+                        &mut self.diagnostics,
+                        current_room_id,
+                        self.tick,
+                        &instance,
+                        &entry.block_id,
+                        "create",
+                    );
                     let mut scope = RuntimeExecutionScope::default();
                     for statement in &entry.statements {
                         let mut statement_env = RuntimeStatementEnvironment {
@@ -281,6 +308,13 @@ impl RuntimeCore {
                             diagnostics: &mut self.diagnostics,
                             room_instance_updates: &mut room_instance_updates,
                             room_instance_creates: &mut *creates,
+                            trace: RuntimeExecutionTrace {
+                                room_id: current_room_id,
+                                tick: self.tick,
+                                block_id: entry.block_id.clone(),
+                                object_name: instance.object_name.clone(),
+                                event_tag: "create".into(),
+                            },
                         };
                         apply_runtime_statement(
                             statement,

@@ -91,6 +91,7 @@ Package generation commands:
 - `cargo run -p iwm-cli -- detect --input C:\path\to\game`
 - `cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample`
 - `cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample`
+- `cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --select-room 143 --ticks 240 --press-keys 16`
 
 ## Sample Corpus Instructions
 
@@ -208,6 +209,7 @@ Common likely failure modes for this project:
 - path assumptions breaking because local samples or generated packages are missing
 - parser/runtime contract drift between emitted package data and runtime consumption
 - trying to debug detection, parser, normalization, and runtime behavior all at once
+- adding GM helper coverage by JSON frequency instead of first checking runtime unsupported diagnostics on the active sample path
 
 When debugging, first determine which layer is actually failing:
 
@@ -216,5 +218,7 @@ When debugging, first determine which layer is actually failing:
 - GM8 parsing
 - normalization
 - runtime
+
+For runtime lowered-logic blockers, prefer `iwm-cli runtime-diagnostics` after package validation. It reports grouped unsupported statement/function blockers with first-trigger room, tick, block id, object, event tag, and runtime instance id.
 
 Do not debug all layers at once.

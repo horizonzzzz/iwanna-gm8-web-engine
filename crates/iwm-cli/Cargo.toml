@@ -6,7 +6,10 @@ license.workspace = true
 
 [dependencies]
 clap.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 iwm-detector = { path = "../iwm-detector" }
 iwm-parser = { path = "../iwm-parser" }
+iwm-runtime-core = { path = "../iwm-runtime-core" }
+iwm-runtime-host = { path = "../iwm-runtime-host" }
 iwm-runtime-model = { path = "../iwm-runtime-model" }

@@ -35,6 +35,7 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - Runtime-core player fallback movement now filters solid and hazard collision candidates to instances near the player's current motion envelope before running bbox and sprite-mask collision checks, and it no longer clones the full room instance list before filtering those candidates.
 - Runtime-core lowered step dispatch now shares host input/file sampling across all step owners in a tick and evaluates against the original room instance slice without cloning the full room snapshot. Large rooms can still be expensive because broader event dispatch and render-frame command generation continue to scan full room instance/tile lists.
 - Runtime-core collision event dispatch now indexes live instances by `object_id` before checking collision targets, so large rooms with many collision-event owners targeting the player do not scan every room instance for each owner.
+- Runtime-core lowered execution now emits block-level execution trace diagnostics and unsupported lowered-runtime diagnostics with the current room, tick, block id, object name, event tag, and runtime instance id. Unsupported statements are reported by lowered statement kind, and unsupported function calls are reported both when they appear as statements and when they appear inside evaluated expressions. The developer CLI can aggregate these with `cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --select-room <room_id> --ticks <n>`.
 
 Practical parser note:
 
@@ -300,7 +301,8 @@ Current resource-contract note:
 
 The current route sets the next implementation order as:
 
-1. keep the shared lowered parser contract stable except where gold-sample evidence requires targeted expansion
-2. headless OpenGMK-derived runtime extraction behind narrow host traits
-3. browser WASM host integration for that runtime core
-4. audio, animation, and broader lifecycle coverage after the runtime can execute trustworthy semantics
+1. use runtime unsupported diagnostics and block-level trace output to rank the active Dife path before adding more GM helpers
+2. keep the shared lowered parser contract stable except where gold-sample evidence requires targeted expansion
+3. headless OpenGMK-derived runtime extraction behind narrow host traits
+4. browser WASM host integration for that runtime core
+5. audio, animation, and broader lifecycle coverage after the runtime can execute trustworthy semantics

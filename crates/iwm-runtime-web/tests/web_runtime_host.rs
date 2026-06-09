@@ -329,6 +329,45 @@ fn web_runtime_host_formats_diagnostics_for_bridge_consumers() {
 }
 
 #[test]
+fn web_runtime_host_snapshot_formats_runtime_unsupported_diagnostics() {
+    let mut package = sample_package();
+    package.lowered_logic = Some(iwm_runtime_core::LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![iwm_runtime_core::LoweredLogicEntry {
+            block_id: "object:0:event:3:0".into(),
+            statements: vec![iwm_runtime_core::LoweredLogicStatement::FunctionCall {
+                name: "instance_position".into(),
+                args: vec![
+                    iwm_runtime_core::LoweredLogicExpr::Identifier("x".into()),
+                    iwm_runtime_core::LoweredLogicExpr::Identifier("y".into()),
+                    iwm_runtime_core::LoweredLogicExpr::Identifier("obj_marker".into()),
+                ],
+            }],
+        }],
+    });
+    package.objects[0]
+        .events
+        .push(iwm_runtime_model::ObjectEventEntry {
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            block_id: "object:0:event:3:0".into(),
+            action_count: 0,
+        });
+    let mut host = WebRuntimeHost::new();
+    host.boot(package).unwrap();
+
+    let snapshot = host.tick(1).unwrap();
+
+    assert!(snapshot.diagnostics.iter().any(|entry| {
+        entry.contains("runtime-unsupported-function")
+            && entry.contains("function=instance_position")
+            && entry.contains("block_id=object:0:event:3:0")
+            && entry.contains("event_tag=step")
+    }));
+}
+
+#[test]
 fn web_runtime_host_accepts_input_and_returns_render_frame_json() {
     let mut host = WebRuntimeHost::new();
     host.boot(sample_package()).unwrap();
@@ -670,8 +709,8 @@ fn real_sample_manual_room_select_does_not_render_bow_in_sampleroom03() {
     assert_eq!(snapshot.room_name.as_deref(), Some("sampleroom03"));
 
     let frame = host.frame_snapshot().unwrap();
-    assert!(!frame.commands.iter().any(|command| matches!(
-        command,
-        BridgeDrawCommand::DrawSprite { sprite_id: 25, .. }
-    )));
+    assert!(!frame
+        .commands
+        .iter()
+        .any(|command| matches!(command, BridgeDrawCommand::DrawSprite { sprite_id: 25, .. })));
 }

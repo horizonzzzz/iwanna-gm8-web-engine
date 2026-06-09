@@ -440,7 +440,13 @@ impl RuntimeCore {
         };
 
         for (instance_idx, block_ids) in block_lookups {
-            self.apply_event_blocks_to_instance(host, instance_idx, &block_ids, None);
+            self.apply_event_blocks_to_instance(
+                host,
+                instance_idx,
+                &block_ids,
+                None,
+                selector_event_tag(&selector),
+            );
             if self.pending_room_reset || self.pending_room_transition.is_some() {
                 break;
             }
@@ -455,6 +461,7 @@ impl RuntimeCore {
         instance_idx: usize,
         block_ids: &[String],
         other_instance: Option<RuntimeInstance>,
+        event_tag: String,
     ) {
         // Clone entries first to avoid borrow conflicts
         let entries: Vec<LoweredLogicEntry> = block_ids
@@ -507,6 +514,15 @@ impl RuntimeCore {
 
         let mut instance_creates = Vec::new();
         for entry in &entries {
+            crate::diagnostics::record_execution_trace(
+                host,
+                &mut self.diagnostics,
+                current_room_id,
+                self.tick,
+                &instance,
+                &entry.block_id,
+                &event_tag,
+            );
             let mut scope = crate::logic::RuntimeExecutionScope::default();
             let mut with_updates = Vec::new();
             for statement in &entry.statements {
@@ -519,6 +535,13 @@ impl RuntimeCore {
                     diagnostics: &mut self.diagnostics,
                     room_instance_updates: &mut with_updates,
                     room_instance_creates: &mut instance_creates,
+                    trace: crate::logic::RuntimeExecutionTrace {
+                        room_id: current_room_id,
+                        tick: self.tick,
+                        block_id: entry.block_id.clone(),
+                        object_name: instance.object_name.clone(),
+                        event_tag: event_tag.clone(),
+                    },
                 };
                 crate::logic::apply_runtime_statement(
                     statement,
@@ -614,7 +637,13 @@ impl RuntimeCore {
                     RuntimeEventSelector::Alarm(slot),
                 )
             };
-            self.apply_event_blocks_to_instance(host, instance_idx, &block_ids, None);
+            self.apply_event_blocks_to_instance(
+                host,
+                instance_idx,
+                &block_ids,
+                None,
+                format!("alarm:{slot}"),
+            );
         }
 
         Ok(())
@@ -684,6 +713,7 @@ impl RuntimeCore {
                 instance_idx,
                 &block_ids,
                 Some(other_instance),
+                "collision".into(),
             );
         }
 
@@ -693,6 +723,32 @@ impl RuntimeCore {
 
 fn parse_alarm_slot(key: &str) -> Option<u32> {
     key.strip_prefix("alarm[")?.strip_suffix(']')?.parse().ok()
+}
+
+fn selector_event_tag(selector: &RuntimeEventSelector) -> String {
+    match selector {
+        RuntimeEventSelector::Destroy => "destroy".into(),
+        RuntimeEventSelector::Alarm(slot) => format!("alarm:{slot}"),
+        RuntimeEventSelector::KeyboardHeld(key) => {
+            format!("keyboard:{}", format_selector_key_name(*key))
+        }
+        RuntimeEventSelector::KeyboardPressed(key) => {
+            format!("keypress:{}", format_selector_key_name(*key))
+        }
+        RuntimeEventSelector::KeyboardReleased(key) => {
+            format!("keyrelease:{}", format_selector_key_name(*key))
+        }
+        RuntimeEventSelector::Collision { .. } => "collision".into(),
+    }
+}
+
+fn format_selector_key_name(sub_event: u16) -> String {
+    let key = sub_event as u8 as char;
+    if key.is_ascii_alphanumeric() {
+        key.to_ascii_lowercase().to_string()
+    } else {
+        format!("0x{:02x}", sub_event as u8)
+    }
 }
 
 fn mark_phase_elapsed<H: RuntimeHost>(host: &H, phase_start: &mut Option<u128>) -> u64 {

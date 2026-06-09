@@ -128,7 +128,25 @@ cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sampl
 The shell default package path is `/packages/sample`, which maps to `runtime\public\packages\sample\`.
 The `validate-package` command checks the normalized runtime package contract before browser smoke, including manifest counts, sparse id references, resource references, and logic block presence across `scripts.ir.json`, `logic.raw.json`, and `logic.lowered.json`.
 
-### 4. Launch the browser shell
+### 4. Run CLI runtime diagnostics
+
+After a package validates, use the CLI diagnostics command to run the headless runtime and rank unsupported lowered-runtime blockers before adding new GM helpers:
+
+```powershell
+cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --ticks 600
+cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --select-room 143 --ticks 240 --press-keys 16
+```
+
+Useful options:
+
+- `--select-room <room_id>` manually enters a room before ticking, useful when default boot/menu rooms do not reach gameplay without broader menu semantics
+- `--ticks <n>` controls how many headless runtime ticks to run
+- `--press-keys 16,39` sends one-tick key press edges by GM virtual-key code
+- `--hold-keys 16,39` holds keys for the whole run
+
+The JSON output groups runtime blockers such as `runtime-unsupported-function:abs` or `runtime-unsupported-statement:for`, and preserves the first triggering `room`, `tick`, `block_id`, `object`, `event_tag`, and `runtime_id`.
+
+### 5. Launch the browser shell
 
 ```powershell
 npm --prefix runtime run dev -- --host 127.0.0.1

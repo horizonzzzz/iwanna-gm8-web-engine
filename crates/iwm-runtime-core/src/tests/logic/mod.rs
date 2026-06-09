@@ -19,6 +19,7 @@ use iwm_runtime_model::{ObjectDefinition, ObjectEventEntry};
 
 mod bootstrap;
 mod bootstrap_world;
+mod diagnostics;
 mod events;
 mod expressions;
 mod file_sampling;

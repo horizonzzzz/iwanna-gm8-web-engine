@@ -107,6 +107,15 @@ cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sampl
 The validator is contract-oriented, not semantic. It checks package shape and cross-file references before browser smoke, while runtime behavior validation remains in `iwm-runtime-core`, `iwm-runtime-web`, and browser tests.
 Room background resource validation follows the current runtime drawing contract: visible room background layers and all tiles must resolve to exported background resources; hidden room background layers are preserved but do not currently block validation because neither runtime-core nor the browser static renderer draws them.
 
+After validation, the developer CLI can run a generated package through the headless runtime diagnostics path:
+
+```powershell
+cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --ticks 600
+cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --select-room 143 --ticks 240 --press-keys 16
+```
+
+This is a command-line debugging feature, not a package-format invariant. It ranks runtime blockers from actual lowered execution and includes the first triggering room, tick, block id, object, event tag, and runtime instance id for unsupported functions and statement kinds.
+
 ### Currently Executable Action-List Subset
 
 The following `action-list` script blocks can be executed by the browser runtime:

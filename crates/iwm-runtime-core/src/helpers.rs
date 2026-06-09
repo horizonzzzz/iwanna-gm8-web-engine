@@ -355,5 +355,9 @@ pub(crate) fn record_host_diagnostic<H: RuntimeHost>(
         message: message.into(),
     };
     host.record(diagnostic.clone());
+    if diagnostics.len() >= MAX_DIAGNOSTICS {
+        diagnostics.remove(0);
+    }
     diagnostics.push(diagnostic);
 }
+const MAX_DIAGNOSTICS: usize = 64;
