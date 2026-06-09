@@ -132,3 +132,55 @@ fn core_reports_block_level_execution_trace() {
     assert!(trace.message.contains("event_tag=step"));
     assert!(trace.message.contains("runtime_id=0"));
 }
+
+#[test]
+fn core_does_not_report_supported_abs_or_string_functions() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("speed_text".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "string".into(),
+                    args: vec![LoweredLogicExpr::Call {
+                        name: "abs".into(),
+                        args: vec![LoweredLogicExpr::LiteralNumber(-4.0)],
+                    }],
+                },
+            },
+            LoweredLogicStatement::Conditional {
+                condition: LoweredLogicExpr::Call {
+                    name: "instance_position".into(),
+                    args: vec![
+                        LoweredLogicExpr::Identifier("x".into()),
+                        LoweredLogicExpr::Identifier("y".into()),
+                        LoweredLogicExpr::Identifier("obj_marker".into()),
+                    ],
+                },
+                then_branch: vec![],
+                else_branch: vec![],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let unsupported_functions = core
+        .diagnostics()
+        .iter()
+        .filter(|entry| entry.code == "runtime-unsupported-function")
+        .map(|entry| entry.message.as_str())
+        .collect::<Vec<_>>();
+    assert!(unsupported_functions
+        .iter()
+        .all(|message| !message.contains("function=abs")));
+    assert!(unsupported_functions
+        .iter()
+        .all(|message| !message.contains("function=string")));
+    assert!(unsupported_functions
+        .iter()
+        .any(|message| message.contains("function=instance_position")));
+}

@@ -492,3 +492,102 @@ fn core_evaluates_file_exists_conditions_against_host_files() {
         Some(&RuntimeValue::Bool(true))
     );
 }
+
+#[test]
+fn core_evaluates_abs_calls_in_lowered_expressions() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("positive".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "abs".into(),
+                    args: vec![LoweredLogicExpr::LiteralNumber(-12.5)],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("already_positive".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "abs".into(),
+                    args: vec![LoweredLogicExpr::LiteralNumber(3.0)],
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("positive"),
+        Some(&RuntimeValue::Number(12.5))
+    );
+    assert_eq!(
+        player.vars.get("already_positive"),
+        Some(&RuntimeValue::Number(3.0))
+    );
+}
+
+#[test]
+fn core_evaluates_string_calls_in_lowered_expressions() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("integer_text".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "string".into(),
+                    args: vec![LoweredLogicExpr::LiteralNumber(12.0)],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("fraction_text".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "string".into(),
+                    args: vec![LoweredLogicExpr::LiteralNumber(-3.25)],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("bool_text".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "string".into(),
+                    args: vec![LoweredLogicExpr::LiteralBool(true)],
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("integer_text"),
+        Some(&RuntimeValue::Text("12".into()))
+    );
+    assert_eq!(
+        player.vars.get("fraction_text"),
+        Some(&RuntimeValue::Text("-3.25".into()))
+    );
+    assert_eq!(
+        player.vars.get("bool_text"),
+        Some(&RuntimeValue::Text("true".into()))
+    );
+}

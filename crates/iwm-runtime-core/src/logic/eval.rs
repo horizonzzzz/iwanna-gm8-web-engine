@@ -49,14 +49,20 @@ fn expr_key_fragment(
         }),
         LoweredLogicExpr::LiteralBool(flag) => Some(flag.to_string()),
         LoweredLogicExpr::LiteralText(text) => Some(text.clone()),
-        _ => evaluate_expr(expr, instance, &HashMap::new(), scope, None).map(|value| match value {
-            RuntimeValue::Number(number) if number.fract() == 0.0 => format!("{}", number as i64),
-            RuntimeValue::Number(number) => number.to_string(),
-            RuntimeValue::Bool(flag) => flag.to_string(),
-            RuntimeValue::Text(text) => text,
-        }),
+        _ => evaluate_expr(expr, instance, &HashMap::new(), scope, None)
+            .map(runtime_value_to_string_text),
     }
 }
+
+fn runtime_value_to_string_text(value: RuntimeValue) -> String {
+    match value {
+        RuntimeValue::Number(number) if number.fract() == 0.0 => format!("{}", number as i64),
+        RuntimeValue::Number(number) => number.to_string(),
+        RuntimeValue::Bool(flag) => flag.to_string(),
+        RuntimeValue::Text(text) => text,
+    }
+}
+
 pub(super) fn evaluate_expr(
     expr: &LoweredLogicExpr,
     instance: Option<&RuntimeInstance>,
@@ -107,11 +113,21 @@ pub(super) fn evaluate_expr(
                 .first()
                 .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context)),
             "ord" => evaluate_ord_call(args),
+            "abs" => args
+                .first()
+                .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+                .and_then(|value| as_number(&value))
+                .map(|value| RuntimeValue::Number(value.abs())),
             "floor" => args
                 .first()
                 .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
                 .and_then(|value| as_number(&value))
                 .map(|value| RuntimeValue::Number(value.floor())),
+            "string" => args
+                .first()
+                .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+                .map(runtime_value_to_string_text)
+                .map(RuntimeValue::Text),
             "file_exists" => evaluate_file_exists(args, instance, globals, scope, eval_context),
             "instance_exists" => evaluate_instance_exists(args, eval_context),
             "keyboard_check"

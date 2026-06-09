@@ -362,7 +362,9 @@ fn is_supported_eval_function(name: &str) -> bool {
         name,
         "room_goto"
             | "ord"
+            | "abs"
             | "floor"
+            | "string"
             | "file_exists"
             | "instance_exists"
             | "keyboard_check"
