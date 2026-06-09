@@ -165,6 +165,21 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             "sound_stop" => {
                 dispatch_runtime_sound_call(env, name, args, None, instance, scope, eval_context);
             }
+            "sound_stop_all" => {
+                if let Err(error) = env.host.stop_all_sounds() {
+                    record_host_diagnostic(
+                        env.host,
+                        env.diagnostics,
+                        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                        "runtime-audio-host-error",
+                        format!(
+                            "{} function=sound_stop_all error={}",
+                            trace_message(&env.trace, instance),
+                            error
+                        ),
+                    );
+                }
+            }
             "instance_destroy" => {
                 if instance.alive {
                     let entries = destroy_event_entries
@@ -395,7 +410,7 @@ fn dispatch_runtime_sound_call<H: RuntimeHost>(
         resolve_runtime_sound_id(
             arg,
             instance,
-            scope,
+            Some(scope),
             eval_context,
             env.globals,
             env.sound_index,
@@ -439,10 +454,10 @@ fn dispatch_runtime_sound_call<H: RuntimeHost>(
     }
 }
 
-fn resolve_runtime_sound_id(
+pub(crate) fn resolve_runtime_sound_id(
     expr: &LoweredLogicExpr,
     instance: &RuntimeInstance,
-    scope: &RuntimeExecutionScope,
+    scope: Option<&RuntimeExecutionScope>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
     globals: &HashMap<String, RuntimeValue>,
     sound_index: &HashMap<String, i32>,
@@ -452,7 +467,7 @@ fn resolve_runtime_sound_id(
             sound_index.get(&name.to_ascii_lowercase()).copied()
         }
         LoweredLogicExpr::LiteralNumber(number) => finite_sound_number_to_id(*number),
-        _ => evaluate_expr(expr, Some(instance), globals, Some(scope), eval_context)
+        _ => evaluate_expr(expr, Some(instance), globals, scope, eval_context)
             .and_then(|value| runtime_value_to_sound_id(value, sound_index)),
     }
 }
@@ -509,11 +524,42 @@ fn evaluate_with_diagnostics<H: RuntimeHost>(
     env: &mut RuntimeStatementEnvironment<'_, H>,
     trace_instance: &RuntimeInstance,
 ) -> Option<RuntimeValue> {
-    let value = evaluate_expr(expr, instance, env.globals, scope, eval_context);
+    let value = evaluate_runtime_expr(expr, instance, scope, eval_context, env, trace_instance);
     if value.is_none() {
         record_unsupported_expr_functions(env, expr, trace_instance);
     }
     value
+}
+
+fn evaluate_runtime_expr<H: RuntimeHost>(
+    expr: &LoweredLogicExpr,
+    instance: Option<&RuntimeInstance>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+    trace_instance: &RuntimeInstance,
+) -> Option<RuntimeValue> {
+    if let LoweredLogicExpr::Call { name, args } = expr {
+        if name == "sound_isplaying" {
+            let sound_id = args.first().and_then(|arg| {
+                resolve_runtime_sound_id(
+                    arg,
+                    trace_instance,
+                    scope,
+                    eval_context,
+                    env.globals,
+                    env.sound_index,
+                )
+            })?;
+            return env
+                .host
+                .is_sound_playing(sound_id)
+                .ok()
+                .map(RuntimeValue::Bool);
+        }
+    }
+
+    evaluate_expr(expr, instance, env.globals, scope, eval_context)
 }
 
 fn record_unsupported_expr_functions<H: RuntimeHost>(
@@ -570,6 +616,7 @@ fn is_supported_eval_function(name: &str) -> bool {
             | "keyboard_check_released"
             | "place_meeting"
             | "place_free"
+            | "sound_isplaying"
     )
 }
 
