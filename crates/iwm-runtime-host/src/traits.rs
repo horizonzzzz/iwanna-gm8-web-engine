@@ -37,6 +37,8 @@ pub trait RuntimeAudioHost {
     fn play_sound(&mut self, sound_id: i32, mode: RuntimeSoundMode)
         -> Result<(), RuntimeHostError>;
     fn stop_sound(&mut self, sound_id: i32) -> Result<(), RuntimeHostError>;
+    fn stop_all_sounds(&mut self) -> Result<(), RuntimeHostError>;
+    fn is_sound_playing(&self, sound_id: i32) -> Result<bool, RuntimeHostError>;
 }
 
 pub trait RuntimeFileHost {

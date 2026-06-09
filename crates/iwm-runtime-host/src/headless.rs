@@ -85,6 +85,14 @@ impl RuntimeAudioHost for HeadlessHost {
     fn stop_sound(&mut self, sound_id: i32) -> Result<(), RuntimeHostError> {
         self.audio.stop_sound(sound_id)
     }
+
+    fn stop_all_sounds(&mut self) -> Result<(), RuntimeHostError> {
+        self.audio.stop_all_sounds()
+    }
+
+    fn is_sound_playing(&self, sound_id: i32) -> Result<bool, RuntimeHostError> {
+        self.audio.is_sound_playing(sound_id)
+    }
 }
 
 impl RuntimeFileHost for HeadlessHost {
@@ -186,5 +194,18 @@ mod tests {
         assert_eq!(host.audio.played, vec![(7, RuntimeSoundMode::Once)]);
         assert_eq!(host.renderer.submitted_frames.len(), 1);
         assert_eq!(host.diagnostics.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn headless_audio_tracks_playing_sounds_and_stop_all() {
+        let mut host = HeadlessHost::new("test");
+
+        assert!(!host.is_sound_playing(7).unwrap());
+
+        host.play_sound(7, RuntimeSoundMode::Loop).unwrap();
+        assert!(host.is_sound_playing(7).unwrap());
+
+        host.stop_all_sounds().unwrap();
+        assert!(!host.is_sound_playing(7).unwrap());
     }
 }
