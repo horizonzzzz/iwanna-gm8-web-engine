@@ -453,3 +453,41 @@ fn lowering_preserves_else_branch_when_else_starts_on_next_line() {
         other => panic!("expected conditional with newline else branch, got {other:?}"),
     }
 }
+
+#[test]
+fn lowering_preserves_compound_assignment_in_for_step() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 12,
+            script_name: "scr_for_step".to_string(),
+            gml_source: "for(i = 0; i <= 100; i += 1){ total += i; }".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+
+    match &lowered.entries[0].statements[0] {
+        LoweredLogicStatement::For { step, .. } => {
+            assert!(matches!(
+                step,
+                LoweredLogicExpr::BinaryExpr { op, left, right }
+                    if op == "="
+                    && matches!(left.as_ref(), LoweredLogicExpr::Identifier(name) if name == "i")
+                    && matches!(
+                        right.as_ref(),
+                        LoweredLogicExpr::BinaryExpr { op, left, right }
+                            if op == "+"
+                            && matches!(left.as_ref(), LoweredLogicExpr::Identifier(name) if name == "i")
+                            && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 1.0).abs() < f64::EPSILON)
+                    )
+            ));
+        }
+        other => panic!("expected for statement, got {other:?}"),
+    }
+}

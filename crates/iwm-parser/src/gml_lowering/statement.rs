@@ -221,7 +221,18 @@ fn lower_for_statement(stmt: &str) -> Option<LoweredLogicStatement> {
     Some(LoweredLogicStatement::For {
         init: lower_expr(&init),
         condition: lower_expr(&condition),
-        step: lower_expr(&step),
+        step: lower_for_step_expr(&step),
         body: lower_source(&body),
     })
+}
+
+fn lower_for_step_expr(step: &str) -> LoweredLogicExpr {
+    match lower_statement(step) {
+        Some(LoweredLogicStatement::Assignment { target, value }) => LoweredLogicExpr::BinaryExpr {
+            op: "=".to_string(),
+            left: Box::new(target),
+            right: Box::new(value),
+        },
+        _ => lower_expr(step),
+    }
 }
