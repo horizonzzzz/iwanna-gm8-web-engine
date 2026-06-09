@@ -92,6 +92,8 @@ Runtime-core resolves package sound identifiers for `sound_play()`, `sound_loop(
 
 Remaining audio gaps include browser autoplay/user-gesture handling, volume/pan/mixing controls, channel/priority semantics, and broader GM sound API coverage.
 
+Deferred backlog: Dife background music currently exposes a create-time host-dispatch gap, not a Web Audio decode/playback gap. The package contains room-instance create blocks such as `sound_loop(track01)`, `sound_loop(PPPPPP)`, and `sound_stop_all()`, but room construction and create-time bootstrap logic are still largely hostless. Step-time sound effects can already reach `RuntimeAudioHost`, which is why jump SFX can play in the browser while BGM does not start when entering rooms whose music is launched from instance creation code. Keep this deferred until the main runtime gameplay path is more complete, unless `sound_isplaying()` or another sound query is proven to gate non-audio gameplay state.
+
 ### 3. Variable System
 
 GML is dynamic, so assignments must work against a variable store, not only hardcoded fields.
@@ -305,8 +307,16 @@ Current resource-contract note:
 
 The current route sets the next implementation order as:
 
-1. use runtime unsupported diagnostics and block-level trace output to rank the active Dife path before adding more GM helpers
+1. use runtime unsupported diagnostics, block-level trace output, headless player traces, and browser timing telemetry to rank the active Dife path before adding more GM helpers
 2. keep the shared lowered parser contract stable except where gold-sample evidence requires targeted expansion
 3. headless OpenGMK-derived runtime extraction behind narrow host traits
 4. browser WASM host integration for that runtime core
 5. audio, animation, and broader lifecycle coverage after the runtime can execute trustworthy semantics
+
+Current gameplay-blocker workflow:
+
+1. Validate the local package before debugging browser symptoms: `cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample`.
+2. Run targeted diagnostics against the active Dife room. If `runtime_blockers` is non-empty, rank by first room/tick/block/object and add the smallest runtime/parser slice needed for that proven path.
+3. If `runtime_blockers` is empty, switch from unsupported-helper work to behavior validation. Capture `--trace-player` with controlled inputs and compare room/tick, `x/y`, `hspeed/vspeed`, alive state, grounded state, jump phase, active keys, and room transitions against browser observations or a reference run.
+4. For browser-only problems, use the shell frame timings to separate runtime-core work (`tick` / `step` / `collision` / `renderSubmit`) from snapshot serialization and canvas rendering. Treat sustained large-room frame spikes as a performance blocker only after unsupported diagnostics are clean.
+5. Promote a missing API or lowered construct only when it is tied to spawn, movement, death/reset, room transition, savepoint, camera, or another visible gameplay failure on the gold-sample path. Keep BGM create-time dispatch in the audio backlog unless it gates gameplay state.
