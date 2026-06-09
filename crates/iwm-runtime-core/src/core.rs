@@ -22,6 +22,7 @@ pub struct RuntimeCore {
     /// render pass can resolve sprites without scanning the sprite list per
     /// instance.
     pub(crate) sprite_index: HashMap<usize, usize>,
+    pub(crate) sound_index: HashMap<String, i32>,
     pub(crate) lowered_logic_index: HashMap<String, usize>,
     /// Static-after-load tables used every tick by the step dispatch. Cached
     /// here so `execute_lowered_step_events` does not rebuild and clone them on
@@ -71,6 +72,16 @@ impl RuntimeCore {
             .enumerate()
             .map(|(index, sprite)| (sprite.id, index))
             .collect::<HashMap<_, _>>();
+        let sound_index = package
+            .resources
+            .sounds
+            .iter()
+            .filter_map(|sound| {
+                i32::try_from(sound.id)
+                    .ok()
+                    .map(|id| (sound.name.to_ascii_lowercase(), id))
+            })
+            .collect::<HashMap<_, _>>();
         let lowered_logic_index = package
             .lowered_logic
             .as_ref()
@@ -89,6 +100,7 @@ impl RuntimeCore {
             object_index,
             room_index,
             sprite_index,
+            sound_index,
             lowered_logic_index,
             cached_script_entries: HashMap::new(),
             cached_room_order: Vec::new(),
@@ -533,6 +545,7 @@ impl RuntimeCore {
             for statement in &entry.statements {
                 let mut statement_env = crate::logic::RuntimeStatementEnvironment {
                     script_entries: &script_entries,
+                    sound_index: &self.sound_index,
                     globals: &mut self.globals,
                     pending_room_transition: &mut self.pending_room_transition,
                     pending_room_reset: &mut self.pending_room_reset,

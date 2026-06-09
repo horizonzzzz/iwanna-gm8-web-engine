@@ -129,6 +129,7 @@ impl RuntimeCore {
                     };
                     let mut statement_env = RuntimeStatementEnvironment {
                         script_entries,
+                        sound_index: &self.sound_index,
                         globals: &mut self.globals,
                         pending_room_transition: &mut self.pending_room_transition,
                         pending_room_reset: &mut self.pending_room_reset,
@@ -301,6 +302,7 @@ impl RuntimeCore {
                     for statement in &entry.statements {
                         let mut statement_env = RuntimeStatementEnvironment {
                             script_entries,
+                            sound_index: &self.sound_index,
                             globals: &mut self.globals,
                             pending_room_transition: &mut self.pending_room_transition,
                             pending_room_reset: &mut self.pending_room_reset,

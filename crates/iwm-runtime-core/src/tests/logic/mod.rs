@@ -17,6 +17,7 @@ use super::support::{
 };
 use iwm_runtime_model::{ObjectDefinition, ObjectEventEntry};
 
+mod audio;
 mod bootstrap;
 mod bootstrap_world;
 mod diagnostics;

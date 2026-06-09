@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use iwm_runtime_host::RuntimeHost;
+use iwm_runtime_host::{RuntimeHost, RuntimeSoundMode};
 
 use super::context::{RuntimeEvalContext, RuntimeExecutionScope, RuntimeInstanceCreateRequest};
 use super::eval::{assignable_key, evaluate_expr, is_truthy};
@@ -20,6 +20,7 @@ pub(crate) struct RuntimeExecutionTrace {
 
 pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) script_entries: &'a HashMap<String, LoweredLogicEntry>,
+    pub(crate) sound_index: &'a HashMap<String, i32>,
     pub(crate) globals: &'a mut HashMap<String, RuntimeValue>,
     pub(crate) pending_room_transition: &'a mut Option<usize>,
     pub(crate) pending_room_reset: &'a mut bool,
@@ -138,6 +139,31 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             }
             "game_restart" => {
                 *env.pending_room_reset = true;
+            }
+            "sound_play" => {
+                dispatch_runtime_sound_call(
+                    env,
+                    name,
+                    args,
+                    Some(RuntimeSoundMode::Once),
+                    instance,
+                    scope,
+                    eval_context,
+                );
+            }
+            "sound_loop" => {
+                dispatch_runtime_sound_call(
+                    env,
+                    name,
+                    args,
+                    Some(RuntimeSoundMode::Loop),
+                    instance,
+                    scope,
+                    eval_context,
+                );
+            }
+            "sound_stop" => {
+                dispatch_runtime_sound_call(env, name, args, None, instance, scope, eval_context);
             }
             "instance_destroy" => {
                 if instance.alive {
@@ -354,6 +380,100 @@ fn record_unsupported_function<H: RuntimeHost>(
         "runtime-unsupported-function",
         format!("{} function={}", trace_message(&env.trace, instance), name),
     );
+}
+
+fn dispatch_runtime_sound_call<H: RuntimeHost>(
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+    function_name: &str,
+    args: &[LoweredLogicExpr],
+    mode: Option<RuntimeSoundMode>,
+    instance: &RuntimeInstance,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) {
+    let Some(sound_id) = args.first().and_then(|arg| {
+        resolve_runtime_sound_id(
+            arg,
+            instance,
+            scope,
+            eval_context,
+            env.globals,
+            env.sound_index,
+        )
+    }) else {
+        record_host_diagnostic(
+            env.host,
+            env.diagnostics,
+            iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+            "runtime-sound-unresolved",
+            format!(
+                "{} function={} arg_count={}",
+                trace_message(&env.trace, instance),
+                function_name,
+                args.len()
+            ),
+        );
+        return;
+    };
+
+    let result = if let Some(mode) = mode {
+        env.host.play_sound(sound_id, mode)
+    } else {
+        env.host.stop_sound(sound_id)
+    };
+
+    if let Err(error) = result {
+        record_host_diagnostic(
+            env.host,
+            env.diagnostics,
+            iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+            "runtime-audio-host-error",
+            format!(
+                "{} function={} sound_id={} error={}",
+                trace_message(&env.trace, instance),
+                function_name,
+                sound_id,
+                error
+            ),
+        );
+    }
+}
+
+fn resolve_runtime_sound_id(
+    expr: &LoweredLogicExpr,
+    instance: &RuntimeInstance,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    globals: &HashMap<String, RuntimeValue>,
+    sound_index: &HashMap<String, i32>,
+) -> Option<i32> {
+    match expr {
+        LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) => {
+            sound_index.get(&name.to_ascii_lowercase()).copied()
+        }
+        LoweredLogicExpr::LiteralNumber(number) => finite_sound_number_to_id(*number),
+        _ => evaluate_expr(expr, Some(instance), globals, Some(scope), eval_context)
+            .and_then(|value| runtime_value_to_sound_id(value, sound_index)),
+    }
+}
+
+fn runtime_value_to_sound_id(
+    value: RuntimeValue,
+    sound_index: &HashMap<String, i32>,
+) -> Option<i32> {
+    match value {
+        RuntimeValue::Number(number) => finite_sound_number_to_id(number),
+        RuntimeValue::Text(name) => sound_index.get(&name.to_ascii_lowercase()).copied(),
+        RuntimeValue::Bool(_) => None,
+    }
+}
+
+fn finite_sound_number_to_id(number: f64) -> Option<i32> {
+    if number.is_finite() && number >= 0.0 && number <= f64::from(i32::MAX) {
+        Some(number.round() as i32)
+    } else {
+        None
+    }
 }
 
 fn execute_assignment_expression<H: RuntimeHost>(

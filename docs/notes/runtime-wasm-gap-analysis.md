@@ -88,7 +88,7 @@ Impact:
 
 Background music and sound effects are missing.
 
-GM8 sound functions such as `sound_play()` and `sound_loop()` still need a Web Audio implementation.
+Runtime-core now resolves package sound identifiers for `sound_play()`, `sound_loop()`, and `sound_stop()` and dispatches them through `RuntimeAudioHost`. Browser playback is still intentionally missing until a Web Audio host implementation is added.
 
 ### 3. Variable System
 
