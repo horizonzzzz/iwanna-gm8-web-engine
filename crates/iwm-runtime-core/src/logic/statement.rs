@@ -208,6 +208,18 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         }
                     }
                     instance.alive = false;
+                    record_host_diagnostic(
+                        env.host,
+                        env.diagnostics,
+                        iwm_runtime_host::RuntimeDiagnosticLevel::Info,
+                        "runtime-instance-destroyed",
+                        format!(
+                            "{} object={} runtime_id={}",
+                            trace_message(&env.trace, instance),
+                            instance.object_name,
+                            instance.runtime_id
+                        ),
+                    );
                 }
             }
             "instance_create" => {

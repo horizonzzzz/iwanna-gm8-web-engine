@@ -172,6 +172,27 @@ fn core_only_restarts_on_restart_press_edge() {
 }
 
 #[test]
+fn core_emits_restart_request_diagnostic_on_restart_press_edge() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+
+    host.input.replace_button_states([(
+        RuntimeButton::Keyboard(0x52),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    )]);
+    core.tick(&mut host).unwrap();
+
+    assert!(core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-room-restart-requested"));
+}
+
+#[test]
 fn core_reset_clears_previous_movement_and_input_effects() {
     let mut core = RuntimeCore::load(sample_package()).unwrap();
     let mut host = host();

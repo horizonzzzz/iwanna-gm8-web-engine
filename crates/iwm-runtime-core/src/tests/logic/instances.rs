@@ -56,6 +56,10 @@ fn instance_destroy_dispatches_destroy_event_before_marking_dead() {
         core.globals.get("global.destroy_ran"),
         Some(&RuntimeValue::Bool(true))
     );
+    assert!(core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-instance-destroyed"));
 }
 
 #[test]
@@ -184,6 +188,10 @@ fn instance_create_in_step_creates_duplicate_instances_and_runs_create_event() {
         created.vars.get("created_by_event"),
         Some(&RuntimeValue::Bool(true))
     );
+    assert!(core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-instance-created"));
 }
 
 #[test]

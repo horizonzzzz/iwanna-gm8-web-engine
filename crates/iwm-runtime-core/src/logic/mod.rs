@@ -344,9 +344,26 @@ impl RuntimeCore {
                 }
             }
 
+            let created_object_name = instance.object_name.clone();
+            let created_x = instance.x;
+            let created_y = instance.y;
             if let Some(room) = self.current_room.as_mut() {
                 room.instances.push(instance);
             }
+            self.record_diagnostic(
+                host,
+                iwm_runtime_host::RuntimeDiagnosticLevel::Info,
+                "runtime-instance-created",
+                format!(
+                    "room={} tick={} object={} runtime_id={} x={} y={}",
+                    current_room_id,
+                    self.tick,
+                    created_object_name,
+                    runtime_id,
+                    created_x,
+                    created_y
+                ),
+            );
 
             if self.pending_room_reset || self.pending_room_transition.is_some() {
                 break;

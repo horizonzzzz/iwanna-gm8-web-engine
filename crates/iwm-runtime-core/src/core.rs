@@ -247,7 +247,7 @@ impl RuntimeCore {
 
         tick_phases.input_diag_nanos += mark_phase_elapsed(host, &mut phase_start);
 
-        self.apply_pending_room_change()?;
+        self.apply_pending_room_change(host)?;
         self.room_needs_first_render_settle = false;
         tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
@@ -272,7 +272,7 @@ impl RuntimeCore {
             tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
             if step_result.interrupted {
-                self.apply_pending_room_change()?;
+                self.apply_pending_room_change(host)?;
                 tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
                 self.render(host)?;
@@ -330,12 +330,23 @@ impl RuntimeCore {
         }
 
         if restart.just_pressed {
+            let current_room_id = self
+                .current_room
+                .as_ref()
+                .map(|room| room.room_id)
+                .unwrap_or(0);
+            self.record_diagnostic(
+                host,
+                iwm_runtime_host::RuntimeDiagnosticLevel::Info,
+                "runtime-room-restart-requested",
+                format!("room={} tick={}", current_room_id, self.tick),
+            );
             self.pending_room_reset = true;
         }
         tick_phases.keyboard_events_nanos += mark_phase_elapsed(host, &mut phase_start);
 
         if self.pending_room_reset || self.pending_room_transition.is_some() {
-            self.apply_pending_room_change()?;
+            self.apply_pending_room_change(host)?;
         }
         tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
@@ -369,7 +380,7 @@ impl RuntimeCore {
         self.sync_current_room_views_from_globals();
 
         if step_result.interrupted {
-            self.apply_pending_room_change()?;
+            self.apply_pending_room_change(host)?;
             return Ok(());
         }
 
@@ -384,19 +395,19 @@ impl RuntimeCore {
         }
 
         if self.pending_room_reset || self.pending_room_transition.is_some() {
-            self.apply_pending_room_change()?;
+            self.apply_pending_room_change(host)?;
             return Ok(());
         }
 
         self.dispatch_collision_events(host)?;
         if self.pending_room_reset || self.pending_room_transition.is_some() {
-            self.apply_pending_room_change()?;
+            self.apply_pending_room_change(host)?;
             return Ok(());
         }
 
         self.process_alarm_countdowns(host)?;
         if self.pending_room_reset || self.pending_room_transition.is_some() {
-            self.apply_pending_room_change()?;
+            self.apply_pending_room_change(host)?;
         }
 
         Ok(())

@@ -136,6 +136,7 @@ After a package validates, use the CLI diagnostics command to run the headless r
 cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --ticks 600
 cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --select-room 143 --ticks 240 --press-keys 16
 cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --preselect-ticks 2 --select-room 143 --ticks 240 --press-keys 16 --trace-player --trace-every 10 --trace-output .\runtime-trace-room143.json
+cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --input-script .\runtime-input-script.json --trace-player --trace-every 1
 ```
 
 Useful options:
@@ -145,11 +146,24 @@ Useful options:
 - `--ticks <n>` controls how many headless runtime ticks to run
 - `--press-keys 16,39` sends one-tick key press edges by GM virtual-key code
 - `--hold-keys 16,39` holds keys for the whole run
+- `--input-script <path>` replays a JSON tick script with per-tick `press_keys`, `hold_keys`, and `release_keys` for more complex diagnostics than the one-shot CLI flags
 - `--trace-player` adds `trace_summary` plus a `player_trace` array to the same diagnostics JSON, recording the selected player instance's room, tick, object/runtime id, position, velocity, alive flag, grounded flag, jump phase, input trace, and diagnostic count
 - `--trace-every <n>` samples player trace every `n` ticks; it defaults to `1` when tracing is enabled
 - `--trace-output <path>` writes the full diagnostics JSON to a file instead of stdout, useful for longer behavior traces
 
-The JSON output groups runtime blockers such as `runtime-unsupported-function:abs` or `runtime-unsupported-statement:for`, and preserves the first triggering `room`, `tick`, `block_id`, `object`, `event_tag`, and `runtime_id`. When player tracing is enabled, `trace_summary` gives a compact behavior-baseline record with first/last frames, coordinate ranges, peak absolute speeds, sample count, and room segments before you inspect the full row-level trace.
+Input-script JSON shape:
+
+```json
+{
+  "ticks": [
+    { "tick": 0, "press_keys": [16] },
+    { "tick": 10, "hold_keys": [39] },
+    { "tick": 40, "release_keys": [39] }
+  ]
+}
+```
+
+The JSON output groups runtime blockers such as `runtime-unsupported-function:abs` or `runtime-unsupported-statement:for`, and also exposes a `runtime_events` array for high-value lifecycle markers such as room changes, restart requests, player death, and runtime instance create/destroy events. When player tracing is enabled, `trace_summary` gives a compact behavior-baseline record with first/last frames, coordinate ranges, peak absolute speeds, sample count, and room segments before you inspect the full row-level trace.
 
 ### 5. Launch the browser shell
 

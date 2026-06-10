@@ -90,6 +90,84 @@ fn runtime_diagnostics_trace_player_includes_comparable_summary() {
     fs::remove_dir_all(temp_root).expect("temporary fixture should be removed");
 }
 
+#[test]
+fn runtime_diagnostics_input_script_drives_player_trace_edges() {
+    let temp_root = copy_fixture_to_temp();
+    make_fixture_player_traceable(&temp_root);
+    let input_script_path = temp_root.join("input-script.json");
+    fs::write(
+        &input_script_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "ticks": [
+                {
+                    "tick": 0,
+                    "press_keys": [32]
+                }
+            ]
+        }))
+        .expect("input script should serialize"),
+    )
+    .expect("input script should write");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_iwm-cli"))
+        .arg("runtime-diagnostics")
+        .arg("--input")
+        .arg(&temp_root)
+        .arg("--ticks")
+        .arg("3")
+        .arg("--trace-player")
+        .arg("--trace-every")
+        .arg("1")
+        .arg("--input-script")
+        .arg(&input_script_path)
+        .output()
+        .expect("cli should run");
+
+    assert!(output.status.success(), "stderr={}", stderr(&output));
+    let diagnostics: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("diagnostics output should be json");
+    let trace = diagnostics["player_trace"]
+        .as_array()
+        .expect("player trace should be present");
+
+    assert!(trace.iter().any(|entry| {
+        entry["jump_button_key"] == serde_json::json!(32)
+            && entry["jump_pressed"] == serde_json::json!(true)
+            && entry["jump_just_pressed"] == serde_json::json!(true)
+    }));
+
+    fs::remove_dir_all(temp_root).expect("temporary fixture should be removed");
+}
+
+#[test]
+fn runtime_diagnostics_outputs_runtime_events() {
+    let temp_root = copy_fixture_to_temp();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_iwm-cli"))
+        .arg("runtime-diagnostics")
+        .arg("--input")
+        .arg(&temp_root)
+        .arg("--ticks")
+        .arg("2")
+        .arg("--press-keys")
+        .arg("82")
+        .output()
+        .expect("cli should run");
+
+    assert!(output.status.success(), "stderr={}", stderr(&output));
+    let diagnostics: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("diagnostics output should be json");
+    let events = diagnostics["runtime_events"]
+        .as_array()
+        .expect("runtime events should be present");
+
+    assert!(events
+        .iter()
+        .any(|entry| { entry["code"] == serde_json::json!("runtime-room-restart-requested") }));
+
+    fs::remove_dir_all(temp_root).expect("temporary fixture should be removed");
+}
+
 fn copy_fixture_to_temp() -> PathBuf {
     let suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)

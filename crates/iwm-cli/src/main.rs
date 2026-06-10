@@ -42,6 +42,8 @@ enum Commands {
         #[arg(long, value_delimiter = ',')]
         hold_keys: Vec<u16>,
         #[arg(long)]
+        input_script: Option<PathBuf>,
+        #[arg(long)]
         select_room: Option<usize>,
         #[arg(long, default_value_t = 0)]
         preselect_ticks: u32,
@@ -121,6 +123,7 @@ fn main() {
             ticks,
             press_keys,
             hold_keys,
+            input_script,
             select_room,
             preselect_ticks,
             trace_player,
@@ -165,8 +168,29 @@ fn main() {
                 }
             };
             let mut host = HeadlessHost::new("runtime-diagnostics");
+            let input_script = match input_script {
+                Some(path) => match read_runtime_input_script(&path) {
+                    Ok(script) => Some(script),
+                    Err(err) => {
+                        eprintln!("failed to read input script {}: {err}", path.display());
+                        std::process::exit(1);
+                    }
+                },
+                None => None,
+            };
+            let mut scripted_input_state = RuntimeInputScriptState::default();
+            let mut seen_runtime_events = HashSet::new();
+            let mut runtime_events = Vec::new();
             for _ in 0..preselect_ticks {
-                apply_cli_input(&mut host, core.tick_count(), &[], &[]);
+                apply_cli_input(
+                    &mut host,
+                    core.tick_count(),
+                    u64::MAX,
+                    &[],
+                    &[],
+                    input_script.as_ref(),
+                    &mut scripted_input_state,
+                );
                 if let Err(err) = core.tick(&mut host) {
                     eprintln!(
                         "runtime preselect tick failed at tick {}: {err:?}",
@@ -174,6 +198,11 @@ fn main() {
                     );
                     std::process::exit(1);
                 }
+                collect_runtime_events(
+                    core.diagnostics(),
+                    &mut seen_runtime_events,
+                    &mut runtime_events,
+                );
                 host.input.clear_transitions();
             }
             if let Some(room_id) = select_room {
@@ -195,12 +224,25 @@ fn main() {
             }
 
             for run_tick in 0..ticks {
-                apply_cli_input(&mut host, u64::from(run_tick), &press_keys, &hold_keys);
+                apply_cli_input(
+                    &mut host,
+                    core.tick_count(),
+                    u64::from(run_tick),
+                    &press_keys,
+                    &hold_keys,
+                    input_script.as_ref(),
+                    &mut scripted_input_state,
+                );
                 if let Err(err) = core.tick(&mut host) {
                     eprintln!("runtime tick failed at tick {}: {err:?}", core.tick_count());
                     std::process::exit(1);
                 }
                 collect_runtime_blockers(core.diagnostics(), &mut seen_messages, &mut blockers);
+                collect_runtime_events(
+                    core.diagnostics(),
+                    &mut seen_runtime_events,
+                    &mut runtime_events,
+                );
                 if trace_player {
                     maybe_collect_player_trace(&core, trace_every, &mut player_trace);
                 }
@@ -221,6 +263,7 @@ fn main() {
                 "current_room_id": core.snapshot().room_id,
                 "current_tick": core.tick_count(),
                 "runtime_blockers": ranked,
+                "runtime_events": runtime_events,
             });
             if trace_player {
                 output["trace_every"] = json!(trace_every);
@@ -241,31 +284,104 @@ fn main() {
     }
 }
 
-fn apply_cli_input(host: &mut HeadlessHost, tick: u64, press_keys: &[u16], hold_keys: &[u16]) {
-    let states = press_keys
-        .iter()
-        .map(|key| {
-            (
-                RuntimeButton::Keyboard(*key),
-                ButtonState {
-                    pressed: tick == 0,
-                    just_pressed: tick == 0,
-                    just_released: false,
-                },
-            )
-        })
-        .chain(hold_keys.iter().map(|key| {
-            (
-                RuntimeButton::Keyboard(*key),
+fn apply_cli_input(
+    host: &mut HeadlessHost,
+    runtime_tick: u64,
+    run_tick: u64,
+    press_keys: &[u16],
+    hold_keys: &[u16],
+    input_script: Option<&RuntimeInputScript>,
+    scripted_input_state: &mut RuntimeInputScriptState,
+) {
+    let mut states = HashMap::<RuntimeButton, ButtonState>::new();
+    let script_frame = input_script.and_then(|script| script.ticks.get(&runtime_tick));
+    let previous_script_holds = scripted_input_state.held_keys.clone();
+
+    if let Some(frame) = script_frame {
+        for key in &frame.release_keys {
+            scripted_input_state.held_keys.remove(key);
+        }
+        for key in &frame.hold_keys {
+            scripted_input_state.held_keys.insert(*key);
+        }
+    }
+
+    for key in hold_keys {
+        set_button_state(
+            &mut states,
+            *key,
+            ButtonState {
+                pressed: true,
+                just_pressed: run_tick == 0,
+                just_released: false,
+            },
+        );
+    }
+
+    for key in &scripted_input_state.held_keys {
+        set_button_state(
+            &mut states,
+            *key,
+            ButtonState {
+                pressed: true,
+                just_pressed: script_frame
+                    .map(|frame| {
+                        frame.hold_keys.contains(key) && !previous_script_holds.contains(key)
+                    })
+                    .unwrap_or(false),
+                just_released: false,
+            },
+        );
+    }
+
+    if run_tick == 0 {
+        for key in press_keys {
+            set_button_state(
+                &mut states,
+                *key,
                 ButtonState {
                     pressed: true,
-                    just_pressed: tick == 0,
+                    just_pressed: true,
                     just_released: false,
                 },
-            )
-        }))
-        .collect::<Vec<_>>();
+            );
+        }
+    }
+
+    if let Some(frame) = script_frame {
+        for key in &frame.press_keys {
+            set_button_state(
+                &mut states,
+                *key,
+                ButtonState {
+                    pressed: true,
+                    just_pressed: true,
+                    just_released: false,
+                },
+            );
+        }
+        for key in &frame.release_keys {
+            set_button_state(
+                &mut states,
+                *key,
+                ButtonState {
+                    pressed: false,
+                    just_pressed: false,
+                    just_released: true,
+                },
+            );
+        }
+    }
+
     host.input.replace_button_states(states);
+}
+
+fn set_button_state(
+    states: &mut HashMap<RuntimeButton, ButtonState>,
+    key: u16,
+    state: ButtonState,
+) {
+    states.insert(RuntimeButton::Keyboard(key), state);
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -274,6 +390,50 @@ struct RuntimeBlockerSummary {
     code: String,
     count: usize,
     first: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct RuntimeEventEntry {
+    code: String,
+    message: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RuntimeInputScript {
+    #[serde(default)]
+    ticks: HashMap<u64, RuntimeInputScriptTick>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RuntimeInputScriptFile {
+    #[serde(default)]
+    ticks: Vec<RuntimeInputScriptTickRow>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RuntimeInputScriptTickRow {
+    tick: u64,
+    #[serde(default)]
+    press_keys: Vec<u16>,
+    #[serde(default)]
+    hold_keys: Vec<u16>,
+    #[serde(default)]
+    release_keys: Vec<u16>,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct RuntimeInputScriptTick {
+    #[serde(default)]
+    press_keys: Vec<u16>,
+    #[serde(default)]
+    hold_keys: Vec<u16>,
+    #[serde(default)]
+    release_keys: Vec<u16>,
+}
+
+#[derive(Debug, Default)]
+struct RuntimeInputScriptState {
+    held_keys: HashSet<u16>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -488,6 +648,51 @@ fn collect_runtime_blockers(
             });
         entry.count += 1;
     }
+}
+
+fn collect_runtime_events(
+    diagnostics: &[RuntimeDiagnostic],
+    seen_messages: &mut HashSet<String>,
+    events: &mut Vec<RuntimeEventEntry>,
+) {
+    for diagnostic in diagnostics {
+        if !is_runtime_event_code(&diagnostic.code) {
+            continue;
+        }
+        let message_key = format!("{}:{}", diagnostic.code, diagnostic.message);
+        if !seen_messages.insert(message_key) {
+            continue;
+        }
+        events.push(RuntimeEventEntry {
+            code: diagnostic.code.clone(),
+            message: diagnostic.message.clone(),
+        });
+    }
+}
+
+fn is_runtime_event_code(code: &str) -> bool {
+    matches!(
+        code,
+        "runtime-room-changed"
+            | "runtime-room-restart-requested"
+            | "runtime-player-died"
+            | "runtime-instance-created"
+            | "runtime-instance-destroyed"
+    )
+}
+
+fn read_runtime_input_script(
+    path: &PathBuf,
+) -> Result<RuntimeInputScript, Box<dyn std::error::Error>> {
+    let parsed: RuntimeInputScriptFile = serde_json::from_slice(&fs::read(path)?)?;
+    let mut ticks = HashMap::<u64, RuntimeInputScriptTick>::new();
+    for row in parsed.ticks {
+        let entry = ticks.entry(row.tick).or_default();
+        entry.press_keys.extend(row.press_keys);
+        entry.hold_keys.extend(row.hold_keys);
+        entry.release_keys.extend(row.release_keys);
+    }
+    Ok(RuntimeInputScript { ticks })
 }
 
 fn runtime_blocker_key(diagnostic: &RuntimeDiagnostic) -> String {

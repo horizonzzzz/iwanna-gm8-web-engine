@@ -1,10 +1,19 @@
 use crate::helpers::{adjusted_spawn_for_player, is_player_instance};
 use crate::types::RuntimeJumpState;
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeStatus};
+use iwm_runtime_host::RuntimeHost;
 
 impl RuntimeCore {
-    pub(crate) fn apply_pending_room_change(&mut self) -> Result<(), RuntimeCoreError> {
+    pub(crate) fn apply_pending_room_change<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+    ) -> Result<(), RuntimeCoreError> {
         if self.pending_room_reset {
+            let from_room_id = self
+                .current_room
+                .as_ref()
+                .map(|room| room.room_id)
+                .ok_or(RuntimeCoreError::NoRooms)?;
             let room_id = self
                 .current_room
                 .as_ref()
@@ -15,12 +24,33 @@ impl RuntimeCore {
             self.room_needs_first_render_settle = true;
             self.reset_player_to_spawn();
             self.status = RuntimeStatus::Ready;
+            self.record_diagnostic(
+                host,
+                iwm_runtime_host::RuntimeDiagnosticLevel::Info,
+                "runtime-room-changed",
+                format!(
+                    "from_room={} to_room={} reason=restart tick={}",
+                    from_room_id, room_id, self.tick
+                ),
+            );
         }
 
         if let Some(room_id) = self.pending_room_transition.take() {
+            let from_room_id = self.current_room.as_ref().map(|room| room.room_id);
             self.current_room = Some(self.build_room(room_id)?);
             self.room_needs_first_render_settle = true;
             self.status = RuntimeStatus::Ready;
+            self.record_diagnostic(
+                host,
+                iwm_runtime_host::RuntimeDiagnosticLevel::Info,
+                "runtime-room-changed",
+                format!(
+                    "from_room={} to_room={} reason=transition tick={}",
+                    from_room_id.unwrap_or(room_id),
+                    room_id,
+                    self.tick
+                ),
+            );
         }
 
         Ok(())
