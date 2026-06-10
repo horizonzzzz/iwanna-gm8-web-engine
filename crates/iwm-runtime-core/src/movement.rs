@@ -12,6 +12,25 @@ const GRAVITY: f64 = 1.0;
 const MAX_FALL_SPEED: f64 = 8.0;
 
 impl RuntimeCore {
+    pub(crate) fn step_non_player_instances(&mut self) -> Result<(), RuntimeCoreError> {
+        let Some(room) = self.current_room.as_mut() else {
+            return Err(RuntimeCoreError::NoRooms);
+        };
+
+        for instance in &mut room.instances {
+            if !instance.alive || is_player_instance(instance) {
+                continue;
+            }
+
+            instance.previous_x = instance.x;
+            instance.previous_y = instance.y;
+            instance.x += instance.hspeed;
+            instance.y += instance.vspeed;
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn step_player<H: RuntimeHost>(
         &mut self,
         host: &mut H,

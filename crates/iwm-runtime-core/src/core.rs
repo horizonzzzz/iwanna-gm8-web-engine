@@ -293,6 +293,9 @@ impl RuntimeCore {
                 )?;
             }
             tick_phases.player_movement_nanos += mark_phase_elapsed(host, &mut phase_start);
+
+            self.step_non_player_instances()?;
+            tick_phases.player_movement_nanos += mark_phase_elapsed(host, &mut phase_start);
         }
 
         self.dispatch_collision_events(host)?;
@@ -393,6 +396,8 @@ impl RuntimeCore {
                 !step_result.player_jump_owned_by_script,
             )?;
         }
+
+        self.step_non_player_instances()?;
 
         if self.pending_room_reset || self.pending_room_transition.is_some() {
             self.apply_pending_room_change(host)?;

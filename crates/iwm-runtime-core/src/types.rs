@@ -163,6 +163,7 @@ pub struct RuntimeInstance {
     pub collision_masks: Vec<RuntimeCollisionMask>,
     pub per_frame_collision_masks: bool,
     pub facing_left: bool,
+    pub visible: bool,
     pub alive: bool,
     pub solid: bool,
     pub hazard: bool,

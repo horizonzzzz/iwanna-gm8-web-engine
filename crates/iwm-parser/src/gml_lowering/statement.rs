@@ -158,8 +158,8 @@ fn lower_step_assignment(target: &str, op: &str) -> Option<LoweredLogicStatement
 }
 
 fn lower_if_statement(stmt: &str) -> Option<LoweredLogicStatement> {
-    let (condition, body, rest) = lower_block_statement_parts(stmt, "if")?;
-    let then_branch = lower_source(&body);
+    let (condition, body, rest) = lower_conditional_parts(stmt, "if")?;
+    let then_branch = lower_branch_body(&body);
     let else_branch = lower_else_branch(&rest);
     Some(LoweredLogicStatement::Conditional {
         condition: lower_expr(&condition),
@@ -189,9 +189,90 @@ fn lower_else_branch(rest: &str) -> Vec<LoweredLogicStatement> {
                 return vec![stmt];
             }
         }
+
+        if let Some((stmt, tail)) = split_inline_branch_statement(after_else) {
+            let mut lowered = lower_branch_body(&stmt);
+            lowered.extend(lower_else_branch(&tail));
+            return lowered;
+        }
     }
 
     lower_source(rest)
+}
+
+fn lower_conditional_parts(stmt: &str, keyword: &str) -> Option<(String, String, String)> {
+    if let Some(parts) = lower_block_statement_parts(stmt, keyword) {
+        return Some(parts);
+    }
+
+    lower_inline_conditional_parts(stmt, keyword)
+}
+
+fn lower_inline_conditional_parts(stmt: &str, keyword: &str) -> Option<(String, String, String)> {
+    let trimmed = stmt.trim_start();
+    let rest = trimmed.strip_prefix(keyword)?.trim_start();
+    let (head, tail) = if rest.starts_with('(') {
+        extract_parenthesized_block(rest)?
+    } else {
+        let boundary = rest
+            .find(char::is_whitespace)
+            .unwrap_or(rest.len());
+        (rest[..boundary].trim().to_string(), rest[boundary..].to_string())
+    };
+
+    let tail = tail.trim_start();
+    let (body, after_body) = split_inline_branch_statement(tail)?;
+    Some((head.trim().to_string(), body, after_body))
+}
+
+fn split_inline_branch_statement(source: &str) -> Option<(String, String)> {
+    let trimmed = source.trim_start();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut paren_depth = 0usize;
+    let mut brace_depth = 0usize;
+
+    for (index, ch) in trimmed.char_indices() {
+        match ch {
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '{' => brace_depth += 1,
+            '}' => brace_depth = brace_depth.saturating_sub(1),
+            ';' if paren_depth == 0 && brace_depth == 0 => {
+                let body = trimmed[..index].trim();
+                let rest = trimmed[index + ch.len_utf8()..].trim_start();
+                if !body.is_empty() {
+                    return Some((body.to_string(), rest.to_string()));
+                }
+                return None;
+            }
+            _ => {}
+        }
+
+        if paren_depth == 0 && brace_depth == 0 {
+            let tail = trimmed[index..].trim_start();
+            if index > 0 && tail.starts_with("else") {
+                let body = trimmed[..index].trim();
+                if !body.is_empty() {
+                    return Some((body.to_string(), tail.to_string()));
+                }
+                return None;
+            }
+        }
+    }
+
+    Some((trimmed.trim().to_string(), String::new()))
+}
+
+fn lower_branch_body(body: &str) -> Vec<LoweredLogicStatement> {
+    let lowered = lower_source(body);
+    if lowered.is_empty() {
+        lower_statement(body).into_iter().collect()
+    } else {
+        lowered
+    }
 }
 
 fn lower_block_statement(stmt: &str, keyword: &str) -> Option<(String, String)> {

@@ -386,3 +386,101 @@ fn collision_instance_destroy_dispatches_destroy_and_marks_owner_dead() {
         Some(&RuntimeValue::Bool(true))
     );
 }
+
+#[test]
+fn non_player_step_motion_advances_instance_and_allows_collision_destroy() {
+    let mut package = sample_package();
+    package.objects[1].name = "bullet".into();
+    package.objects[2].name = "block".into();
+    package.objects[1].events.push(ObjectEventEntry {
+        event_type: 1,
+        sub_event: 0,
+        event_tag: "destroy".into(),
+        block_id: "object:1:event:1:0".into(),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:1:event:1:0".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "bullet_destroy_ran".into(),
+            },
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+    package.objects[1].events.push(ObjectEventEntry {
+        event_type: 3,
+        sub_event: 0,
+        event_tag: "step".into(),
+        block_id: "object:1:event:3:0".into(),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:1:event:3:0".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("hspeed".into()),
+            value: LoweredLogicExpr::LiteralNumber(16.0),
+        }],
+    );
+    package.objects[1].events.push(ObjectEventEntry {
+        event_type: 4,
+        sub_event: 2,
+        event_tag: "collision".into(),
+        block_id: "object:1:event:4:2".into(),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:1:event:4:2".into(),
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "instance_destroy".into(),
+            args: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let bullet = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "bullet")
+            .unwrap();
+        bullet.x = 24.0;
+        bullet.y = 40.0;
+        bullet.previous_x = 24.0;
+        bullet.previous_y = 40.0;
+
+        let block = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "block")
+            .unwrap();
+        block.x = 40.0;
+        block.y = 40.0;
+        block.previous_x = 40.0;
+        block.previous_y = 40.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let bullet = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "bullet")
+        .unwrap();
+    assert_eq!(bullet.previous_x, 24.0);
+    assert_eq!(bullet.x, 40.0);
+    assert!(!bullet.alive);
+    assert_eq!(
+        core.globals.get("global.bullet_destroy_ran"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}

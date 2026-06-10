@@ -94,7 +94,16 @@ pub(super) fn evaluate_expr(
                 return Some(RuntimeValue::Number(key_code as f64));
             }
 
-            globals.get(name).cloned()
+            globals.get(name).cloned().or_else(|| {
+                eval_context
+                    .and_then(|context| {
+                        context
+                            .place_target_ids_by_name
+                            .get(&name.to_ascii_lowercase())
+                            .and_then(|ids| ids.first().copied())
+                    })
+                    .map(|object_id| RuntimeValue::Number(object_id as f64))
+            })
         }
         LoweredLogicExpr::LiteralNumber(number) => Some(RuntimeValue::Number(*number)),
         LoweredLogicExpr::LiteralBool(flag) => Some(RuntimeValue::Bool(*flag)),
@@ -130,6 +139,10 @@ pub(super) fn evaluate_expr(
                 .map(RuntimeValue::Text),
             "file_exists" => evaluate_file_exists(args, instance, globals, scope, eval_context),
             "instance_exists" => evaluate_instance_exists(args, eval_context),
+            "instance_number" => evaluate_instance_number(args, eval_context),
+            "instance_place" => {
+                evaluate_instance_place(args, instance, globals, scope, eval_context)
+            }
             "distance_to_object" => {
                 evaluate_distance_to_object(args, instance, globals, scope, eval_context)
             }
@@ -153,13 +166,7 @@ pub(super) fn evaluate_expr(
         LoweredLogicExpr::MemberAccess { target, member } => {
             if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "other") {
                 let other = eval_context?.other_instance()?;
-                return match member.as_str() {
-                    "x" => Some(RuntimeValue::Number(other.x)),
-                    "y" => Some(RuntimeValue::Number(other.y)),
-                    "hspeed" => Some(RuntimeValue::Number(other.hspeed)),
-                    "vspeed" => Some(RuntimeValue::Number(other.vspeed)),
-                    _ => other.vars.get(member).cloned(),
-                };
+                return runtime_instance_member_value(other, member);
             }
             if let LoweredLogicExpr::Identifier(object_name) = target.as_ref() {
                 if object_name != "global" {
@@ -170,15 +177,18 @@ pub(super) fn evaluate_expr(
                                     && candidate.object_name.eq_ignore_ascii_case(object_name)
                             })
                         {
-                            return match member.as_str() {
-                                "x" => Some(RuntimeValue::Number(target_instance.x)),
-                                "y" => Some(RuntimeValue::Number(target_instance.y)),
-                                "hspeed" => Some(RuntimeValue::Number(target_instance.hspeed)),
-                                "vspeed" => Some(RuntimeValue::Number(target_instance.vspeed)),
-                                _ => target_instance.vars.get(member).cloned(),
-                            };
+                            return runtime_instance_member_value(target_instance, member);
                         }
                     }
+                }
+            }
+            if let Some(RuntimeValue::Number(instance_ref)) =
+                evaluate_expr(target, instance, globals, scope, eval_context)
+            {
+                if let Some(target_instance) =
+                    resolve_instance_reference(instance_ref, eval_context?)
+                {
+                    return runtime_instance_member_value(target_instance, member);
                 }
             }
             let base = assignable_key(target, instance, scope)?;
@@ -230,14 +240,21 @@ fn eval_binary_expr(op: &str, left: &RuntimeValue, right: &RuntimeValue) -> Opti
         "-" => Some(RuntimeValue::Number(as_number(left)? - as_number(right)?)),
         "*" => Some(RuntimeValue::Number(as_number(left)? * as_number(right)?)),
         "/" => Some(RuntimeValue::Number(as_number(left)? / as_number(right)?)),
-        "==" => Some(RuntimeValue::Bool(left == right)),
-        "=" => Some(RuntimeValue::Bool(left == right)),
-        "!=" => Some(RuntimeValue::Bool(left != right)),
+        "==" => Some(RuntimeValue::Bool(runtime_values_equal(left, right))),
+        "=" => Some(RuntimeValue::Bool(runtime_values_equal(left, right))),
+        "!=" => Some(RuntimeValue::Bool(!runtime_values_equal(left, right))),
         ">=" => Some(RuntimeValue::Bool(as_number(left)? >= as_number(right)?)),
         "<=" => Some(RuntimeValue::Bool(as_number(left)? <= as_number(right)?)),
         ">" => Some(RuntimeValue::Bool(as_number(left)? > as_number(right)?)),
         "<" => Some(RuntimeValue::Bool(as_number(left)? < as_number(right)?)),
         _ => None,
+    }
+}
+
+fn runtime_values_equal(left: &RuntimeValue, right: &RuntimeValue) -> bool {
+    match (as_number(left), as_number(right)) {
+        (Some(left), Some(right)) => left == right,
+        _ => left == right,
     }
 }
 
@@ -316,24 +333,7 @@ fn evaluate_place_query(
         .and_then(|arg| evaluate_expr(arg, Some(instance), globals, scope, eval_context))
         .and_then(|value| as_number(&value))
         .map(|value| value.round() as i32)?;
-    let object_name = args.get(2).and_then(|arg| match arg {
-        LoweredLogicExpr::Identifier(name) => Some(name.as_str()),
-        _ => None,
-    })?;
-    let targets = match context
-        .place_target_ids_by_name
-        .get(&object_name.to_ascii_lowercase())
-    {
-        Some(target_object_ids) => context
-            .room_instances_iter()
-            .filter(|(_, candidate)| {
-                candidate.alive && target_object_ids.contains(&candidate.object_id)
-            })
-            .map(|(_, candidate)| candidate)
-            .cloned()
-            .collect::<Vec<_>>(),
-        None => Vec::new(),
-    };
+    let targets = place_query_targets(args.get(2)?, context)?;
     let collides = !targets.is_empty()
         && crate::helpers::collides_at(
             instance,
@@ -347,6 +347,40 @@ fn evaluate_place_query(
     } else {
         !collides
     }))
+}
+
+fn evaluate_instance_place(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let context = eval_context?;
+    let instance = instance?;
+    let x = args
+        .first()
+        .and_then(|arg| evaluate_expr(arg, Some(instance), globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?;
+    let y = args
+        .get(1)
+        .and_then(|arg| evaluate_expr(arg, Some(instance), globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?;
+    let targets = place_query_targets(args.get(2)?, context)?;
+    let hit = targets
+        .iter()
+        .find(|candidate| {
+            crate::helpers::collides_at(
+                instance,
+                x,
+                y,
+                std::slice::from_ref(candidate),
+                Some(instance.runtime_id),
+            )
+        })
+        .map(|candidate| candidate.instance_id as f64)
+        .unwrap_or(-4.0);
+    Some(RuntimeValue::Number(hit))
 }
 
 fn evaluate_file_exists(
@@ -380,6 +414,79 @@ fn evaluate_instance_exists(
         instance.alive && instance.object_name.eq_ignore_ascii_case(object_name)
     });
     Some(RuntimeValue::Bool(exists))
+}
+
+fn evaluate_instance_number(
+    args: &[LoweredLogicExpr],
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let context = eval_context?;
+    let target_object_ids = instance_target_object_ids(args.first()?, context)?;
+    let count = context
+        .room_instances_iter()
+        .filter(|(_, instance)| instance.alive && target_object_ids.contains(&instance.object_id))
+        .count();
+    Some(RuntimeValue::Number(count as f64))
+}
+
+fn place_query_targets(
+    target_expr: &LoweredLogicExpr,
+    context: &RuntimeEvalContext<'_>,
+) -> Option<Vec<RuntimeInstance>> {
+    let target_object_ids = instance_target_object_ids(target_expr, context)?;
+    Some(
+        context
+            .room_instances_iter()
+            .filter(|(_, candidate)| candidate.alive && target_object_ids.contains(&candidate.object_id))
+            .map(|(_, candidate)| candidate.clone())
+            .collect(),
+    )
+}
+
+fn instance_target_object_ids(
+    expr: &LoweredLogicExpr,
+    context: &RuntimeEvalContext<'_>,
+) -> Option<Vec<usize>> {
+    match expr {
+        LoweredLogicExpr::Identifier(name) => context
+            .place_target_ids_by_name
+            .get(&name.to_ascii_lowercase())
+            .cloned(),
+        LoweredLogicExpr::LiteralNumber(number) if number.is_finite() && *number >= 0.0 => {
+            Some(vec![number.round() as usize])
+        }
+        _ => None,
+    }
+}
+
+fn resolve_instance_reference<'a>(
+    instance_ref: f64,
+    context: &'a RuntimeEvalContext<'_>,
+) -> Option<&'a RuntimeInstance> {
+    if !instance_ref.is_finite() {
+        return None;
+    }
+    let rounded = instance_ref.round();
+    context
+        .room_instances_iter()
+        .find(|(_, candidate)| {
+            candidate.instance_id as f64 == rounded || candidate.runtime_id as f64 == rounded
+        })
+        .map(|(_, candidate)| candidate)
+}
+
+fn runtime_instance_member_value(
+    instance: &RuntimeInstance,
+    member: &str,
+) -> Option<RuntimeValue> {
+    match member {
+        "x" => Some(RuntimeValue::Number(instance.x)),
+        "y" => Some(RuntimeValue::Number(instance.y)),
+        "hspeed" => Some(RuntimeValue::Number(instance.hspeed)),
+        "vspeed" => Some(RuntimeValue::Number(instance.vspeed)),
+        "object_index" => Some(RuntimeValue::Number(instance.object_id as f64)),
+        _ => instance.vars.get(member).cloned(),
+    }
 }
 
 fn evaluate_distance_to_object(

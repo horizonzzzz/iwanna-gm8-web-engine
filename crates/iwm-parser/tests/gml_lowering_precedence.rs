@@ -414,6 +414,82 @@ fn lowering_preserves_else_branch_function_calls_after_conditionals() {
 }
 
 #[test]
+fn lowering_preserves_inline_if_else_if_without_braces() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 11,
+            script_name: "scr_inline_if".to_string(),
+            gml_source:
+                "if(a.object_index=block)instance_destroy() else if(a.visible=1)instance_destroy()"
+                    .to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+
+    match &lowered.entries[0].statements[0] {
+        LoweredLogicStatement::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            assert!(matches!(
+                condition,
+                LoweredLogicExpr::BinaryExpr { op, left, right }
+                    if op == "="
+                    && matches!(
+                        left.as_ref(),
+                        LoweredLogicExpr::MemberAccess { target, member }
+                            if member == "object_index"
+                            && matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "a")
+                    )
+                    && matches!(right.as_ref(), LoweredLogicExpr::Identifier(name) if name == "block")
+            ));
+            assert!(matches!(
+                then_branch.first(),
+                Some(LoweredLogicStatement::FunctionCall { name, args })
+                    if name == "instance_destroy" && args.is_empty()
+            ));
+
+            match else_branch.first() {
+                Some(LoweredLogicStatement::Conditional {
+                    condition,
+                    then_branch,
+                    else_branch,
+                }) => {
+                    assert!(else_branch.is_empty());
+                    assert!(matches!(
+                        condition,
+                        LoweredLogicExpr::BinaryExpr { op, left, right }
+                            if op == "="
+                            && matches!(
+                                left.as_ref(),
+                                LoweredLogicExpr::MemberAccess { target, member }
+                                    if member == "visible"
+                                    && matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "a")
+                            )
+                            && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 1.0).abs() < f64::EPSILON)
+                    ));
+                    assert!(matches!(
+                        then_branch.first(),
+                        Some(LoweredLogicStatement::FunctionCall { name, args })
+                            if name == "instance_destroy" && args.is_empty()
+                    ));
+                }
+                other => panic!("expected inline else-if conditional, got {other:?}"),
+            }
+        }
+        other => panic!("expected inline conditional, got {other:?}"),
+    }
+}
+
+#[test]
 fn lowering_preserves_else_branch_when_else_starts_on_next_line() {
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),

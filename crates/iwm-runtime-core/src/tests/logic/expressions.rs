@@ -494,6 +494,84 @@ fn core_evaluates_file_exists_conditions_against_host_files() {
 }
 
 #[test]
+fn core_evaluates_instance_number_against_live_object_instances() {
+    let mut package = sample_package();
+    package.objects.push(ObjectDefinition {
+        id: 4,
+        name: "bullet".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![],
+    });
+    package.rooms[0]
+        .instances
+        .push(iwm_runtime_model::RoomInstancePlacement {
+            instance_id: 16,
+            object_id: 4,
+            x: 64,
+            y: 64,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: false,
+            is_hazard: false,
+            is_checkpoint: false,
+        });
+    package.rooms[0]
+        .instances
+        .push(iwm_runtime_model::RoomInstancePlacement {
+            instance_id: 17,
+            object_id: 4,
+            x: 80,
+            y: 64,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: false,
+            is_hazard: false,
+            is_checkpoint: false,
+        });
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("bullet_count".into()),
+            value: LoweredLogicExpr::Call {
+                name: "instance_number".into(),
+                args: vec![LoweredLogicExpr::Identifier("bullet".into())],
+            },
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("bullet_count"),
+        Some(&RuntimeValue::Number(2.0))
+    );
+}
+
+#[test]
 fn core_evaluates_abs_calls_in_lowered_expressions() {
     let mut package = sample_package();
     add_step_block(
@@ -1018,4 +1096,54 @@ fn core_evaluates_collision_line_notme_by_skipping_current_instance() {
         player.vars.get("line_hit"),
         Some(&RuntimeValue::Number(-4.0))
     );
+}
+
+#[test]
+fn core_evaluates_instance_place_result_member_accesses() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("a".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "instance_place".into(),
+                    args: vec![
+                        LoweredLogicExpr::Identifier("x".into()),
+                        LoweredLogicExpr::BinaryExpr {
+                            op: "+".into(),
+                            left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                            right: Box::new(LoweredLogicExpr::LiteralNumber(16.0)),
+                        },
+                        LoweredLogicExpr::Identifier("obj_block".into()),
+                    ],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("hit_block".into()),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "=".into(),
+                    left: Box::new(LoweredLogicExpr::MemberAccess {
+                        target: Box::new(LoweredLogicExpr::Identifier("a".into())),
+                        member: "object_index".into(),
+                    }),
+                    right: Box::new(LoweredLogicExpr::Identifier("obj_block".into())),
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("hit_block"), Some(&RuntimeValue::Bool(true)));
 }

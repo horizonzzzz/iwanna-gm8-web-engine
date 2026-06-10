@@ -49,6 +49,15 @@ impl RuntimeCore {
                     .get(&(instance.object_id as usize))
                     .and_then(|index| self.package.objects.get(*index))?;
                 let metrics = self.sprite_metrics(object);
+                let mut vars = HashMap::new();
+                vars.insert(
+                    "image_xscale".into(),
+                    crate::RuntimeValue::Number(instance.xscale),
+                );
+                vars.insert(
+                    "image_yscale".into(),
+                    crate::RuntimeValue::Number(instance.yscale),
+                );
                 Some(RuntimeInstance {
                     runtime_id,
                     instance_id: instance.instance_id,
@@ -71,13 +80,14 @@ impl RuntimeCore {
                     collision_masks: metrics.collision_masks.clone(),
                     per_frame_collision_masks: metrics.per_frame_collision_masks,
                     facing_left: false,
+                    visible: object.visible,
                     alive: true,
                     solid: instance.is_solid || object.solid,
                     hazard: instance.is_hazard || object.is_hazard.unwrap_or(false),
                     checkpoint: instance.is_checkpoint || object.is_checkpoint.unwrap_or(false),
                     player_candidate: object.is_player,
                     jump: RuntimeJumpState::default(),
-                    vars: HashMap::new(),
+                    vars,
                 })
             })
             .collect::<Vec<_>>();
@@ -143,6 +153,9 @@ impl RuntimeCore {
             .get(&object_id)
             .and_then(|index| self.package.objects.get(*index))?;
         let metrics = self.sprite_metrics(object);
+        let mut vars = HashMap::new();
+        vars.insert("image_xscale".into(), crate::RuntimeValue::Number(1.0));
+        vars.insert("image_yscale".into(), crate::RuntimeValue::Number(1.0));
         Some(RuntimeInstance {
             runtime_id,
             instance_id: -1 - runtime_id as i32,
@@ -165,13 +178,14 @@ impl RuntimeCore {
             collision_masks: metrics.collision_masks,
             per_frame_collision_masks: metrics.per_frame_collision_masks,
             facing_left: false,
+            visible: object.visible,
             alive: true,
             solid: object.solid,
             hazard: object.is_hazard.unwrap_or(false),
             checkpoint: object.is_checkpoint.unwrap_or(false),
             player_candidate: object.is_player,
             jump: RuntimeJumpState::default(),
-            vars: HashMap::new(),
+            vars,
         })
     }
 }
