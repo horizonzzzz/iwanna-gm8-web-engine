@@ -2,16 +2,28 @@ import { loadPackage } from '../loadPackage';
 import { makeBackgroundPathMap, makeSpriteFrameMap, ResourceCache } from '../render/resourceCache';
 import { renderStaticRoom } from '../render/staticRoomRenderer';
 import { renderWasmFrame } from '../render/wasmFrameRenderer';
-import { renderManifestSummary, renderObjectsSlice, renderRoomsSlice, renderScriptsSlice } from './inspectors';
-import type { RuntimePackage } from '../types';
 import { WasmRuntimeSession } from '../runtime/wasmSession';
 import {
   describeWasmBridgeAvailability,
-  type WasmRuntimeBridgeSnapshot,
   type WasmRuntimeBridge,
+  type WasmRuntimeBridgeSnapshot,
   type WasmRuntimeInputState,
 } from '../runtime/wasmBridge';
 import type { WasmRuntimeStepResult } from '../runtime/wasmSession';
+import type { RuntimePackage } from '../types';
+import {
+  createPreBlock,
+  formatPerformanceDetails,
+  formatTickPhaseDetails,
+  renderDebugPanels,
+  type DebugPanel,
+} from './debugPanels';
+import { renderManualTestHud } from './hud';
+import { renderManifestSummary, renderObjectsSlice, renderRoomsSlice, renderScriptsSlice } from './inspectors';
+import {
+  buildManualTestSnapshot,
+  type RuntimePerformanceStats,
+} from './traceView';
 
 type IntervalHandle = ReturnType<typeof globalThis.setInterval>;
 
@@ -37,27 +49,14 @@ const defaultDependencies: ShellDependencies = {
 const AUTO_TICK_MS = 1000 / 60;
 const MAX_VISIBLE_DIAGNOSTICS = 8;
 
-type RuntimePerformanceStats = {
-  inputMs: number;
-  tickMs: number;
-  snapshotMs: number;
-  frameMs: number;
-  runtimeMs: number;
-  renderMs: number;
-  totalMs: number;
-  commandCount: number;
-  skippedIntervals: number;
-};
-
 type ShellElements = {
   input: HTMLInputElement;
   button: HTMLButtonElement;
   select: HTMLSelectElement;
   pauseButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
-  status: HTMLElement;
-  runtimeTelemetry: HTMLElement;
-  diagnostics: HTMLElement;
+  hud: HTMLElement;
+  debugPanels: HTMLElement;
   backendStatus: HTMLElement;
   metaRoot: HTMLElement;
   toolbar: HTMLElement;
@@ -120,20 +119,34 @@ function parseRoomId(value: string): number | null {
   return Number.isFinite(roomId) ? roomId : null;
 }
 
+function defaultInputTrace(): WasmRuntimeBridgeSnapshot['inputTrace'] {
+  return {
+    jumpButtonKey: 0x20,
+    jumpPressed: false,
+    jumpJustPressed: false,
+    jumpJustReleased: false,
+    activeKeys: [],
+  };
+}
+
 function createShell(doc: Document): { shell: HTMLElement; elements: ShellElements } {
   const shell = doc.createElement('div');
-  shell.className = 'shell';
+  shell.className = 'shell shell--manual-test';
 
-  const sidebar = doc.createElement('aside');
-  sidebar.className = 'sidebar';
+  const toolbar = doc.createElement('header');
+  toolbar.id = 'runtime-controls';
+  toolbar.className = 'runtime-controls';
 
-  const title = doc.createElement('h1');
-  title.textContent = 'IWanna Runtime Shell';
+  const title = doc.createElement('div');
+  title.className = 'runtime-title';
+  const heading = doc.createElement('h1');
+  heading.textContent = 'IWanna Runtime Shell';
   const intro = doc.createElement('p');
-  intro.textContent = 'Developer harness for runtime package inspection and playable runtime execution.';
+  intro.textContent = 'Manual testing cockpit for the browser-hosted runtime path.';
+  title.append(heading, intro);
 
   const packageField = doc.createElement('label');
-  packageField.className = 'field';
+  packageField.className = 'field field--package';
   packageField.append('Package');
   const input = doc.createElement('input');
   input.name = 'packagePath';
@@ -144,6 +157,14 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
   button.type = 'button';
   button.textContent = 'Load Package';
 
+  const roomLabel = doc.createElement('label');
+  roomLabel.className = 'field field--room';
+  roomLabel.append('Room');
+  const select = doc.createElement('select');
+  select.name = 'roomSelect';
+  resetRoomOptions(doc, select, 'Load a package first');
+  roomLabel.append(select);
+
   const pauseButton = doc.createElement('button');
   pauseButton.type = 'button';
   pauseButton.textContent = 'Pause';
@@ -152,73 +173,54 @@ function createShell(doc: Document): { shell: HTMLElement; elements: ShellElemen
   resetButton.type = 'button';
   resetButton.textContent = 'Reset';
 
-  const status = doc.createElement('p');
-  status.className = 'status';
-  status.textContent = 'Idle';
-  status.id = 'runtime-status';
-
-  const runtimeTelemetry = doc.createElement('section');
-  runtimeTelemetry.className = 'runtime-telemetry';
-  runtimeTelemetry.id = 'runtime-telemetry';
-
-  const runtimeRoom = doc.createElement('p');
-  runtimeRoom.id = 'runtime-room';
-
-  const runtimeTick = doc.createElement('p');
-  runtimeTick.id = 'runtime-tick';
-
-  const runtimePlayer = doc.createElement('p');
-  runtimePlayer.id = 'runtime-player';
-
-  const runtimeDiagnostics = doc.createElement('p');
-  runtimeDiagnostics.id = 'runtime-diagnostics';
-
-  const runtimePerformance = doc.createElement('p');
-  runtimePerformance.id = 'runtime-performance';
-
-  const runtimeTickPhases = doc.createElement('p');
-  runtimeTickPhases.id = 'runtime-tick-phases';
-
-  const diagnostics = doc.createElement('section');
-  diagnostics.className = 'diagnostics';
-
   const backendStatus = doc.createElement('p');
-  backendStatus.className = 'hint';
+  backendStatus.id = 'runtime-execution-path';
+  backendStatus.className = 'hint runtime-execution-path';
   backendStatus.textContent = 'Execution path: static room viewer until a WASM bridge is configured.';
 
-  const metaRoot = doc.createElement('section');
-  metaRoot.className = 'meta';
-
-  runtimeTelemetry.append(runtimeRoom, runtimeTick, runtimePlayer, runtimeDiagnostics, runtimePerformance, runtimeTickPhases);
-  sidebar.append(title, intro, packageField, button, pauseButton, resetButton, status, backendStatus, runtimeTelemetry, diagnostics, metaRoot);
+  toolbar.append(title, packageField, button, roomLabel, pauseButton, resetButton, backendStatus);
 
   const stage = doc.createElement('main');
   stage.className = 'stage';
-
-  const toolbar = doc.createElement('div');
-  toolbar.id = 'toolbar';
-  const roomLabel = doc.createElement('label');
-  roomLabel.append('Room');
-  const select = doc.createElement('select');
-  select.name = 'roomSelect';
-  resetRoomOptions(doc, select, 'Load a package first');
-  roomLabel.append(select);
-  toolbar.append(roomLabel);
 
   const canvas = doc.createElement('canvas');
   canvas.id = 'room-canvas';
   canvas.width = 960;
   canvas.height = 540;
 
+  const hud = doc.createElement('section');
+  hud.id = 'runtime-hud';
+  hud.className = 'runtime-hud';
+
+  const debugPanels = doc.createElement('section');
+  debugPanels.id = 'debug-panels';
+  debugPanels.className = 'debug-panels';
+
+  const metaRoot = doc.createElement('section');
+  metaRoot.className = 'meta';
+
   const inspectors = doc.createElement('section');
   inspectors.id = 'inspectors';
 
-  stage.append(toolbar, canvas, inspectors);
-  shell.append(sidebar, stage);
+  stage.append(canvas, hud, debugPanels);
+  shell.append(toolbar, stage);
 
   return {
     shell,
-    elements: { input, button, select, pauseButton, resetButton, status, runtimeTelemetry, diagnostics, backendStatus, metaRoot, toolbar, inspectors, canvas }
+    elements: {
+      input,
+      button,
+      select,
+      pauseButton,
+      resetButton,
+      hud,
+      debugPanels,
+      backendStatus,
+      metaRoot,
+      toolbar,
+      inspectors,
+      canvas,
+    }
   };
 }
 
@@ -236,91 +238,6 @@ function setRoomOptions(doc: Document, select: HTMLSelectElement, pkg: RuntimePa
 function renderInspectors(doc: Document, metaRoot: HTMLElement, inspectors: HTMLElement, pkg: RuntimePackage): void {
   metaRoot.replaceChildren(renderManifestSummary(doc, pkg.manifest, pkg.analysis));
   inspectors.replaceChildren(renderRoomsSlice(doc, pkg.rooms), renderObjectsSlice(doc, pkg.objects), renderScriptsSlice(doc, pkg.scripts));
-}
-
-function renderTextDiagnostics(doc: Document, root: HTMLElement, diagnostics: string[]): void {
-  root.replaceChildren();
-  const section = doc.createElement('section');
-  section.className = 'inspector';
-  const heading = doc.createElement('h3');
-  heading.textContent = 'Diagnostics';
-  const pre = doc.createElement('pre');
-  pre.textContent = JSON.stringify(diagnostics.slice(-MAX_VISIBLE_DIAGNOSTICS), null, 2);
-  section.append(heading, pre);
-  root.append(section);
-}
-
-function formatRuntimePlayer(snapshot: WasmRuntimeBridgeSnapshot): string {
-  if (!snapshot.player) {
-    return 'Player: unavailable';
-  }
-
-  const jump = snapshot.player.jump;
-  const trace = snapshot.inputTrace ?? {
-    jumpButtonKey: 0x20,
-    jumpPressed: false,
-    jumpJustPressed: false,
-    jumpJustReleased: false,
-    activeKeys: []
-  };
-  const playerLabel = snapshot.player.objectName
-    ? `${snapshot.player.objectName}#${snapshot.player.runtimeId ?? '?'}`
-    : 'unknown';
-  return `Player: x=${snapshot.player.x} y=${snapshot.player.y} hspeed=${snapshot.player.hspeed} vspeed=${snapshot.player.vspeed} object=${playerLabel} alive=${snapshot.player.alive ?? true} grounded=${jump.grounded} jumpActive=${jump.active} hold=${jump.holdFrames} cut=${jump.cutApplied} jumpKey=0x${trace.jumpButtonKey.toString(16)} jp=${trace.jumpPressed} jjp=${trace.jumpJustPressed} jjr=${trace.jumpJustReleased} keys=[${trace.activeKeys.join(',')}]`;
-}
-
-function formatNanosAsMs(nanos: number): string {
-  return (nanos / 1_000_000).toFixed(3);
-}
-
-function formatRuntimeTickPhases(snapshot: WasmRuntimeBridgeSnapshot): string {
-  const phases = snapshot.tickPhases;
-  if (!phases) {
-    return 'Tick phases ms: unavailable';
-  }
-
-  return `Tick phases ms: total=${formatNanosAsMs(phases.totalNanos)} inputDiag=${formatNanosAsMs(phases.inputDiagNanos)} step=${formatNanosAsMs(phases.stepEventsNanos)} view=${formatNanosAsMs(phases.viewSyncNanos)} player=${formatNanosAsMs(phases.playerMovementNanos)} collision=${formatNanosAsMs(phases.collisionEventsNanos)} alarms=${formatNanosAsMs(phases.alarmsNanos)} keyboard=${formatNanosAsMs(phases.keyboardEventsNanos)} renderSubmit=${formatNanosAsMs(phases.renderSubmitNanos)}`;
-}
-
-function renderRuntimeTelemetry(
-  doc: Document,
-  root: HTMLElement,
-  snapshot: WasmRuntimeBridgeSnapshot,
-  roomLabel: string,
-  performance: RuntimePerformanceStats | null = null
-): void {
-  root.replaceChildren();
-
-  const room = doc.createElement('p');
-  room.id = 'runtime-room';
-  room.textContent = `Room: ${roomLabel}`;
-
-  const tick = doc.createElement('p');
-  tick.id = 'runtime-tick';
-  tick.textContent = `Tick: ${snapshot.tick}`;
-
-  const player = doc.createElement('p');
-  player.id = 'runtime-player';
-  player.textContent = formatRuntimePlayer(snapshot);
-
-  const diagnostics = doc.createElement('p');
-  diagnostics.id = 'runtime-diagnostics';
-  const visibleDiagnostics = snapshot.diagnostics.slice(-MAX_VISIBLE_DIAGNOSTICS);
-  diagnostics.textContent = visibleDiagnostics.length > 0
-    ? `Diagnostics: ${visibleDiagnostics.join(' | ')}`
-    : 'Diagnostics: none';
-
-  const runtimePerformance = doc.createElement('p');
-  runtimePerformance.id = 'runtime-performance';
-  runtimePerformance.textContent = performance
-    ? `Frame ms: total=${performance.totalMs.toFixed(1)} input=${performance.inputMs.toFixed(1)} tick=${performance.tickMs.toFixed(1)} snapshot=${performance.snapshotMs.toFixed(1)} frame=${performance.frameMs.toFixed(1)} render=${performance.renderMs.toFixed(1)} runtime=${performance.runtimeMs.toFixed(1)} commands=${performance.commandCount} skipped=${performance.skippedIntervals}`
-    : 'Frame ms: unavailable';
-
-  const runtimeTickPhases = doc.createElement('p');
-  runtimeTickPhases.id = 'runtime-tick-phases';
-  runtimeTickPhases.textContent = formatRuntimeTickPhases(snapshot);
-
-  root.append(room, tick, player, diagnostics, runtimePerformance, runtimeTickPhases);
 }
 
 function renderRuntimeRoom(
@@ -395,7 +312,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
   const { shell, elements } = createShell(doc);
   root.append(shell);
 
-  const { input, button, select, pauseButton, resetButton, status, diagnostics, backendStatus, metaRoot, inspectors, canvas } = elements;
+  const { input, button, select, pauseButton, resetButton, backendStatus, metaRoot, inspectors, canvas } = elements;
   let loadedPackage: RuntimePackage | null = null;
   let activeBackend: ShellBackend = {
     kind: 'viewer',
@@ -417,6 +334,94 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
   let skippedAutoTickIntervals = 0;
   let lastPerformance: RuntimePerformanceStats | null = null;
   const renderCache = new ResourceCache();
+
+  const buildDebugPanels = (
+    snapshot: WasmRuntimeBridgeSnapshot,
+    performance: RuntimePerformanceStats | null
+  ): DebugPanel[] => {
+    const diagnostics = snapshot.diagnostics.slice(-MAX_VISIBLE_DIAGNOSTICS);
+    const panels: DebugPanel[] = [
+      {
+        id: 'diagnostics-panel',
+        title: 'Diagnostics',
+        summary: diagnostics.length === 0 ? 'none' : `${diagnostics.length} recent`,
+        content: createPreBlock(doc, 'runtime-diagnostics-detail', diagnostics),
+      },
+      {
+        id: 'performance-panel',
+        title: 'Performance',
+        summary: performance ? `${performance.totalMs.toFixed(1)}ms` : 'unavailable',
+        content: createPreBlock(doc, 'runtime-performance-detail', formatPerformanceDetails(performance)),
+      },
+      {
+        id: 'tick-phases-panel',
+        title: 'Tick phases',
+        summary: snapshot.tickPhases ? `${(snapshot.tickPhases.totalNanos / 1_000_000).toFixed(3)}ms` : 'unavailable',
+        content: createPreBlock(doc, 'runtime-tick-phases', formatTickPhaseDetails(snapshot.tickPhases ?? null)),
+      },
+    ];
+
+    if (loadedPackage) {
+      panels.push(
+        {
+          id: 'package-panel',
+          title: 'Package',
+          summary: loadedPackage.manifest.source_name,
+          content: metaRoot,
+        },
+        {
+          id: 'inspectors-panel',
+          title: 'Inspectors',
+          summary: `${loadedPackage.rooms.length} rooms, ${loadedPackage.objects.length} objects`,
+          content: inspectors,
+        }
+      );
+    }
+
+    return panels;
+  };
+
+  const renderManualRuntimeView = (
+    snapshot: WasmRuntimeBridgeSnapshot,
+    roomLabel: string,
+    mode: 'wasm' | 'viewer',
+    statusText: string,
+    performance: RuntimePerformanceStats | null = null
+  ): void => {
+    const visibleSnapshot = {
+      ...snapshot,
+      diagnostics: snapshot.diagnostics.slice(-MAX_VISIBLE_DIAGNOSTICS),
+    };
+    const manual = buildManualTestSnapshot({
+      mode,
+      status: statusText,
+      roomLabel,
+      snapshot: visibleSnapshot,
+      performance,
+    });
+    renderManualTestHud(doc, elements.hud, manual);
+    renderDebugPanels(doc, elements.debugPanels, buildDebugPanels(visibleSnapshot, performance));
+  };
+
+  const renderFailureState = (message: string): void => {
+    renderManualRuntimeView({
+      tick: 0,
+      roomId: null,
+      roomName: null,
+      diagnostics: [message],
+      inputTrace: defaultInputTrace(),
+      player: null,
+    }, 'none', 'viewer', message, null);
+  };
+
+  renderManualRuntimeView({
+    tick: 0,
+    roomId: null,
+    roomName: null,
+    diagnostics: activeBackend.diagnostics,
+    inputTrace: defaultInputTrace(),
+    player: null,
+  }, 'none', 'viewer', 'Idle', null);
 
   const stopAutoTick = (): void => {
     if (autoTickHandle != null && resolved.clearInterval) {
@@ -465,42 +470,39 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       const snapshot = await activeBackend.bridge.snapshot();
       const frame = await activeBackend.bridge.frame();
       await resolved.renderWasmFrame(canvas, frame, loadedPackage.resources, input.value, renderCache);
-      renderTextDiagnostics(doc, diagnostics, snapshot.diagnostics);
-      renderRuntimeTelemetry(
-        doc,
-        elements.runtimeTelemetry,
-        snapshot,
-        snapshot.roomId != null
-          ? `${snapshot.roomId}: ${snapshot.roomName ?? 'room'}`
-          : 'none',
-        lastPerformance
-      );
-      status.textContent = `WASM runtime active: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`;
+      const roomLabel = snapshot.roomId != null
+        ? `${snapshot.roomId}: ${snapshot.roomName ?? 'room'}`
+        : 'none';
+      renderManualRuntimeView(snapshot, roomLabel, 'wasm', `WASM runtime active: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`, lastPerformance);
       return;
     }
 
-    renderTextDiagnostics(doc, diagnostics, activeBackend.diagnostics);
-    renderRuntimeTelemetry(
-      doc,
-      elements.runtimeTelemetry,
-      {
-        tick: 0,
-        roomId: activeBackend.roomId,
-        roomName: activeBackend.roomId != null ? 'Static room viewer' : null,
-        diagnostics: activeBackend.diagnostics,
-        player: null
-      },
-      activeBackend.roomId != null ? String(activeBackend.roomId) : 'none'
+    const room = activeBackend.roomId != null
+      ? loadedPackage.rooms.find((candidate) => candidate.id === activeBackend.roomId)
+      : null;
+    const viewerSnapshot: WasmRuntimeBridgeSnapshot = {
+      tick: 0,
+      roomId: activeBackend.roomId,
+      roomName: room?.name ?? (activeBackend.roomId != null ? 'Static room viewer' : null),
+      diagnostics: activeBackend.diagnostics,
+      inputTrace: defaultInputTrace(),
+      player: null,
+    };
+    renderManualRuntimeView(
+      viewerSnapshot,
+      activeBackend.roomId != null
+        ? `${activeBackend.roomId}: ${room?.name ?? 'room'}`
+        : 'none',
+      'viewer',
+      room ? `Static room viewer: ${room.name}` : 'Static room viewer',
+      null
     );
     if (activeBackend.roomId != null) {
       await renderRuntimeRoom(input.value, canvas, activeBackend.roomId, loadedPackage, resolved.renderStaticRoom);
-      const room = loadedPackage.rooms.find((candidate) => candidate.id === activeBackend.roomId);
-      status.textContent = room ? `Static room viewer: ${room.name}` : 'Static room viewer';
       return;
     }
 
     clearCanvas(canvas);
-    status.textContent = 'Package loaded, but no room is available to preview.';
   };
 
   const tickRuntimeOnce = async (): Promise<WasmRuntimeStepResult | null> => {
@@ -532,17 +534,10 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       commandCount: frame.commands.length,
       skippedIntervals: skippedAutoTickIntervals
     };
-    renderTextDiagnostics(doc, diagnostics, snapshot.diagnostics);
-    renderRuntimeTelemetry(
-      doc,
-      elements.runtimeTelemetry,
-      snapshot,
-      snapshot.roomId != null
-        ? `${snapshot.roomId}: ${snapshot.roomName ?? 'room'}`
-        : 'none',
-      lastPerformance
-    );
-    status.textContent = `WASM runtime active: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`;
+    const roomLabel = snapshot.roomId != null
+      ? `${snapshot.roomId}: ${snapshot.roomName ?? 'room'}`
+      : 'none';
+    renderManualRuntimeView(snapshot, roomLabel, 'wasm', `WASM runtime active: ${snapshot.roomName ?? 'room'} @ tick ${snapshot.tick}`, lastPerformance);
     return { snapshot, frame };
   };
 
@@ -562,7 +557,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       void tickRuntimeOnce()
         .catch((error) => {
           stopAutoTick();
-          status.textContent = `Runtime tick failed: ${formatErrorMessage(error)}`;
+          renderFailureState(`Runtime tick failed: ${formatErrorMessage(error)}`);
         })
         .finally(() => {
           autoTickInFlight = false;
@@ -573,7 +568,7 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
   };
 
   button.addEventListener('click', async () => {
-    status.textContent = 'Loading package...';
+    renderFailureState('Loading package...');
     button.disabled = true;
     select.disabled = true;
     stopAutoTick();
@@ -627,20 +622,6 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       } else {
         select.value = '';
       }
-      renderRuntimeTelemetry(
-        doc,
-        elements.runtimeTelemetry,
-        {
-          tick: 0,
-          roomId: roomId,
-          roomName: roomId != null ? pkg.rooms.find((room) => room.id === roomId)?.name ?? null : null,
-          diagnostics: activeBackend.kind === 'viewer' ? activeBackend.diagnostics : [],
-          player: null
-        },
-        roomId != null
-          ? `${roomId}: ${pkg.rooms.find((room) => room.id === roomId)?.name ?? 'room'}`
-          : 'none'
-      );
       await draw();
       if (activeBackend.kind === 'wasm') {
         startAutoTick();
@@ -654,11 +635,10 @@ export function createRuntimeShell(root: HTMLElement, dependencies: Partial<Shel
       };
       metaRoot.replaceChildren();
       inspectors.replaceChildren();
-      diagnostics.replaceChildren();
-      elements.runtimeTelemetry.replaceChildren();
+      elements.debugPanels.replaceChildren();
       resetRoomOptions(doc, select, 'Load a package first');
       clearCanvas(canvas);
-      status.textContent = `Load failed: ${formatErrorMessage(error)}`;
+      renderFailureState(`Load failed: ${formatErrorMessage(error)}`);
       updateExecutionControls();
     } finally {
       button.disabled = false;

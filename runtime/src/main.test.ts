@@ -397,9 +397,10 @@ describe('main runtime shell', () => {
     expect(button?.textContent).toContain('Load');
     expect(pauseButton?.textContent).toContain('Pause');
     expect(resetButton?.textContent).toContain('Reset');
-    expect(doc.querySelector('#toolbar')).not.toBeNull();
+    expect(doc.querySelector('#runtime-controls')).not.toBeNull();
+    expect(doc.querySelector('#runtime-hud')).not.toBeNull();
+    expect(doc.querySelector('#debug-panels')).not.toBeNull();
     expect(doc.querySelector('#room-canvas')).not.toBeNull();
-    expect(doc.querySelector('#inspectors')).not.toBeNull();
 
     button?.click();
     await flushAsyncWork();
@@ -413,6 +414,9 @@ describe('main runtime shell', () => {
     expect(collectText(doc.body)).toContain('static room viewer');
     expect(renderStaticRoom).toHaveBeenCalledTimes(1);
     expect(doc.querySelectorAll('pre').length).toBeGreaterThanOrEqual(3);
+    expect(doc.querySelector('#inspectors')).not.toBeNull();
+    expect(doc.querySelector('#package-panel')).not.toBeNull();
+    expect(doc.querySelector('#inspectors-panel')).not.toBeNull();
     expect(pauseButton?.disabled).toBe(true);
     expect(resetButton?.disabled).toBe(true);
 
@@ -584,6 +588,11 @@ describe('main runtime shell', () => {
     expect(doc.querySelector('#runtime-room')).not.toBeNull();
     expect(doc.querySelector('#runtime-tick')).not.toBeNull();
     expect(doc.querySelector('#runtime-player')).not.toBeNull();
+    expect(doc.querySelector('#runtime-input')).not.toBeNull();
+    expect(doc.querySelector('#runtime-events')).not.toBeNull();
+    expect(doc.querySelector('#runtime-performance')).not.toBeNull();
+    expect(collectText(doc.body)).toContain('Input:');
+    expect(collectText(doc.body)).toContain('Frame:');
     expect(pauseButton?.disabled).toBe(false);
     expect(resetButton?.disabled).toBe(false);
     expect(pauseButton?.textContent).toContain('Pause');
@@ -1094,17 +1103,18 @@ describe('main runtime shell', () => {
     expect(new Set(cacheReferences).size).toBe(1);
 
     const runtimeDiagnosticsText = doc.querySelector<FakeElement>('#runtime-diagnostics')?.textContent ?? '';
-    expect(runtimeDiagnosticsText).toContain('diag-5');
-    expect(runtimeDiagnosticsText).toContain('diag-12');
-    expect(runtimeDiagnosticsText).not.toContain('diag-4 |');
+    expect(runtimeDiagnosticsText).toContain('Diagnostics: 8 recent');
+    expect(runtimeDiagnosticsText).not.toContain('diag-12');
     const runtimePlayerText = doc.querySelector<FakeElement>('#runtime-player')?.textContent ?? '';
     expect(runtimePlayerText).toContain('grounded=');
     expect(runtimePlayerText).toContain('jumpActive=');
     expect(runtimePlayerText).toContain('hold=');
     expect(runtimePlayerText).toContain('cut=');
 
-    const diagnosticsPre = doc.querySelector<FakeElement>('pre');
-    expect((diagnosticsPre?.textContent ?? '').length).toBeLessThan(200);
+    const diagnosticsDetail = doc.querySelector<FakeElement>('#runtime-diagnostics-detail')?.textContent ?? '';
+    expect(diagnosticsDetail).toContain('diag-5');
+    expect(diagnosticsDetail).toContain('diag-12');
+    expect(diagnosticsDetail).not.toContain('diag-4');
   });
 
   it('reports runtime tick performance and skipped intervals while auto-running', async () => {
@@ -1209,14 +1219,18 @@ describe('main runtime shell', () => {
     await flushAsyncWork();
 
     const performanceText = doc.querySelector<FakeElement>('#runtime-performance')?.textContent ?? '';
-    expect(performanceText).toContain('Frame ms:');
-    expect(performanceText).toContain('input=');
-    expect(performanceText).toContain('tick=');
-    expect(performanceText).toContain('snapshot=');
-    expect(performanceText).toContain('frame=');
-    expect(performanceText).toContain('render=');
+    expect(performanceText).toContain('Frame:');
     expect(performanceText).toContain('skipped=1');
     expect(performanceText).toContain('commands=1');
+
+    const performanceDetail = doc.querySelector<FakeElement>('#runtime-performance-detail')?.textContent ?? '';
+    expect(performanceDetail).toContain('Frame ms:');
+    expect(performanceDetail).toContain('input=');
+    expect(performanceDetail).toContain('tick=');
+    expect(performanceDetail).toContain('snapshot=');
+    expect(performanceDetail).toContain('frame=');
+    expect(performanceDetail).toContain('render=');
+    expect(performanceDetail).toContain('runtime=');
 
     const tickPhasesText = doc.querySelector<FakeElement>('#runtime-tick-phases')?.textContent ?? '';
     expect(tickPhasesText).toContain('Tick phases ms:');
