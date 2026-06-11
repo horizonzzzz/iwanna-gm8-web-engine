@@ -1,15 +1,57 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, system-ui, sans-serif;
-  background: #0b0f14;
-  color: #e5edf6;
+  font-family: "Bahnschrift", "Aptos", "Segoe UI", sans-serif;
+  background: #080b0d;
+  color: #eef5ec;
+  --bg: #080b0d;
+  --panel: #111915;
+  --panel-strong: #17221d;
+  --line: #2d4036;
+  --muted: #9eb2a6;
+  --text: #eef5ec;
+  --accent: #f0c15a;
+  --danger: #ff6f59;
+  --ok: #7bd88f;
 }
 
 html,
 body {
   margin: 0;
   min-height: 100%;
-  background: #0b0f14;
+  background:
+    radial-gradient(circle at top left, rgba(240, 193, 90, 0.12), transparent 34rem),
+    linear-gradient(180deg, #111714 0%, var(--bg) 58%);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--accent);
+  color: #1b1304;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.55rem 0.9rem;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+input,
+select {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: #07100c;
+  color: var(--text);
+  padding: 0.5rem 0.65rem;
 }
 
 #app,
@@ -19,34 +61,132 @@ body {
 
 .shell {
   display: grid;
-  grid-template-columns: 320px 1fr;
-  background: linear-gradient(180deg, #101720 0%, #0b0f14 100%);
+  grid-template-rows: auto 1fr;
 }
 
-.sidebar {
-  padding: 16px;
-  border-right: 1px solid #203040;
+.runtime-controls {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(14rem, 1.1fr) minmax(16rem, 1.4fr) auto minmax(12rem, 0.8fr) auto auto minmax(12rem, 1fr);
+  gap: 0.75rem;
+  align-items: end;
+  border-bottom: 1px solid var(--line);
+  background: rgba(8, 11, 13, 0.92);
+  padding: 0.9rem 1rem;
+  backdrop-filter: blur(12px);
 }
 
-.status,
+.runtime-title h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.runtime-title p,
 .hint {
-  font-size: 0.95rem;
-  line-height: 1.4;
-  color: #b8c7d9;
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.field {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .stage {
-  padding: 16px;
-}
-
-.viewer {
-  background: #0c1118;
-  border: 1px solid #203040;
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.inspector-grid {
   display: grid;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 27rem);
+  gap: 1rem;
+  padding: 1rem;
+}
+
+#room-canvas {
+  width: 100%;
+  max-height: calc(100vh - 8rem);
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: #050807;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.35);
+}
+
+.runtime-hud {
+  display: grid;
+  align-content: start;
+  gap: 0.65rem;
+}
+
+.hud-card,
+.debug-panel {
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, var(--panel-strong), var(--panel));
+}
+
+.hud-card {
+  padding: 0.75rem;
+}
+
+.hud-card__label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hud-card__value {
+  margin: 0.25rem 0 0;
+  line-height: 1.35;
+}
+
+.debug-panels {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.debug-panel {
+  padding: 0.2rem 0.75rem;
+}
+
+.debug-panel summary {
+  cursor: pointer;
+  padding: 0.65rem 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+pre {
+  overflow: auto;
+  max-height: 20rem;
+  border-radius: 0.7rem;
+  background: #050807;
+  color: #d8e7dc;
+  padding: 0.75rem;
+}
+
+.meta,
+#inspectors {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .runtime-controls,
+  .stage {
+    grid-template-columns: 1fr;
+  }
+
+  #room-canvas {
+    max-height: none;
+  }
 }

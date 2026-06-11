@@ -400,6 +400,8 @@ describe('main runtime shell', () => {
     expect(doc.querySelector('#runtime-controls')).not.toBeNull();
     expect(doc.querySelector('#runtime-hud')).not.toBeNull();
     expect(doc.querySelector('#debug-panels')).not.toBeNull();
+    expect(doc.querySelector<FakeElement>('#runtime-hud')?.className).toContain('runtime-hud');
+    expect(doc.querySelector<FakeElement>('#debug-panels')?.className).toContain('debug-panels');
     expect(doc.querySelector('#room-canvas')).not.toBeNull();
 
     button?.click();
