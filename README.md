@@ -173,6 +173,8 @@ npm --prefix runtime run dev -- --host 127.0.0.1
 
 Then open `http://127.0.0.1:4173`.
 
+The shell defaults to a manual testing cockpit: the canvas is primary, package and room controls sit in the top control bar, the HUD shows room/tick/player/input/diagnostics/frame-budget summaries, and detailed diagnostics/performance/package inspectors live in collapsed debug panels.
+
 Current browser controls for the WASM runtime path:
 
 - click `Load Package`
