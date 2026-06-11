@@ -106,8 +106,10 @@ export function useRuntimeShell() {
     diagnostics: ['Static room viewer idle. Load a package to inspect resources.'],
   });
   const renderCacheRef = useRef(new ResourceCache());
-  const autoTickHandleRef = useRef<number | null>(null);
+  const autoTickHandleRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoTickInFlightRef = useRef(false);
+  const autoTickInFlightPromiseRef = useRef<Promise<void> | null>(null);
+  const exclusiveOpRef = useRef(false);
   const skippedAutoTickIntervalsRef = useRef(0);
 
   useEffect(() => {
@@ -230,20 +232,22 @@ export function useRuntimeShell() {
       }
 
       autoTickHandleRef.current = globalThis.setInterval(() => {
-        if (autoTickInFlightRef.current) {
+        if (exclusiveOpRef.current || autoTickInFlightRef.current) {
           skippedAutoTickIntervalsRef.current += 1;
           return;
         }
 
         autoTickInFlightRef.current = true;
-        void tickRuntimeOnce(currentKeyboardInput(keyboardSource))
+        autoTickInFlightPromiseRef.current = tickRuntimeOnce(currentKeyboardInput(keyboardSource))
           .catch((tickError) => {
             stopAutoTick();
             setError(`Runtime tick failed: ${formatErrorMessage(tickError)}`);
           })
           .finally(() => {
             autoTickInFlightRef.current = false;
+            autoTickInFlightPromiseRef.current = null;
           });
+        void autoTickInFlightPromiseRef.current;
       }, AUTO_TICK_MS);
       setAutoTickRunning(true);
     },
@@ -332,6 +336,20 @@ export function useRuntimeShell() {
     }
   }, [draw, packagePath, startAutoTick, stopAutoTick]);
 
+  const runExclusiveWithAutoTick = useCallback(async (operation: () => Promise<void>): Promise<void> => {
+    // Hold a guard the auto-tick interval also honours, then wait for any
+    // in-flight tick to settle before touching the shared wasm instance.
+    exclusiveOpRef.current = true;
+    try {
+      if (autoTickInFlightPromiseRef.current) {
+        await autoTickInFlightPromiseRef.current.catch(() => undefined);
+      }
+      await operation();
+    } finally {
+      exclusiveOpRef.current = false;
+    }
+  }, []);
+
   const selectRoom = useCallback(
     async (roomId: number) => {
       setSelectedRoomId(roomId);
@@ -340,8 +358,13 @@ export function useRuntimeShell() {
       }
 
       if (backendRef.current.kind === 'wasm') {
-        await backendRef.current.bridge.selectRoom(roomId);
-        await draw(loadedPackage, backendRef.current, packagePath);
+        await runExclusiveWithAutoTick(async () => {
+          if (backendRef.current.kind !== 'wasm') {
+            return;
+          }
+          await backendRef.current.bridge.selectRoom(roomId);
+          await draw(loadedPackage, backendRef.current, packagePath);
+        });
         return;
       }
 
@@ -352,7 +375,7 @@ export function useRuntimeShell() {
       backendRef.current = nextBackend;
       await draw(loadedPackage, nextBackend, packagePath);
     },
-    [draw, loadedPackage, packagePath]
+    [draw, loadedPackage, packagePath, runExclusiveWithAutoTick]
   );
 
   const togglePause = useCallback(
@@ -373,9 +396,14 @@ export function useRuntimeShell() {
     if (!loadedPackage || backendRef.current.kind !== 'wasm') {
       return;
     }
-    await backendRef.current.bridge.reset();
-    await draw(loadedPackage, backendRef.current, packagePath);
-  }, [draw, loadedPackage, packagePath]);
+    await runExclusiveWithAutoTick(async () => {
+      if (backendRef.current.kind !== 'wasm') {
+        return;
+      }
+      await backendRef.current.bridge.reset();
+      await draw(loadedPackage, backendRef.current, packagePath);
+    });
+  }, [draw, loadedPackage, packagePath, runExclusiveWithAutoTick]);
 
   useEffect(() => {
     return () => stopAutoTick();
