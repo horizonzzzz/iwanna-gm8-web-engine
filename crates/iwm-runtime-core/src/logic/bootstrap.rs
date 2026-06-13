@@ -111,11 +111,13 @@ impl RuntimeCore {
                 if let Some(key) = assignable_key(target, Some(&instance_snapshot), None) {
                     let button_states = HashMap::new();
                     let known_files = HashSet::new();
+                    let room_instance_indices_by_object_id = HashMap::new();
                     let eval_context = RuntimeEvalContext {
                         current_room_id: room_state.room_id,
                         button_states: &button_states,
                         room_instances: &room_state.instances,
-                        room_instance_overlay: &[],
+                        room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                        room_instance_overlay: super::RuntimeRoomInstanceOverlay::empty(),
                         room_order: &[],
                         known_files: &known_files,
                         other_instance: None,
@@ -142,11 +144,13 @@ impl RuntimeCore {
             } => {
                 let button_states = HashMap::new();
                 let known_files = HashSet::new();
+                let room_instance_indices_by_object_id = HashMap::new();
                 let eval_context = RuntimeEvalContext {
                     current_room_id: room_state.room_id,
                     button_states: &button_states,
                     room_instances: &room_state.instances,
-                    room_instance_overlay: &[],
+                    room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                    room_instance_overlay: super::RuntimeRoomInstanceOverlay::empty(),
                     room_order: &[],
                     known_files: &known_files,
                     other_instance: None,
@@ -230,11 +234,13 @@ impl RuntimeCore {
     ) {
         let button_states = HashMap::new();
         let known_files = HashSet::new();
+        let room_instance_indices_by_object_id = HashMap::new();
         let eval_context = RuntimeEvalContext {
             current_room_id: room_state.room_id,
             button_states: &button_states,
             room_instances: &room_state.instances,
-            room_instance_overlay: &[],
+            room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+            room_instance_overlay: super::RuntimeRoomInstanceOverlay::empty(),
             room_order: &[],
             known_files: &known_files,
             other_instance: None,

@@ -1,5 +1,7 @@
 use super::*;
 
+use iwm_runtime_model::RoomInstancePlacement;
+
 #[test]
 fn core_executes_lowered_step_room_goto_calls() {
     let mut package = sample_package();
@@ -500,4 +502,101 @@ fn core_executes_room_goto_from_structured_binary_expression_argument() {
     core.tick(&mut host).unwrap();
 
     assert_eq!(core.snapshot().room_id, Some(9));
+}
+
+#[test]
+fn lowered_step_dispatch_keeps_many_prior_updates_fast_and_visible() {
+    const MARKER_COUNT: usize = 600;
+    const MAX_ELAPSED_MS: u128 = 40;
+
+    let mut package = sample_package();
+    package.rooms[0].instances.truncate(1);
+    package.objects[1].events.push(ObjectEventEntry {
+        event_type: 3,
+        sub_event: 0,
+        event_tag: "step".into(),
+        block_id: "object:1:event:3:0".into(),
+        action_count: 0,
+    });
+
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("x".into()),
+            value: LoweredLogicExpr::LiteralNumber(99.0),
+        }],
+    );
+    append_lowered_entry(
+        &mut package,
+        "object:1:event:3:0".into(),
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("seen_player_x".into()),
+                value: LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("obj_player".into())),
+                    member: "x".into(),
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("player_count".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "instance_number".into(),
+                    args: vec![LoweredLogicExpr::Identifier("obj_player".into())],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("player_distance".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "distance_to_object".into(),
+                    args: vec![LoweredLogicExpr::Identifier("obj_player".into())],
+                },
+            },
+        ],
+    );
+
+    for index in 0..MARKER_COUNT {
+        package.rooms[0].instances.push(RoomInstancePlacement {
+            instance_id: 1000 + index as i32,
+            object_id: 1,
+            x: 32 + index as i32,
+            y: 64,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: false,
+            is_hazard: false,
+            is_checkpoint: false,
+        });
+    }
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let start = std::time::Instant::now();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let elapsed = start.elapsed();
+    let last_marker = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .rev()
+        .find(|instance| instance.object_id == 1)
+        .unwrap();
+    assert_eq!(
+        last_marker.vars.get("seen_player_x"),
+        Some(&RuntimeValue::Number(99.0))
+    );
+    assert_eq!(
+        last_marker.vars.get("player_count"),
+        Some(&RuntimeValue::Number(1.0))
+    );
+    assert!(
+        elapsed.as_millis() < MAX_ELAPSED_MS,
+        "large step dispatch took {}ms for {MARKER_COUNT} marker instances",
+        elapsed.as_millis()
+    );
 }

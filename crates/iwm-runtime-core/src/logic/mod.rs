@@ -8,7 +8,10 @@ use std::collections::{HashMap, HashSet};
 use iwm_runtime_host::RuntimeHost;
 use iwm_runtime_model::ObjectDefinition;
 
-use crate::event_dispatch::{object_event_block_ids, RuntimeEventSelector};
+use crate::event_dispatch::{
+    object_event_block_ids, runtime_instance_indices_by_object_id,
+    runtime_instance_indices_by_object_id_from_instances, RuntimeEventSelector,
+};
 use context::RuntimeInstanceCreateRequest;
 
 use crate::{
@@ -17,7 +20,9 @@ use crate::{
 };
 
 pub(crate) use bootstrap::apply_view_globals_to_room;
-pub(crate) use context::{RuntimeEvalContext, RuntimeExecutionScope, StepExecutionResult};
+pub(crate) use context::{
+    RuntimeEvalContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay, StepExecutionResult,
+};
 pub(crate) use eval::sample_known_files;
 pub(crate) use statement::{
     apply_runtime_statement, RuntimeExecutionTrace, RuntimeStatementEnvironment,
@@ -35,7 +40,7 @@ impl RuntimeCore {
             self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
         let button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
         let known_files = sample_known_files(host);
-        let (current_room_id, dispatches) = {
+        let (current_room_id, dispatches, room_instance_indices_by_object_id) = {
             let Some(room) = self.current_room.as_ref() else {
                 return Err(RuntimeCoreError::NoRooms);
             };
@@ -59,26 +64,24 @@ impl RuntimeCore {
                     }
                 })
                 .collect::<Vec<_>>();
-            (room.room_id, dispatches)
+            (
+                room.room_id,
+                dispatches,
+                runtime_instance_indices_by_object_id(room),
+            )
         };
 
         let mut player_motion_changed = false;
         let mut player_jump_owned_by_script = false;
-        let mut instance_updates: Vec<(usize, RuntimeInstance)> = Vec::new();
+        let mut instance_updates: HashMap<usize, RuntimeInstance> = HashMap::new();
         let mut instance_creates: Vec<RuntimeInstanceCreateRequest> = Vec::new();
 
         for (index, entries) in dispatches {
-            let Some(mut instance) = instance_updates
-                .iter()
-                .rev()
-                .find(|(update_index, _)| *update_index == index)
-                .map(|(_, instance)| instance.clone())
-                .or_else(|| {
-                    self.current_room
-                        .as_ref()
-                        .and_then(|room| room.instances.get(index).cloned())
-                })
-            else {
+            let Some(mut instance) = instance_updates.get(&index).cloned().or_else(|| {
+                self.current_room
+                    .as_ref()
+                    .and_then(|room| room.instances.get(index).cloned())
+            }) else {
                 continue;
             };
             if !instance.alive {
@@ -110,7 +113,7 @@ impl RuntimeCore {
                     let Some(room) = self.current_room.as_ref() else {
                         return Err(RuntimeCoreError::NoRooms);
                     };
-                    let eval_overlay = merged_room_instance_overlay(
+                    let eval_overlay = RuntimeRoomInstanceOverlay::with_current(
                         &instance_updates,
                         &with_updates,
                         index,
@@ -120,7 +123,8 @@ impl RuntimeCore {
                         current_room_id,
                         button_states: &button_states,
                         room_instances: &room.instances,
-                        room_instance_overlay: &eval_overlay,
+                        room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                        room_instance_overlay: eval_overlay,
                         room_order: room_order.as_slice(),
                         known_files: &known_files,
                         other_instance: None,
@@ -156,8 +160,8 @@ impl RuntimeCore {
                     );
                     sync_current_instance_from_updates(index, &mut instance, &mut with_updates);
                     if self.pending_room_reset || self.pending_room_transition.is_some() {
-                        instance_updates.push((index, instance));
-                        instance_updates.append(&mut with_updates);
+                        instance_updates.insert(index, instance);
+                        commit_instance_updates(&mut instance_updates, with_updates);
                         if let Some(room) = self.current_room.as_mut() {
                             for (update_index, updated_instance) in instance_updates {
                                 if let Some(slot) = room.instances.get_mut(update_index) {
@@ -173,7 +177,7 @@ impl RuntimeCore {
                         });
                     }
                 }
-                instance_updates.append(&mut with_updates);
+                commit_instance_updates(&mut instance_updates, with_updates);
             }
 
             if is_player
@@ -181,7 +185,7 @@ impl RuntimeCore {
             {
                 player_motion_changed = true;
             }
-            instance_updates.push((index, instance));
+            instance_updates.insert(index, instance);
         }
 
         if let Some(room) = self.current_room.as_mut() {
@@ -268,6 +272,8 @@ impl RuntimeCore {
                 return;
             };
             room_instances.push(instance.clone());
+            let room_instance_indices_by_object_id =
+                runtime_instance_indices_by_object_id_from_instances(&room_instances);
 
             if let Some(entries) = create_event_entries.get(&instance.object_id) {
                 let script_entries = &self.cached_script_entries;
@@ -278,7 +284,8 @@ impl RuntimeCore {
                     current_room_id,
                     button_states: &button_states,
                     room_instances: &room_instances,
-                    room_instance_overlay: &[],
+                    room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                    room_instance_overlay: RuntimeRoomInstanceOverlay::empty(),
                     room_order: &room_order,
                     known_files: &known_files,
                     other_instance: None,
@@ -472,20 +479,6 @@ fn object_matches_or_inherits_from(
     false
 }
 
-fn merged_room_instance_overlay(
-    committed_updates: &[(usize, RuntimeInstance)],
-    pending_updates: &[(usize, RuntimeInstance)],
-    current_index: usize,
-    current_instance: &RuntimeInstance,
-) -> Vec<(usize, RuntimeInstance)> {
-    committed_updates
-        .iter()
-        .chain(pending_updates.iter())
-        .chain(std::iter::once(&(current_index, current_instance.clone())))
-        .map(|(index, instance)| (*index, instance.clone()))
-        .collect()
-}
-
 fn sync_current_instance_from_updates(
     current_index: usize,
     current_instance: &mut RuntimeInstance,
@@ -499,6 +492,15 @@ fn sync_current_instance_from_updates(
     };
     *current_instance = pending_updates[last_update_index].1.clone();
     pending_updates.retain(|(index, _)| *index != current_index);
+}
+
+fn commit_instance_updates(
+    committed_updates: &mut HashMap<usize, RuntimeInstance>,
+    updates: Vec<(usize, RuntimeInstance)>,
+) {
+    for (index, instance) in updates {
+        committed_updates.insert(index, instance);
+    }
 }
 
 fn statements_reference_jump_queries(statements: &[LoweredLogicStatement]) -> bool {

@@ -4,7 +4,8 @@ use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 
 use crate::event_dispatch::{
     collision_event_target_object_ids, object_event_block_ids,
-    runtime_instance_indices_by_object_id, RuntimeEventSelector,
+    runtime_instance_indices_by_object_id, runtime_instance_indices_by_object_id_from_instances,
+    RuntimeEventSelector,
 };
 use crate::helpers::{as_number, collides_at, is_player_instance};
 use crate::{
@@ -515,6 +516,8 @@ impl RuntimeCore {
             };
             room.instances.clone()
         };
+        let room_instance_indices_by_object_id =
+            runtime_instance_indices_by_object_id_from_instances(&room_instances);
         let room_order = self.runtime_room_order();
         let current_room_id = {
             let Some(room) = self.current_room.as_ref() else {
@@ -527,7 +530,8 @@ impl RuntimeCore {
             current_room_id,
             button_states: &button_states,
             room_instances: &room_instances,
-            room_instance_overlay: &[],
+            room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+            room_instance_overlay: crate::logic::RuntimeRoomInstanceOverlay::empty(),
             room_order: &room_order,
             known_files: &known_files,
             other_instance: other_instance.as_ref(),

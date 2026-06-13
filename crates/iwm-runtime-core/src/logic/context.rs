@@ -23,6 +23,76 @@ pub(crate) struct RuntimeInstanceCreateRequest {
     pub(super) y: f64,
 }
 
+pub(crate) struct RuntimeRoomInstanceOverlay<'a> {
+    committed_updates: Option<&'a HashMap<usize, RuntimeInstance>>,
+    pending_updates: Vec<(usize, RuntimeInstance)>,
+    current_instance: Option<(usize, RuntimeInstance)>,
+}
+
+impl<'a> RuntimeRoomInstanceOverlay<'a> {
+    pub(crate) fn empty() -> Self {
+        Self {
+            committed_updates: None,
+            pending_updates: Vec::new(),
+            current_instance: None,
+        }
+    }
+
+    pub(crate) fn with_current(
+        committed_updates: &'a HashMap<usize, RuntimeInstance>,
+        pending_updates: &[(usize, RuntimeInstance)],
+        current_index: usize,
+        current_instance: &RuntimeInstance,
+    ) -> Self {
+        Self {
+            committed_updates: Some(committed_updates),
+            pending_updates: pending_updates.to_vec(),
+            current_instance: Some((current_index, current_instance.clone())),
+        }
+    }
+
+    pub(super) fn merge_pending_current(
+        &self,
+        pending_updates: &[(usize, RuntimeInstance)],
+        current_index: usize,
+        current_instance: &RuntimeInstance,
+    ) -> Self {
+        let mut merged_pending = self.pending_updates.clone();
+        merged_pending.extend(pending_updates.iter().cloned());
+        Self {
+            committed_updates: self.committed_updates,
+            pending_updates: merged_pending,
+            current_instance: Some((current_index, current_instance.clone())),
+        }
+    }
+
+    fn instance_at<'b>(&'b self, index: usize, fallback: &'b RuntimeInstance) -> &'b RuntimeInstance
+    where
+        'a: 'b,
+    {
+        if let Some((current_index, instance)) = &self.current_instance {
+            if *current_index == index {
+                return instance;
+            }
+        }
+        if let Some((_, instance)) = self
+            .pending_updates
+            .iter()
+            .rev()
+            .find(|(update_index, _)| *update_index == index)
+        {
+            return instance;
+        }
+        if let Some(instance) = self
+            .committed_updates
+            .and_then(|updates| updates.get(&index))
+        {
+            return instance;
+        }
+        fallback
+    }
+}
+
 impl RuntimeExecutionScope {
     pub(super) fn declare(&mut self, name: &str) {
         self.locals.entry(name.to_string()).or_insert(None);
@@ -54,7 +124,8 @@ pub(crate) struct RuntimeEvalContext<'a> {
     pub current_room_id: usize,
     pub button_states: &'a HashMap<RuntimeButton, iwm_runtime_host::ButtonState>,
     pub room_instances: &'a [RuntimeInstance],
-    pub room_instance_overlay: &'a [(usize, RuntimeInstance)],
+    pub room_instance_indices_by_object_id: &'a HashMap<usize, Vec<usize>>,
+    pub room_instance_overlay: RuntimeRoomInstanceOverlay<'a>,
     pub room_order: &'a [usize],
     pub known_files: &'a HashSet<String>,
     pub other_instance: Option<&'a RuntimeInstance>,
@@ -66,7 +137,7 @@ impl<'a> RuntimeEvalContext<'a> {
     pub(super) fn with_other_and_overlay<'b>(
         &'b self,
         other_instance: &'b RuntimeInstance,
-        room_instance_overlay: &'b [(usize, RuntimeInstance)],
+        room_instance_overlay: RuntimeRoomInstanceOverlay<'b>,
     ) -> RuntimeEvalContext<'b>
     where
         'a: 'b,
@@ -75,6 +146,7 @@ impl<'a> RuntimeEvalContext<'a> {
             current_room_id: self.current_room_id,
             button_states: self.button_states,
             room_instances: self.room_instances,
+            room_instance_indices_by_object_id: self.room_instance_indices_by_object_id,
             room_instance_overlay,
             room_order: self.room_order,
             known_files: self.known_files,
@@ -94,12 +166,9 @@ impl<'a> RuntimeEvalContext<'a> {
     }
 
     pub(crate) fn room_instance(&self, index: usize) -> Option<&RuntimeInstance> {
-        self.room_instance_overlay
-            .iter()
-            .rev()
-            .find(|(update_index, _)| *update_index == index)
-            .map(|(_, instance)| instance)
-            .or_else(|| self.room_instances.get(index))
+        self.room_instances
+            .get(index)
+            .map(|fallback| self.room_instance_overlay.instance_at(index, fallback))
     }
 
     pub(crate) fn room_instances_iter(
@@ -109,14 +178,37 @@ impl<'a> RuntimeEvalContext<'a> {
             .iter()
             .enumerate()
             .map(|(index, instance)| {
-                let instance = self
-                    .room_instance_overlay
-                    .iter()
-                    .rev()
-                    .find(|(update_index, _)| *update_index == index)
-                    .map(|(_, instance)| instance)
-                    .unwrap_or(instance);
-                (index, instance)
+                (
+                    index,
+                    self.room_instance_overlay.instance_at(index, instance),
+                )
             })
+    }
+
+    pub(crate) fn room_instances_matching_object_ids<'b>(
+        &'b self,
+        target_object_ids: &[usize],
+    ) -> impl Iterator<Item = (usize, &'b RuntimeInstance)> + 'b {
+        self.room_instance_indices_matching_object_ids(target_object_ids)
+            .into_iter()
+            .filter_map(|index| self.room_instance(index).map(|instance| (index, instance)))
+    }
+
+    fn room_instance_indices_matching_object_ids(&self, target_object_ids: &[usize]) -> Vec<usize> {
+        if self.room_instance_indices_by_object_id.is_empty() {
+            return self
+                .room_instances
+                .iter()
+                .enumerate()
+                .filter(|(_, instance)| target_object_ids.contains(&instance.object_id))
+                .map(|(index, _)| index)
+                .collect();
+        }
+
+        target_object_ids
+            .iter()
+            .filter_map(|object_id| self.room_instance_indices_by_object_id.get(object_id))
+            .flat_map(|indices| indices.iter().copied())
+            .collect()
     }
 }

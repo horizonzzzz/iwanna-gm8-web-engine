@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use iwm_runtime_host::{RuntimeHost, RuntimeSoundMode};
 
-use super::context::{RuntimeEvalContext, RuntimeExecutionScope, RuntimeInstanceCreateRequest};
+use super::context::{
+    RuntimeEvalContext, RuntimeExecutionScope, RuntimeInstanceCreateRequest,
+    RuntimeRoomInstanceOverlay,
+};
 use super::eval::{assignable_key, evaluate_expr, is_truthy};
 use crate::helpers::{as_number, parse_room_id, record_host_diagnostic};
 use crate::{
@@ -269,13 +272,12 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 if target_index == instance_index {
                     for nested in body {
                         let overlay = merged_statement_overlay(
-                            context.room_instance_overlay,
+                            &context.room_instance_overlay,
                             env.room_instance_updates,
                             instance_index,
                             instance,
                         );
-                        let with_context =
-                            context.with_other_and_overlay(&other_snapshot, &overlay);
+                        let with_context = context.with_other_and_overlay(&other_snapshot, overlay);
                         apply_runtime_statement(
                             nested,
                             instance,
@@ -308,12 +310,12 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
                 for nested in body {
                     let overlay = merged_statement_overlay(
-                        context.room_instance_overlay,
+                        &context.room_instance_overlay,
                         env.room_instance_updates,
                         target_index,
                         &target_instance,
                     );
-                    let with_context = context.with_other_and_overlay(&other_snapshot, &overlay);
+                    let with_context = context.with_other_and_overlay(&other_snapshot, overlay);
                     apply_runtime_statement(
                         nested,
                         &mut target_instance,
@@ -677,18 +679,13 @@ fn statement_kind(statement: &LoweredLogicStatement) -> &'static str {
     }
 }
 
-fn merged_statement_overlay(
-    base_overlay: &[(usize, RuntimeInstance)],
+fn merged_statement_overlay<'a>(
+    base_overlay: &RuntimeRoomInstanceOverlay<'a>,
     pending_updates: &[(usize, RuntimeInstance)],
     current_index: usize,
     current_instance: &RuntimeInstance,
-) -> Vec<(usize, RuntimeInstance)> {
-    base_overlay
-        .iter()
-        .chain(pending_updates.iter())
-        .chain(std::iter::once(&(current_index, current_instance.clone())))
-        .map(|(index, instance)| (*index, instance.clone()))
-        .collect()
+) -> RuntimeRoomInstanceOverlay<'a> {
+    base_overlay.merge_pending_current(pending_updates, current_index, current_instance)
 }
 
 fn sync_instance_from_updates(
@@ -737,10 +734,8 @@ fn with_target_indices(
                 .cloned()
                 .unwrap_or_default();
             context
-                .room_instances_iter()
-                .filter(|(_, instance)| {
-                    instance.alive && wanted_object_ids.contains(&instance.object_id)
-                })
+                .room_instances_matching_object_ids(&wanted_object_ids)
+                .filter(|(_, instance)| instance.alive)
                 .map(|(index, _)| index)
                 .collect()
         }

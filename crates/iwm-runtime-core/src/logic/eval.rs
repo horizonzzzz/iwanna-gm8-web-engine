@@ -171,12 +171,14 @@ pub(super) fn evaluate_expr(
             if let LoweredLogicExpr::Identifier(object_name) = target.as_ref() {
                 if object_name != "global" {
                     if let Some(context) = eval_context {
-                        if let Some((_, target_instance)) =
-                            context.room_instances_iter().find(|(_, candidate)| {
-                                candidate.alive
-                                    && candidate.object_name.eq_ignore_ascii_case(object_name)
-                            })
-                        {
+                        let target_object_ids = context
+                            .place_target_ids_by_name
+                            .get(&object_name.to_ascii_lowercase());
+                        if let Some((_, target_instance)) = target_object_ids.and_then(|ids| {
+                            context
+                                .room_instances_matching_object_ids(ids)
+                                .find(|(_, candidate)| candidate.alive)
+                        }) {
                             return runtime_instance_member_value(target_instance, member);
                         }
                     }
@@ -406,13 +408,10 @@ fn evaluate_instance_exists(
     eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<RuntimeValue> {
     let context = eval_context?;
-    let object_name = args.first().and_then(|arg| match arg {
-        LoweredLogicExpr::Identifier(name) => Some(name.as_str()),
-        _ => None,
-    })?;
-    let exists = context.room_instances_iter().any(|(_, instance)| {
-        instance.alive && instance.object_name.eq_ignore_ascii_case(object_name)
-    });
+    let target_object_ids = instance_target_object_ids(args.first()?, context)?;
+    let exists = context
+        .room_instances_matching_object_ids(&target_object_ids)
+        .any(|(_, instance)| instance.alive);
     Some(RuntimeValue::Bool(exists))
 }
 
@@ -423,8 +422,8 @@ fn evaluate_instance_number(
     let context = eval_context?;
     let target_object_ids = instance_target_object_ids(args.first()?, context)?;
     let count = context
-        .room_instances_iter()
-        .filter(|(_, instance)| instance.alive && target_object_ids.contains(&instance.object_id))
+        .room_instances_matching_object_ids(&target_object_ids)
+        .filter(|(_, instance)| instance.alive)
         .count();
     Some(RuntimeValue::Number(count as f64))
 }
@@ -436,8 +435,8 @@ fn place_query_targets(
     let target_object_ids = instance_target_object_ids(target_expr, context)?;
     Some(
         context
-            .room_instances_iter()
-            .filter(|(_, candidate)| candidate.alive && target_object_ids.contains(&candidate.object_id))
+            .room_instances_matching_object_ids(&target_object_ids)
+            .filter(|(_, candidate)| candidate.alive)
             .map(|(_, candidate)| candidate.clone())
             .collect(),
     )
@@ -475,10 +474,7 @@ fn resolve_instance_reference<'a>(
         .map(|(_, candidate)| candidate)
 }
 
-fn runtime_instance_member_value(
-    instance: &RuntimeInstance,
-    member: &str,
-) -> Option<RuntimeValue> {
+fn runtime_instance_member_value(instance: &RuntimeInstance, member: &str) -> Option<RuntimeValue> {
     match member {
         "x" => Some(RuntimeValue::Number(instance.x)),
         "y" => Some(RuntimeValue::Number(instance.y)),
@@ -506,12 +502,8 @@ fn evaluate_distance_to_object(
         .place_target_ids_by_name
         .get(&object_name.to_ascii_lowercase())?;
     let distance = context
-        .room_instances_iter()
-        .filter(|(_, candidate)| {
-            candidate.alive
-                && candidate.runtime_id != instance.runtime_id
-                && target_object_ids.contains(&candidate.object_id)
-        })
+        .room_instances_matching_object_ids(target_object_ids)
+        .filter(|(_, candidate)| candidate.alive && candidate.runtime_id != instance.runtime_id)
         .map(|(_, candidate)| instance_bbox_distance(instance, candidate))
         .fold(1_000_000.0, f64::min);
 
@@ -561,11 +553,10 @@ fn evaluate_collision_line(
         .place_target_ids_by_name
         .get(&object_name.to_ascii_lowercase())?;
     let hit = context
-        .room_instances_iter()
+        .room_instances_matching_object_ids(target_object_ids)
         .find(|(_, candidate)| {
             candidate.alive
                 && (!exclude_self || current_runtime_id != Some(candidate.runtime_id))
-                && target_object_ids.contains(&candidate.object_id)
                 && line_intersects_instance(candidate, x1, y1, x2, y2, precise)
         })
         .map(|(_, candidate)| candidate.instance_id as f64)

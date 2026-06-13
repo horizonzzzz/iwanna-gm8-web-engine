@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{RuntimePackage, RuntimeRoomState};
+use crate::{RuntimeInstance, RuntimePackage, RuntimeRoomState};
 
 #[derive(Clone)]
 pub(crate) enum RuntimeEventSelector {
@@ -72,8 +72,14 @@ pub(crate) fn object_event_block_ids(
 pub(crate) fn runtime_instance_indices_by_object_id(
     room: &RuntimeRoomState,
 ) -> HashMap<usize, Vec<usize>> {
+    runtime_instance_indices_by_object_id_from_instances(&room.instances)
+}
+
+pub(crate) fn runtime_instance_indices_by_object_id_from_instances(
+    instances: &[RuntimeInstance],
+) -> HashMap<usize, Vec<usize>> {
     let mut indices = HashMap::new();
-    for (index, instance) in room.instances.iter().enumerate() {
+    for (index, instance) in instances.iter().enumerate() {
         if instance.alive {
             indices
                 .entry(instance.object_id)
