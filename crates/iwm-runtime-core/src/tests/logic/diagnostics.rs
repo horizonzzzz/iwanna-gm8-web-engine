@@ -184,3 +184,36 @@ fn core_does_not_report_supported_abs_or_string_functions() {
         .iter()
         .any(|message| message.contains("function=instance_position")));
 }
+
+#[test]
+fn core_does_not_report_supported_keyboard_get_numlock() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::Call {
+                name: "keyboard_get_numlock".into(),
+                args: vec![],
+            },
+            then_branch: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("numlock_seen".into()),
+                value: LoweredLogicExpr::LiteralBool(true),
+            }],
+            else_branch: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let unsupported_functions = core
+        .diagnostics()
+        .iter()
+        .filter(|entry| entry.code == "runtime-unsupported-function")
+        .map(|entry| entry.message.as_str())
+        .collect::<Vec<_>>();
+    assert!(unsupported_functions
+        .iter()
+        .all(|message| !message.contains("function=keyboard_get_numlock")));
+}

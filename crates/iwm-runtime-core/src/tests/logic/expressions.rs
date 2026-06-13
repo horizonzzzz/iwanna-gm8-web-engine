@@ -257,6 +257,95 @@ fn core_evaluates_keyboard_query_calls_against_host_button_state() {
 }
 
 #[test]
+fn core_executes_keyboard_set_numlock_before_get_query() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "keyboard_set_numlock".into(),
+                args: vec![LoweredLogicExpr::LiteralBool(true)],
+            },
+            LoweredLogicStatement::Conditional {
+                condition: LoweredLogicExpr::Call {
+                    name: "keyboard_get_numlock".into(),
+                    args: vec![],
+                },
+                then_branch: vec![LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("numlock_seen".into()),
+                    value: LoweredLogicExpr::LiteralBool(true),
+                }],
+                else_branch: vec![],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("numlock_seen"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn core_treats_off_identifier_as_false_for_keyboard_set_numlock() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "keyboard_set_numlock".into(),
+                args: vec![LoweredLogicExpr::LiteralBool(true)],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "keyboard_set_numlock".into(),
+                args: vec![LoweredLogicExpr::Identifier("off".into())],
+            },
+            LoweredLogicStatement::Conditional {
+                condition: LoweredLogicExpr::Call {
+                    name: "keyboard_get_numlock".into(),
+                    args: vec![],
+                },
+                then_branch: vec![LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("numlock_state".into()),
+                    value: LoweredLogicExpr::LiteralText("on".into()),
+                }],
+                else_branch: vec![LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("numlock_state".into()),
+                    value: LoweredLogicExpr::LiteralText("off".into()),
+                }],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("numlock_state"),
+        Some(&RuntimeValue::Text("off".into()))
+    );
+}
+
+#[test]
 fn core_evaluates_place_queries_and_boolean_operators_inside_conditions() {
     let mut package = sample_package();
     package.objects.push(ObjectDefinition {
@@ -1145,5 +1234,8 @@ fn core_evaluates_instance_place_result_member_accesses() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    assert_eq!(player.vars.get("hit_block"), Some(&RuntimeValue::Bool(true)));
+    assert_eq!(
+        player.vars.get("hit_block"),
+        Some(&RuntimeValue::Bool(true))
+    );
 }

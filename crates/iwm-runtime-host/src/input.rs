@@ -6,6 +6,7 @@ use crate::{ButtonState, RuntimeButton, RuntimeInputHost};
 pub struct SnapshotInputHost {
     buttons: HashMap<RuntimeButton, ButtonState>,
     mouse_position: (i32, i32),
+    keyboard_numlock: bool,
 }
 
 impl SnapshotInputHost {
@@ -31,11 +32,23 @@ impl SnapshotInputHost {
     pub fn set_mouse_position(&mut self, mouse_position: (i32, i32)) {
         self.mouse_position = mouse_position;
     }
+
+    pub fn set_keyboard_numlock(&mut self, state: bool) {
+        self.keyboard_numlock = state;
+    }
 }
 
 impl RuntimeInputHost for SnapshotInputHost {
     fn button_state(&self, button: RuntimeButton) -> ButtonState {
         self.buttons.get(&button).copied().unwrap_or_default()
+    }
+
+    fn keyboard_numlock(&self) -> bool {
+        self.keyboard_numlock
+    }
+
+    fn set_keyboard_numlock(&mut self, state: bool) {
+        SnapshotInputHost::set_keyboard_numlock(self, state);
     }
 
     fn active_buttons(&self) -> Vec<(RuntimeButton, ButtonState)> {

@@ -20,6 +20,12 @@ pub trait RuntimeTimeHost {
 pub trait RuntimeInputHost {
     fn button_state(&self, button: RuntimeButton) -> ButtonState;
 
+    fn keyboard_numlock(&self) -> bool {
+        false
+    }
+
+    fn set_keyboard_numlock(&mut self, _state: bool) {}
+
     fn active_buttons(&self) -> Vec<(RuntimeButton, ButtonState)> {
         Vec::new()
     }

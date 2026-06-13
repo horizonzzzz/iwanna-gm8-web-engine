@@ -58,6 +58,14 @@ impl RuntimeInputHost for HeadlessHost {
         self.input.button_state(button)
     }
 
+    fn keyboard_numlock(&self) -> bool {
+        self.input.keyboard_numlock()
+    }
+
+    fn set_keyboard_numlock(&mut self, state: bool) {
+        self.input.set_keyboard_numlock(state);
+    }
+
     fn active_buttons(&self) -> Vec<(RuntimeButton, ButtonState)> {
         self.input.active_buttons()
     }

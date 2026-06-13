@@ -183,6 +183,20 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     );
                 }
             }
+            "keyboard_set_numlock" => {
+                if let Some(value) = args.first().and_then(|arg| {
+                    evaluate_with_diagnostics(
+                        arg,
+                        Some(instance),
+                        Some(scope),
+                        eval_context,
+                        env,
+                        instance,
+                    )
+                }) {
+                    env.host.set_keyboard_numlock(is_truthy(Some(value)));
+                }
+            }
             "instance_destroy" => {
                 if instance.alive {
                     let entries = destroy_event_entries
@@ -571,6 +585,9 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
                 .ok()
                 .map(RuntimeValue::Bool);
         }
+        if name == "keyboard_get_numlock" {
+            return Some(RuntimeValue::Bool(env.host.keyboard_numlock()));
+        }
     }
 
     evaluate_expr(expr, instance, env.globals, scope, eval_context)
@@ -628,6 +645,7 @@ fn is_supported_eval_function(name: &str) -> bool {
             | "keyboard_check_direct"
             | "keyboard_check_pressed"
             | "keyboard_check_released"
+            | "keyboard_get_numlock"
             | "place_meeting"
             | "place_free"
             | "sound_isplaying"

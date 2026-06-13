@@ -90,6 +90,10 @@ pub(super) fn evaluate_expr(
                 }
             }
 
+            if name.eq_ignore_ascii_case("off") {
+                return Some(RuntimeValue::Bool(false));
+            }
+
             if let Some(key_code) = gm_key_code(name) {
                 return Some(RuntimeValue::Number(key_code as f64));
             }

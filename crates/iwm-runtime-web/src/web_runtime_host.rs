@@ -237,6 +237,14 @@ impl RuntimeInputHost for WebRuntimeHostBoundary {
         self.headless.button_state(button)
     }
 
+    fn keyboard_numlock(&self) -> bool {
+        self.headless.keyboard_numlock()
+    }
+
+    fn set_keyboard_numlock(&mut self, state: bool) {
+        self.headless.set_keyboard_numlock(state);
+    }
+
     fn active_buttons(&self) -> Vec<(RuntimeButton, iwm_runtime_host::ButtonState)> {
         self.headless.active_buttons()
     }
