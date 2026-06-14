@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
-use iwm_runtime_host::RuntimeButton;
+use iwm_runtime_host::{RuntimeButton, RuntimeHost, RuntimeHostError};
 
 use crate::{RuntimeInstance, RuntimeValue};
 
@@ -19,8 +20,95 @@ pub(crate) struct RuntimeExecutionScope {
 #[derive(Debug, Clone)]
 pub(crate) struct RuntimeInstanceCreateRequest {
     pub(super) object_id: usize,
+    pub(super) runtime_id: usize,
+    pub(super) instance_id: i32,
     pub(super) x: f64,
     pub(super) y: f64,
+    pub(super) post_create_vars: HashMap<String, RuntimeValue>,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct RuntimeBinaryFileState {
+    next_handle: i32,
+    handles: HashMap<i32, RuntimeBinaryFileHandle>,
+}
+
+#[derive(Debug)]
+struct RuntimeBinaryFileHandle {
+    path: String,
+    mode: RuntimeBinaryFileMode,
+}
+
+#[derive(Debug)]
+enum RuntimeBinaryFileMode {
+    Read { bytes: Vec<u8>, cursor: usize },
+    Write { bytes: Vec<u8> },
+    Append { bytes: Vec<u8> },
+}
+
+impl RuntimeBinaryFileState {
+    pub(crate) fn open<H: RuntimeHost>(&mut self, host: &H, path: String, mode: i32) -> i32 {
+        let handle = self.next_handle.max(1);
+        self.next_handle = handle.saturating_add(1);
+        let file_mode = match mode {
+            0 => RuntimeBinaryFileMode::Read {
+                bytes: host.read(Path::new(&path)).unwrap_or_default(),
+                cursor: 0,
+            },
+            2 => RuntimeBinaryFileMode::Append {
+                bytes: host.read(Path::new(&path)).unwrap_or_default(),
+            },
+            _ => RuntimeBinaryFileMode::Write { bytes: Vec::new() },
+        };
+        self.handles.insert(
+            handle,
+            RuntimeBinaryFileHandle {
+                path,
+                mode: file_mode,
+            },
+        );
+        handle
+    }
+
+    pub(crate) fn read_byte(&mut self, handle: i32) -> u8 {
+        let Some(file) = self.handles.get_mut(&handle) else {
+            return 0;
+        };
+        let RuntimeBinaryFileMode::Read { bytes, cursor } = &mut file.mode else {
+            return 0;
+        };
+        let byte = bytes.get(*cursor).copied().unwrap_or(0);
+        *cursor = cursor.saturating_add(1);
+        byte
+    }
+
+    pub(crate) fn write_byte(&mut self, handle: i32, byte: u8) {
+        let Some(file) = self.handles.get_mut(&handle) else {
+            return;
+        };
+        match &mut file.mode {
+            RuntimeBinaryFileMode::Write { bytes } | RuntimeBinaryFileMode::Append { bytes } => {
+                bytes.push(byte);
+            }
+            RuntimeBinaryFileMode::Read { .. } => {}
+        }
+    }
+
+    pub(crate) fn close<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+        handle: i32,
+    ) -> Result<(), RuntimeHostError> {
+        let Some(file) = self.handles.remove(&handle) else {
+            return Ok(());
+        };
+        if let RuntimeBinaryFileMode::Write { bytes } | RuntimeBinaryFileMode::Append { bytes } =
+            file.mode
+        {
+            host.write_temp(Path::new(&file.path), &bytes)?;
+        }
+        Ok(())
+    }
 }
 
 pub(crate) struct RuntimeRoomInstanceOverlay<'a> {
@@ -131,6 +219,7 @@ pub(crate) struct RuntimeEvalContext<'a> {
     pub other_instance: Option<&'a RuntimeInstance>,
     pub other_runtime_id: Option<usize>,
     pub place_target_ids_by_name: &'a HashMap<String, Vec<usize>>,
+    pub room_ids_by_name: &'a HashMap<String, usize>,
 }
 
 impl<'a> RuntimeEvalContext<'a> {
@@ -153,6 +242,7 @@ impl<'a> RuntimeEvalContext<'a> {
             other_instance: Some(other_instance),
             other_runtime_id: Some(other_instance.runtime_id),
             place_target_ids_by_name: self.place_target_ids_by_name,
+            room_ids_by_name: self.room_ids_by_name,
         }
     }
 

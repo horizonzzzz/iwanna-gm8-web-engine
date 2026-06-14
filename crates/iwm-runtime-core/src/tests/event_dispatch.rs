@@ -499,6 +499,42 @@ fn core_dispatches_collision_event_blocks_when_player_overlaps_target() {
 }
 
 #[test]
+fn core_dispatches_collision_event_blocks_when_target_child_overlaps_player() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[1].name = "spike_child".into();
+    package.objects[1].parent_index = 2;
+    package.objects[2].name = "playerKiller".into();
+    package.rooms[0].instances[1].x = 12;
+    package.rooms[0].instances[1].y = 24;
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("parent_collision_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("parent_collision_hit"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
 fn collision_event_can_read_other_member_values() {
     let mut package = sample_package();
     package.objects[0].name = "player".into();

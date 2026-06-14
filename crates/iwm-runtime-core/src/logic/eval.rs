@@ -98,6 +98,15 @@ pub(super) fn evaluate_expr(
                 return Some(RuntimeValue::Number(key_code as f64));
             }
 
+            if let Some(context) = eval_context {
+                if name.eq_ignore_ascii_case("room") {
+                    return Some(RuntimeValue::Number(context.current_room_id as f64));
+                }
+                if let Some(room_id) = context.room_ids_by_name.get(&name.to_ascii_lowercase()) {
+                    return Some(RuntimeValue::Number(*room_id as f64));
+                }
+            }
+
             globals.get(name).cloned().or_else(|| {
                 eval_context
                     .and_then(|context| {
@@ -136,6 +145,8 @@ pub(super) fn evaluate_expr(
                 .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
                 .and_then(|value| as_number(&value))
                 .map(|value| RuntimeValue::Number(value.floor())),
+            "random" => evaluate_random_call(args, instance, globals, scope, eval_context),
+            "choose" => evaluate_choose_call(args, instance, globals, scope, eval_context),
             "string" => args
                 .first()
                 .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
@@ -289,6 +300,70 @@ fn evaluate_ord_call(args: &[LoweredLogicExpr]) -> Option<RuntimeValue> {
             .map(|ch| RuntimeValue::Number(ch as u32 as f64)),
         _ => None,
     }
+}
+
+fn evaluate_random_call(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let max = args
+        .first()
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?;
+    if max == 0.0 {
+        return Some(RuntimeValue::Number(0.0));
+    }
+    let unit = deterministic_random_unit(instance, scope, max.to_bits());
+    Some(RuntimeValue::Number(unit * max))
+}
+
+fn evaluate_choose_call(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    if args.is_empty() {
+        return None;
+    }
+    let values = args
+        .iter()
+        .filter_map(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .collect::<Vec<_>>();
+    if values.is_empty() {
+        return None;
+    }
+    let unit = deterministic_random_unit(instance, scope, values.len() as u64);
+    let index = ((unit * values.len() as f64).floor() as usize).min(values.len() - 1);
+    values.get(index).cloned()
+}
+
+fn deterministic_random_unit(
+    instance: Option<&RuntimeInstance>,
+    scope: Option<&RuntimeExecutionScope>,
+    salt: u64,
+) -> f64 {
+    let mut seed = salt ^ 0x9e37_79b9_7f4a_7c15;
+    if let Some(instance) = instance {
+        seed ^= (instance.runtime_id as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        seed ^= instance.x.to_bits().rotate_left(17);
+        seed ^= instance.y.to_bits().rotate_left(29);
+    }
+    let loop_index = scope
+        .and_then(|scope| scope.get("i"))
+        .or_else(|| instance.and_then(|instance| instance.vars.get("i").cloned()));
+    if let Some(RuntimeValue::Number(i)) = loop_index {
+        seed ^= i.to_bits().rotate_left(7);
+    }
+    seed = seed.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    seed = (seed ^ (seed >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    seed = (seed ^ (seed >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    let mixed = seed ^ (seed >> 31);
+    (mixed as f64) / (u64::MAX as f64)
 }
 
 fn evaluate_keyboard_query(

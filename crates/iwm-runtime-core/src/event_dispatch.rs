@@ -117,6 +117,37 @@ pub(crate) fn collision_event_target_object_ids(
     Vec::new()
 }
 
+pub(crate) fn object_ids_matching_or_inheriting_from(
+    package: &RuntimePackage,
+    wanted_object_id: usize,
+) -> Vec<usize> {
+    package
+        .objects
+        .iter()
+        .filter(|object| object_matches_or_inherits_from(package, object.id, wanted_object_id))
+        .map(|object| object.id)
+        .collect()
+}
+
+fn object_matches_or_inherits_from(
+    package: &RuntimePackage,
+    object_id: usize,
+    wanted_object_id: usize,
+) -> bool {
+    let mut current_id = Some(object_id);
+    while let Some(id) = current_id {
+        if id == wanted_object_id {
+            return true;
+        }
+        current_id = package
+            .objects
+            .iter()
+            .find(|object| object.id == id)
+            .and_then(|object| object.parent_index.try_into().ok());
+    }
+    false
+}
+
 fn format_key_name(sub_event: u16) -> String {
     let key = sub_event as u8 as char;
     if key.is_ascii_alphanumeric() {

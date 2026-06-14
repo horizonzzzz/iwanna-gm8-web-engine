@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use iwm_runtime_host::{RuntimeHost, RuntimeSoundMode};
 
 use super::context::{
-    RuntimeEvalContext, RuntimeExecutionScope, RuntimeInstanceCreateRequest,
-    RuntimeRoomInstanceOverlay,
+    RuntimeBinaryFileState, RuntimeEvalContext, RuntimeExecutionScope,
+    RuntimeInstanceCreateRequest, RuntimeRoomInstanceOverlay,
 };
 use super::eval::{assignable_key, evaluate_expr, is_truthy};
 use crate::helpers::{as_number, parse_room_id, record_host_diagnostic};
@@ -27,6 +27,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) globals: &'a mut HashMap<String, RuntimeValue>,
     pub(crate) pending_room_transition: &'a mut Option<usize>,
     pub(crate) pending_room_reset: &'a mut bool,
+    pub(crate) binary_files: &'a mut RuntimeBinaryFileState,
     pub(crate) host: &'a mut H,
     pub(crate) diagnostics: &'a mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
     pub(crate) room_instance_updates: &'a mut Vec<(usize, RuntimeInstance)>,
@@ -45,15 +46,26 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
 ) {
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
-            if let Some(key) = assignable_key(target, Some(instance), Some(scope)) {
-                if let Some(value) = evaluate_with_diagnostics(
-                    value,
-                    Some(instance),
-                    Some(scope),
+            if let Some(value) = evaluate_with_diagnostics(
+                value,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            ) {
+                if assign_runtime_member_reference(
+                    target,
+                    value.clone(),
+                    instance,
+                    instance_index,
+                    scope,
                     eval_context,
                     env,
-                    instance,
                 ) {
+                    return;
+                }
+                if let Some(key) = assignable_key(target, Some(instance), Some(scope)) {
                     assign_runtime_value(key, value, instance, env.globals, scope);
                 }
             }
@@ -197,6 +209,40 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     env.host.set_keyboard_numlock(is_truthy(Some(value)));
                 }
             }
+            "file_bin_write_byte" => {
+                let Some(handle) =
+                    evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)
+                else {
+                    return;
+                };
+                let Some(byte) =
+                    evaluate_file_bin_byte(args.get(1), instance, scope, eval_context, env)
+                else {
+                    return;
+                };
+                env.binary_files.write_byte(handle, byte);
+            }
+            "file_bin_close" => {
+                let Some(handle) =
+                    evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)
+                else {
+                    return;
+                };
+                if let Err(error) = env.binary_files.close(env.host, handle) {
+                    record_host_diagnostic(
+                        env.host,
+                        env.diagnostics,
+                        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                        "runtime-file-host-error",
+                        format!(
+                            "{} function=file_bin_close handle={} error={}",
+                            trace_message(&env.trace, instance),
+                            handle,
+                            error
+                        ),
+                    );
+                }
+            }
             "instance_destroy" => {
                 if instance.alive {
                     let entries = destroy_event_entries
@@ -246,6 +292,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     env.globals,
                     scope,
                     eval_context,
+                    env.room_instance_creates.len(),
                 ) {
                     env.room_instance_creates.push(create);
                 }
@@ -405,6 +452,52 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
             }
         }
+        LoweredLogicStatement::Repeat { count, body } => {
+            let repeat_count = evaluate_with_diagnostics(
+                count,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+            .and_then(|value| as_number(&value))
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .map(|value| value.floor() as usize)
+            .unwrap_or(0);
+            let capped_count = repeat_count.min(10_000);
+            for _ in 0..capped_count {
+                for nested in body {
+                    apply_runtime_statement(
+                        nested,
+                        instance,
+                        instance_index,
+                        scope,
+                        destroy_event_entries,
+                        eval_context,
+                        env,
+                    );
+                    if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                        break;
+                    }
+                }
+                if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                    break;
+                }
+            }
+            if repeat_count > capped_count {
+                record_host_diagnostic(
+                    env.host,
+                    env.diagnostics,
+                    iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                    "runtime-repeat-iteration-limit",
+                    format!(
+                        "{} iteration_limit=10000",
+                        trace_message(&env.trace, instance)
+                    ),
+                );
+            }
+        }
         _ => {
             record_unsupported_statement(env, statement, instance);
         }
@@ -519,6 +612,212 @@ fn finite_sound_number_to_id(number: f64) -> Option<i32> {
     }
 }
 
+fn assign_runtime_member_reference<H: RuntimeHost>(
+    target: &LoweredLogicExpr,
+    value: RuntimeValue,
+    instance: &mut RuntimeInstance,
+    instance_index: usize,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) -> bool {
+    let LoweredLogicExpr::MemberAccess { target, member } = target else {
+        return false;
+    };
+
+    if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "global") {
+        return false;
+    }
+
+    if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "self") {
+        assign_instance_field_or_var(member.clone(), value, instance);
+        return true;
+    }
+
+    if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "other") {
+        let Some(context) = eval_context else {
+            return false;
+        };
+        let Some(other) = context.other_instance() else {
+            return false;
+        };
+        return assign_runtime_member_by_ref(
+            other.instance_id as f64,
+            member,
+            value,
+            instance,
+            instance_index,
+            eval_context,
+            env,
+        );
+    }
+
+    if let Some((target_index, _)) = object_member_assignment_target(target, scope, eval_context) {
+        return assign_runtime_member_by_index(
+            target_index,
+            member,
+            value,
+            instance,
+            instance_index,
+            eval_context,
+            env,
+        );
+    }
+
+    let Some(RuntimeValue::Number(instance_ref)) = evaluate_with_diagnostics(
+        target,
+        Some(instance),
+        Some(scope),
+        eval_context,
+        env,
+        instance,
+    ) else {
+        return false;
+    };
+
+    assign_runtime_member_by_ref(
+        instance_ref,
+        member,
+        value,
+        instance,
+        instance_index,
+        eval_context,
+        env,
+    )
+}
+
+fn object_member_assignment_target<'a>(
+    target: &LoweredLogicExpr,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&'a RuntimeEvalContext<'_>>,
+) -> Option<(usize, &'a RuntimeInstance)> {
+    let LoweredLogicExpr::Identifier(name) = target else {
+        return None;
+    };
+    if scope.is_local_key(name) {
+        return None;
+    }
+    let context = eval_context?;
+    let target_object_ids = context
+        .place_target_ids_by_name
+        .get(&name.to_ascii_lowercase())?;
+    context
+        .room_instances_matching_object_ids(target_object_ids)
+        .find(|(_, candidate)| candidate.alive)
+}
+
+fn assign_runtime_member_by_ref<H: RuntimeHost>(
+    instance_ref: f64,
+    member: &str,
+    value: RuntimeValue,
+    instance: &mut RuntimeInstance,
+    instance_index: usize,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) -> bool {
+    if assign_pending_create_member(
+        env.room_instance_creates,
+        instance_ref,
+        member,
+        value.clone(),
+    ) {
+        return true;
+    }
+
+    let Some(context) = eval_context else {
+        return false;
+    };
+    let Some((target_index, _)) = context
+        .room_instances_iter()
+        .find(|(_, candidate)| runtime_instance_ref_matches(instance_ref, candidate))
+    else {
+        return false;
+    };
+
+    assign_runtime_member_by_index(
+        target_index,
+        member,
+        value,
+        instance,
+        instance_index,
+        Some(context),
+        env,
+    )
+}
+
+fn assign_runtime_member_by_index<H: RuntimeHost>(
+    target_index: usize,
+    member: &str,
+    value: RuntimeValue,
+    instance: &mut RuntimeInstance,
+    instance_index: usize,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) -> bool {
+    if target_index == instance_index {
+        assign_instance_field_or_var(member.to_string(), value, instance);
+        return true;
+    }
+
+    let Some(mut target_instance) = env
+        .room_instance_updates
+        .iter()
+        .rev()
+        .find(|(index, _)| *index == target_index)
+        .map(|(_, instance)| instance.clone())
+        .or_else(|| eval_context.and_then(|context| context.room_instance(target_index).cloned()))
+    else {
+        return false;
+    };
+    assign_instance_field_or_var(member.to_string(), value, &mut target_instance);
+    env.room_instance_updates
+        .push((target_index, target_instance));
+    true
+}
+
+fn assign_pending_create_member(
+    creates: &mut [RuntimeInstanceCreateRequest],
+    instance_ref: f64,
+    member: &str,
+    value: RuntimeValue,
+) -> bool {
+    let Some(create) = creates
+        .iter_mut()
+        .find(|create| create_request_ref_matches(instance_ref, create))
+    else {
+        return false;
+    };
+    create.post_create_vars.insert(member.to_string(), value);
+    true
+}
+
+fn pending_create_member_value(
+    creates: &[RuntimeInstanceCreateRequest],
+    instance_ref: f64,
+    member: &str,
+) -> Option<RuntimeValue> {
+    creates
+        .iter()
+        .find(|create| create_request_ref_matches(instance_ref, create))
+        .and_then(|create| create.post_create_vars.get(member).cloned())
+}
+
+fn create_request_ref_matches(instance_ref: f64, create: &RuntimeInstanceCreateRequest) -> bool {
+    if !instance_ref.is_finite() {
+        return false;
+    }
+    let rounded = instance_ref.round();
+    create.instance_id as f64 == rounded || create.runtime_id as f64 == rounded
+}
+
+fn runtime_instance_ref_matches(instance_ref: f64, instance: &RuntimeInstance) -> bool {
+    if !instance_ref.is_finite() {
+        return false;
+    }
+    let rounded = instance_ref.round();
+    instance.instance_id as f64 == rounded || instance.runtime_id as f64 == rounded
+}
+
 fn execute_assignment_expression<H: RuntimeHost>(
     expr: &LoweredLogicExpr,
     instance: &mut RuntimeInstance,
@@ -568,6 +867,23 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
     trace_instance: &RuntimeInstance,
 ) -> Option<RuntimeValue> {
     if let LoweredLogicExpr::Call { name, args } = expr {
+        if name == "instance_create" {
+            let instance = instance?;
+            let scope = scope?;
+            return runtime_instance_create_request(
+                args,
+                instance,
+                env.globals,
+                scope,
+                eval_context,
+                env.room_instance_creates.len(),
+            )
+            .map(|create| {
+                let instance_id = create.instance_id;
+                env.room_instance_creates.push(create);
+                RuntimeValue::Number(instance_id as f64)
+            });
+        }
         if name == "sound_isplaying" {
             let sound_id = args.first().and_then(|arg| {
                 resolve_runtime_sound_id(
@@ -588,9 +904,102 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
         if name == "keyboard_get_numlock" {
             return Some(RuntimeValue::Bool(env.host.keyboard_numlock()));
         }
+        if name == "file_bin_open" {
+            let path = args.first().and_then(|arg| {
+                evaluate_runtime_expr(arg, instance, scope, eval_context, env, trace_instance)
+            })?;
+            let RuntimeValue::Text(path) = path else {
+                return None;
+            };
+            let mode = args
+                .get(1)
+                .and_then(|arg| {
+                    evaluate_runtime_expr(arg, instance, scope, eval_context, env, trace_instance)
+                })
+                .and_then(|value| as_number(&value))
+                .map(|value| value.round() as i32)
+                .unwrap_or(0);
+            let handle = env.binary_files.open(&*env.host, path, mode);
+            return Some(RuntimeValue::Number(handle as f64));
+        }
+        if name == "file_bin_read_byte" {
+            let handle = args
+                .first()
+                .and_then(|arg| {
+                    evaluate_runtime_expr(arg, instance, scope, eval_context, env, trace_instance)
+                })
+                .and_then(|value| runtime_value_to_i32(&value))?;
+            let byte = env.binary_files.read_byte(handle);
+            return Some(RuntimeValue::Number(byte as f64));
+        }
+    }
+    if let LoweredLogicExpr::MemberAccess { target, member } = expr {
+        if let Some(RuntimeValue::Number(instance_ref)) =
+            evaluate_runtime_expr(target, instance, scope, eval_context, env, trace_instance)
+        {
+            if let Some(value) =
+                pending_create_member_value(env.room_instance_creates, instance_ref, member)
+            {
+                return Some(value);
+            }
+        }
     }
 
     evaluate_expr(expr, instance, env.globals, scope, eval_context)
+}
+
+fn evaluate_file_bin_handle<H: RuntimeHost>(
+    expr: Option<&LoweredLogicExpr>,
+    instance: &RuntimeInstance,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) -> Option<i32> {
+    expr.and_then(|arg| {
+        evaluate_with_diagnostics(
+            arg,
+            Some(instance),
+            Some(scope),
+            eval_context,
+            env,
+            instance,
+        )
+    })
+    .and_then(|value| runtime_value_to_i32(&value))
+}
+
+fn evaluate_file_bin_byte<H: RuntimeHost>(
+    expr: Option<&LoweredLogicExpr>,
+    instance: &RuntimeInstance,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) -> Option<u8> {
+    let number = expr
+        .and_then(|arg| {
+            evaluate_with_diagnostics(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .and_then(|value| as_number(&value))?;
+    if !number.is_finite() {
+        return None;
+    }
+    Some((number.round() as i64).clamp(0, u8::MAX as i64) as u8)
+}
+
+fn runtime_value_to_i32(value: &RuntimeValue) -> Option<i32> {
+    let number = as_number(value)?;
+    if number.is_finite() && number >= i32::MIN as f64 && number <= i32::MAX as f64 {
+        Some(number.round() as i32)
+    } else {
+        None
+    }
 }
 
 fn record_unsupported_expr_functions<H: RuntimeHost>(
@@ -636,7 +1045,13 @@ fn is_supported_eval_function(name: &str) -> bool {
             | "ord"
             | "abs"
             | "floor"
+            | "random"
+            | "choose"
             | "string"
+            | "file_bin_open"
+            | "file_bin_read_byte"
+            | "file_bin_write_byte"
+            | "file_bin_close"
             | "file_exists"
             | "instance_exists"
             | "distance_to_object"
@@ -766,6 +1181,7 @@ fn runtime_instance_create_request(
     globals: &HashMap<String, RuntimeValue>,
     scope: &RuntimeExecutionScope,
     eval_context: Option<&RuntimeEvalContext<'_>>,
+    pending_create_count: usize,
 ) -> Option<RuntimeInstanceCreateRequest> {
     let context = eval_context?;
     let x = args
@@ -786,7 +1202,19 @@ fn runtime_instance_create_request(
         .place_target_ids_by_name
         .get(&object_name.to_ascii_lowercase())
         .and_then(|ids| ids.first().copied())?;
-    Some(RuntimeInstanceCreateRequest { object_id, x, y })
+    let runtime_id = context
+        .room_instances
+        .len()
+        .saturating_add(pending_create_count);
+    let instance_id = -1 - runtime_id as i32;
+    Some(RuntimeInstanceCreateRequest {
+        object_id,
+        runtime_id,
+        instance_id,
+        x,
+        y,
+        post_create_vars: HashMap::new(),
+    })
 }
 
 fn assign_runtime_value(
@@ -813,6 +1241,14 @@ pub(super) fn assign_instance_or_global(
         return;
     }
 
+    assign_instance_field_or_var(key, value, instance);
+}
+
+pub(super) fn assign_instance_field_or_var(
+    key: String,
+    value: RuntimeValue,
+    instance: &mut RuntimeInstance,
+) {
     match key.as_str() {
         "x" => assign_number_field(value, &mut instance.x, &mut instance.vars, key),
         "y" => assign_number_field(value, &mut instance.y, &mut instance.vars, key),

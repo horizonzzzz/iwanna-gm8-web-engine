@@ -231,7 +231,7 @@ fn core_stops_player_when_moving_into_a_solid() {
 }
 
 #[test]
-fn core_emits_hazard_diagnostic_and_requests_reset() {
+fn core_hazard_death_waits_for_restart_button_before_room_reset() {
     let mut package = sample_package();
     package.rooms[0]
         .instances
@@ -267,7 +267,24 @@ fn core_emits_hazard_diagnostic_and_requests_reset() {
     assert!(death.message.contains("tick=1"));
     assert!(death.message.contains("object=obj_player"));
     assert!(death.message.contains("reason=hazard"));
-    assert_eq!(core.snapshot().status, crate::RuntimeStatus::Ready);
+    assert!(!core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-room-changed"));
+
+    host.input.replace_button_states([(
+        RuntimeButton::Keyboard(0x52),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    )]);
+    core.tick(&mut host).unwrap();
+
+    assert!(core.diagnostics().iter().any(|diagnostic| {
+        diagnostic.code == "runtime-room-changed" && diagnostic.message.contains("reason=restart")
+    }));
 }
 
 #[test]
@@ -359,6 +376,41 @@ fn core_updates_previous_position_before_moving_player() {
         .unwrap();
     assert_eq!((player.previous_x, player.previous_y), (12.0, 24.0));
     assert!(player.x > player.previous_x);
+}
+
+#[test]
+fn core_moves_non_player_instances_from_direction_speed_and_gravity_vars() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let room = core.current_room.as_mut().unwrap();
+    let marker = room
+        .instances
+        .iter_mut()
+        .find(|instance| instance.object_id == 1)
+        .unwrap();
+    marker.x = 48.0;
+    marker.y = 64.0;
+    marker
+        .vars
+        .insert("direction".into(), crate::RuntimeValue::Number(0.0));
+    marker
+        .vars
+        .insert("speed".into(), crate::RuntimeValue::Number(4.0));
+    marker
+        .vars
+        .insert("gravity".into(), crate::RuntimeValue::Number(0.5));
+
+    core.step_non_player_instances().unwrap();
+
+    let marker = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_id == 1)
+        .unwrap();
+    assert_eq!(marker.previous_x, 48.0);
+    assert_eq!(marker.x, 52.0);
+    assert_eq!(marker.y, 64.5);
 }
 
 #[test]

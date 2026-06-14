@@ -1,6 +1,182 @@
 use super::*;
 
 #[test]
+fn real_sample_death_feedback_waits_for_reset_before_room_reload() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let snd_death_id = package
+        .resources
+        .sounds
+        .iter()
+        .find(|sound| sound.name.eq_ignore_ascii_case("sndDeath"))
+        .map(|sound| sound.id as i32)
+        .expect("sample package should include sndDeath");
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    for _ in 0..2 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+    }
+    core.reload_room(151).unwrap();
+    core.render(&mut host).unwrap();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x27),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    for _ in 0..90 {
+        core.tick(&mut host).unwrap();
+        host.input.set_button_state(
+            RuntimeButton::Keyboard(0x27),
+            ButtonState {
+                pressed: true,
+                just_pressed: false,
+                just_released: false,
+            },
+        );
+        if core
+            .current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .any(|instance| instance.object_name.eq_ignore_ascii_case("GAMEOVER") && instance.alive)
+        {
+            break;
+        }
+    }
+
+    let room = core.current_room().unwrap();
+    assert_eq!(room.room_id, 151);
+    assert!(
+        room.instances.iter().any(
+            |instance| instance.object_name.eq_ignore_ascii_case("GAMEOVER") && instance.alive
+        ),
+        "expected GAMEOVER after death, snapshot={:?}, live player={:?}, recent diagnostics={:?}",
+        core.snapshot().player,
+        room.instances
+            .iter()
+            .find(|instance| crate::helpers::is_player_instance(instance))
+            .map(|instance| (
+                instance.x,
+                instance.y,
+                instance.hspeed,
+                instance.vspeed,
+                instance.alive
+            )),
+        core.diagnostics().iter().rev().take(8).collect::<Vec<_>>()
+    );
+    assert!(
+        host.audio
+            .played
+            .contains(&(snd_death_id, iwm_runtime_host::RuntimeSoundMode::Once)),
+        "expected sndDeath id {snd_death_id}, played sounds: {:?}",
+        host.audio.played
+    );
+    assert!(room.instances.iter().any(|instance| {
+        instance.object_name.eq_ignore_ascii_case("bloodEmitter2") && instance.alive
+    }));
+    assert!(!room
+        .instances
+        .iter()
+        .any(|instance| crate::helpers::is_player_instance(instance) && instance.alive));
+
+    host.input.clear_transitions();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x27),
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: false,
+        },
+    );
+    let mut first_blood = None;
+    for _ in 0..12 {
+        core.tick(&mut host).unwrap();
+        first_blood = core
+            .current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("blood2") && instance.alive)
+            .cloned();
+        if first_blood.is_some() {
+            break;
+        }
+    }
+    let first_blood = first_blood.expect("expected blood2 particles after bloodEmitter2 step");
+    core.tick(&mut host).unwrap();
+    let blood_after_motion = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.runtime_id == first_blood.runtime_id)
+        .cloned()
+        .expect("expected blood2 particle to remain addressable after one tick");
+    assert!(
+        blood_after_motion.x != first_blood.x
+            || blood_after_motion.y != first_blood.y
+            || !blood_after_motion.alive,
+        "blood2 should move or collide after spawn, before={:?}, after={:?}",
+        (
+            first_blood.x,
+            first_blood.y,
+            first_blood.hspeed,
+            first_blood.vspeed
+        ),
+        (
+            blood_after_motion.x,
+            blood_after_motion.y,
+            blood_after_motion.hspeed,
+            blood_after_motion.vspeed,
+            blood_after_motion.alive
+        )
+    );
+    for _ in 0..3 {
+        core.tick(&mut host).unwrap();
+    }
+    assert_eq!(core.snapshot().room_id, Some(151));
+
+    let reset_key = core
+        .globals
+        .get("global.restartbutton")
+        .or_else(|| core.globals.get("global.resetbutton"))
+        .and_then(crate::helpers::as_number)
+        .map(|value| value.round() as u16)
+        .unwrap_or(0x52);
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(reset_key),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    assert_eq!(room.room_id, 151);
+    assert!(room
+        .instances
+        .iter()
+        .any(|instance| crate::helpers::is_player_instance(instance) && instance.alive));
+    assert!(!room
+        .instances
+        .iter()
+        .any(|instance| instance.object_name.eq_ignore_ascii_case("GAMEOVER") && instance.alive));
+    assert!(!room.instances.iter().any(|instance| {
+        instance.object_name.eq_ignore_ascii_case("bloodEmitter2") && instance.alive
+    }));
+}
+
+#[test]
 fn real_sample_second_shift_press_lacks_bootstrap_globals_after_manual_room_reload() {
     let Some(mut package) = real_sample_package() else {
         return;
@@ -423,7 +599,9 @@ fn real_sample_step_events_spawn_bullet_and_play_shoot_sound_on_z_press() {
         "Z press should spawn one bullet instance"
     );
     assert!(
-        host.audio.played.contains(&(shoot_sound_id, iwm_runtime_host::RuntimeSoundMode::Once)),
+        host.audio
+            .played
+            .contains(&(shoot_sound_id, iwm_runtime_host::RuntimeSoundMode::Once)),
         "Z press should dispatch sndShoot once, got {:?}",
         host.audio.played
     );
@@ -560,7 +738,17 @@ fn real_sample_spawned_bullet_moves_and_can_see_forward_block_collision() {
     assert!(
         bullet_after_step.x != bullet_after_spawn.x || !bullet_after_step.alive,
         "bullet should either move or destroy itself after step, spawn={:?} step={:?}",
-        (bullet_after_spawn.x, bullet_after_spawn.y, bullet_after_spawn.hspeed, bullet_after_spawn.alive),
-        (bullet_after_step.x, bullet_after_step.y, bullet_after_step.hspeed, bullet_after_step.alive)
+        (
+            bullet_after_spawn.x,
+            bullet_after_spawn.y,
+            bullet_after_spawn.hspeed,
+            bullet_after_spawn.alive
+        ),
+        (
+            bullet_after_step.x,
+            bullet_after_step.y,
+            bullet_after_step.hspeed,
+            bullet_after_step.alive
+        )
     );
 }

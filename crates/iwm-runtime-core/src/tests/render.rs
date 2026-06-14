@@ -88,7 +88,70 @@ fn runtime_core_skips_dead_instances_when_rendering_sprites() {
 }
 
 #[test]
-fn runtime_core_renders_death_feedback_after_hazard_reset() {
+fn runtime_core_uses_instance_visible_flag_when_rendering_sprites() {
+    let mut package = sample_package();
+    package.objects[1].sprite_index = 1;
+    package.objects[1].visible = false;
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let marker = core
+        .current_room
+        .as_mut()
+        .unwrap()
+        .instances
+        .iter_mut()
+        .find(|instance| instance.object_id == 1)
+        .unwrap();
+    marker.visible = true;
+
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawSprite {
+            sprite_id: 1,
+            x: 48,
+            y: 64,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn runtime_core_uses_instance_sprite_and_image_index_when_rendering_sprites() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+    let marker = core
+        .current_room
+        .as_mut()
+        .unwrap()
+        .instances
+        .iter_mut()
+        .find(|instance| instance.object_id == 1)
+        .unwrap();
+    marker
+        .vars
+        .insert("sprite_index".into(), crate::RuntimeValue::Number(1.0));
+    marker
+        .vars
+        .insert("image_index".into(), crate::RuntimeValue::Number(2.0));
+
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawSprite {
+            sprite_id: 1,
+            frame_index: 2,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn runtime_core_does_not_render_custom_death_feedback_after_direct_hazard_death() {
     let mut package = sample_package();
     package.rooms[0].instances.push(RoomInstancePlacement {
         instance_id: 99,
@@ -110,14 +173,14 @@ fn runtime_core_renders_death_feedback_after_hazard_reset() {
     core.tick(&mut host).unwrap();
 
     let frame = host.renderer.submitted_frames.last().unwrap();
-    assert!(frame.commands.iter().any(|command| matches!(
+    assert!(!frame.commands.iter().any(|command| matches!(
         command,
         RuntimeDrawCommand::FillRect {
             colour,
             ..
         } if colour.r >= 160 && colour.g <= 40 && colour.b <= 40
     )));
-    assert!(frame.commands.iter().any(|command| matches!(
+    assert!(!frame.commands.iter().any(|command| matches!(
         command,
         RuntimeDrawCommand::DrawText {
             text,

@@ -186,7 +186,7 @@ Current browser controls for the WASM runtime path:
 - use `R` for restart when the package/runtime has not bound a different restart key
 - the WASM path now auto-runs at 60 Hz; use `Pause` to pause and `Resume` to continue
 
-The runtime-core restart path checks runtime/package globals such as `global.restartbutton` and `global.resetbutton` before falling back to `R`. Hazard death currently renders a narrow browser-visible feedback overlay with red splatter rectangles and `GAME OVER` text; this is diagnostic feedback, not full original death object/draw-event parity.
+The runtime-core restart path checks runtime/package globals such as `global.restartbutton` and `global.resetbutton` before falling back to `R`; treat `R` as the current fallback reset key, not as an IWanna rule. Current Dife room151 diagnostics now run the package-owned death path far enough to play `sndDeath`, create `bloodEmitter2`, create and move `blood2` particles, create `GAMEOVER`, wait in-room after death, and clear those objects only after reset reloads the room. Runtime-core no longer renders its earlier custom red `GAME OVER` fallback overlay.
 
 Important local-only paths:
 

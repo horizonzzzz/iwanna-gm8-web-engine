@@ -22,6 +22,7 @@ impl RuntimeCore {
             self.pending_room_reset = false;
             self.current_room = Some(self.build_room(room_id)?);
             self.room_needs_first_render_settle = true;
+            self.death_waiting_for_restart = false;
             self.reset_player_to_spawn();
             self.status = RuntimeStatus::Ready;
             self.record_diagnostic(

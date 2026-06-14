@@ -1,0 +1,16 @@
+{
+  "ticks": [
+    {
+      "tick": 0,
+      "hold_keys": [39]
+    },
+    {
+      "tick": 60,
+      "release_keys": [39]
+    },
+    {
+      "tick": 70,
+      "press_keys": [82]
+    }
+  ]
+}

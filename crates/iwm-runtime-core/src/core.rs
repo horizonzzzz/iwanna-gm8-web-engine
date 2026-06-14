@@ -4,11 +4,11 @@ use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 
 use crate::event_dispatch::{
     collision_event_target_object_ids, object_event_block_ids,
-    runtime_instance_indices_by_object_id, runtime_instance_indices_by_object_id_from_instances,
-    RuntimeEventSelector,
+    object_ids_matching_or_inheriting_from, runtime_instance_indices_by_object_id,
+    runtime_instance_indices_by_object_id_from_instances, RuntimeEventSelector,
 };
 use crate::helpers::{as_number, collides_at, is_player_instance};
-use crate::types::RuntimeDeathFeedback;
+use crate::logic::RuntimeBinaryFileState;
 use crate::{
     LoweredLogicEntry, RuntimeCoreError, RuntimeInputTraceSnapshot, RuntimeInstance,
     RuntimeJumpSnapshot, RuntimePackage, RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot,
@@ -36,6 +36,7 @@ pub struct RuntimeCore {
     /// inherit from it, so `place_meeting`/`place_free` skip the per-call
     /// inheritance walk over every object.
     pub(crate) place_target_ids_by_name: HashMap<String, Vec<usize>>,
+    pub(crate) room_ids_by_name: HashMap<String, usize>,
     pub(crate) current_room: Option<RuntimeRoomState>,
     pub(crate) status: RuntimeStatus,
     pub(crate) tick: u64,
@@ -47,7 +48,8 @@ pub struct RuntimeCore {
     pub(crate) package_bootstrap_globals: HashMap<String, RuntimeValue>,
     pub(crate) last_input_trace: RuntimeInputTraceSnapshot,
     pub(crate) last_tick_phases: RuntimeTickPhaseSnapshot,
-    pub(crate) death_feedback: Option<RuntimeDeathFeedback>,
+    pub(crate) death_waiting_for_restart: bool,
+    pub(crate) binary_files: RuntimeBinaryFileState,
 }
 
 impl RuntimeCore {
@@ -97,6 +99,11 @@ impl RuntimeCore {
                     .collect::<HashMap<_, _>>()
             })
             .unwrap_or_default();
+        let room_ids_by_name = package
+            .rooms
+            .iter()
+            .map(|room| (room.name.to_ascii_lowercase(), room.id))
+            .collect::<HashMap<_, _>>();
 
         let mut core = Self {
             package,
@@ -109,6 +116,7 @@ impl RuntimeCore {
             cached_room_order: Vec::new(),
             cached_step_event_blocks: HashMap::new(),
             place_target_ids_by_name: HashMap::new(),
+            room_ids_by_name,
             current_room: None,
             status: RuntimeStatus::Ready,
             tick: 0,
@@ -126,7 +134,8 @@ impl RuntimeCore {
                 active_keys: Vec::new(),
             },
             last_tick_phases: RuntimeTickPhaseSnapshot::default(),
-            death_feedback: None,
+            death_waiting_for_restart: false,
+            binary_files: RuntimeBinaryFileState::default(),
         };
 
         core.cached_script_entries = core.lowered_script_entries();
@@ -458,7 +467,7 @@ impl RuntimeCore {
         self.hydrate_missing_package_bootstrap_globals();
         self.current_room = Some(self.build_room(room_id)?);
         self.room_needs_first_render_settle = true;
-        self.death_feedback = None;
+        self.death_waiting_for_restart = false;
         self.status = RuntimeStatus::Ready;
         Ok(())
     }
@@ -552,6 +561,7 @@ impl RuntimeCore {
             other_instance: other_instance.as_ref(),
             other_runtime_id: other_instance.as_ref().map(|instance| instance.runtime_id),
             place_target_ids_by_name: &self.place_target_ids_by_name,
+            room_ids_by_name: &self.room_ids_by_name,
         };
 
         let mut instance = {
@@ -584,6 +594,7 @@ impl RuntimeCore {
                     globals: &mut self.globals,
                     pending_room_transition: &mut self.pending_room_transition,
                     pending_room_reset: &mut self.pending_room_reset,
+                    binary_files: &mut self.binary_files,
                     host: &mut *host,
                     diagnostics: &mut self.diagnostics,
                     room_instance_updates: &mut with_updates,
@@ -722,24 +733,29 @@ impl RuntimeCore {
                     continue;
                 }
                 for target_object_id in target_object_ids {
-                    let Some(target_indices) = indices_by_object_id.get(&target_object_id) else {
-                        continue;
-                    };
-                    for other_index in target_indices {
-                        let Some(other) = room.instances.get(*other_index) else {
+                    let matching_object_ids =
+                        object_ids_matching_or_inheriting_from(&self.package, target_object_id);
+                    for matching_object_id in matching_object_ids {
+                        let Some(target_indices) = indices_by_object_id.get(&matching_object_id)
+                        else {
                             continue;
                         };
-                        if instance.runtime_id == other.runtime_id {
-                            continue;
-                        }
-                        if crate::helpers::collides_at(
-                            instance,
-                            instance.x,
-                            instance.y,
-                            std::slice::from_ref(other),
-                            Some(instance.runtime_id),
-                        ) {
-                            hits.push((instance.runtime_id, target_object_id, other.clone()));
+                        for other_index in target_indices {
+                            let Some(other) = room.instances.get(*other_index) else {
+                                continue;
+                            };
+                            if instance.runtime_id == other.runtime_id {
+                                continue;
+                            }
+                            if crate::helpers::collides_at(
+                                instance,
+                                instance.x,
+                                instance.y,
+                                std::slice::from_ref(other),
+                                Some(instance.runtime_id),
+                            ) {
+                                hits.push((instance.runtime_id, target_object_id, other.clone()));
+                            }
                         }
                     }
                 }

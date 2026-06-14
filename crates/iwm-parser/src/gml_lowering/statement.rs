@@ -214,10 +214,11 @@ fn lower_inline_conditional_parts(stmt: &str, keyword: &str) -> Option<(String, 
     let (head, tail) = if rest.starts_with('(') {
         extract_parenthesized_block(rest)?
     } else {
-        let boundary = rest
-            .find(char::is_whitespace)
-            .unwrap_or(rest.len());
-        (rest[..boundary].trim().to_string(), rest[boundary..].to_string())
+        let boundary = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        (
+            rest[..boundary].trim().to_string(),
+            rest[boundary..].to_string(),
+        )
     };
 
     let tail = tail.trim_start();

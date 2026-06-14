@@ -123,6 +123,7 @@ impl RuntimeCore {
                         other_instance: None,
                         other_runtime_id: None,
                         place_target_ids_by_name: &self.place_target_ids_by_name,
+                        room_ids_by_name: &self.room_ids_by_name,
                     };
                     if let Some(value) = evaluate_expr(
                         value,
@@ -156,6 +157,7 @@ impl RuntimeCore {
                     other_instance: None,
                     other_runtime_id: None,
                     place_target_ids_by_name: &self.place_target_ids_by_name,
+                    room_ids_by_name: &self.room_ids_by_name,
                 };
                 let condition_value = evaluate_expr(
                     condition,
@@ -246,6 +248,7 @@ impl RuntimeCore {
             other_instance: None,
             other_runtime_id: None,
             place_target_ids_by_name: &self.place_target_ids_by_name,
+            room_ids_by_name: &self.room_ids_by_name,
         };
         let x = args
             .first()

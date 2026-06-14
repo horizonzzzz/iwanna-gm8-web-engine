@@ -24,6 +24,7 @@ impl RuntimeCore {
 
             instance.previous_x = instance.x;
             instance.previous_y = instance.y;
+            apply_gm_motion_vars(instance);
             instance.x += instance.hspeed;
             instance.y += instance.vspeed;
         }
@@ -39,6 +40,10 @@ impl RuntimeCore {
         jump: ButtonState,
         enable_builtin_jump: bool,
     ) -> Result<(), RuntimeCoreError> {
+        if self.death_waiting_for_restart {
+            return Ok(());
+        }
+
         let Some(room) = self.current_room.as_ref() else {
             return Err(RuntimeCoreError::NoRooms);
         };
@@ -223,12 +228,6 @@ impl RuntimeCore {
             &hazards,
             Some(player.runtime_id),
         ) {
-            self.death_feedback = Some(crate::types::RuntimeDeathFeedback {
-                room_id: room.room_id,
-                x: player.x,
-                y: player.y,
-                started_tick: self.tick,
-            });
             let death_message = format!(
                 "room={} tick={} object={} runtime_id={} x={} y={} reason=hazard message=player-hit-hazard-in-{}",
                 room.room_id,
@@ -245,7 +244,7 @@ impl RuntimeCore {
                 "runtime-player-died",
                 death_message,
             );
-            self.pending_room_reset = true;
+            self.death_waiting_for_restart = true;
         } else if player_out_of_bounds(player, room_width, room_height)
             && !room.transition_targets.is_empty()
         {
@@ -253,5 +252,31 @@ impl RuntimeCore {
         }
 
         Ok(())
+    }
+}
+
+fn apply_gm_motion_vars(instance: &mut crate::RuntimeInstance) {
+    if instance.hspeed == 0.0 && instance.vspeed == 0.0 {
+        if let Some(speed) = instance.vars.get("speed").and_then(as_number) {
+            let direction = instance
+                .vars
+                .get("direction")
+                .and_then(as_number)
+                .unwrap_or(0.0);
+            let radians = direction.to_radians();
+            instance.hspeed = radians.cos() * speed;
+            instance.vspeed = -radians.sin() * speed;
+        }
+    }
+
+    if let Some(gravity) = instance.vars.get("gravity").and_then(as_number) {
+        let gravity_direction = instance
+            .vars
+            .get("gravity_direction")
+            .and_then(as_number)
+            .unwrap_or(270.0);
+        let radians = gravity_direction.to_radians();
+        instance.hspeed += radians.cos() * gravity;
+        instance.vspeed += -radians.sin() * gravity;
     }
 }

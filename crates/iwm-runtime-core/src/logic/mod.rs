@@ -21,7 +21,8 @@ use crate::{
 
 pub(crate) use bootstrap::apply_view_globals_to_room;
 pub(crate) use context::{
-    RuntimeEvalContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay, StepExecutionResult,
+    RuntimeBinaryFileState, RuntimeEvalContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay,
+    StepExecutionResult,
 };
 pub(crate) use eval::sample_known_files;
 pub(crate) use statement::{
@@ -130,6 +131,7 @@ impl RuntimeCore {
                         other_instance: None,
                         other_runtime_id: None,
                         place_target_ids_by_name: &self.place_target_ids_by_name,
+                        room_ids_by_name: &self.room_ids_by_name,
                     };
                     let mut statement_env = RuntimeStatementEnvironment {
                         script_entries,
@@ -137,6 +139,7 @@ impl RuntimeCore {
                         globals: &mut self.globals,
                         pending_room_transition: &mut self.pending_room_transition,
                         pending_room_reset: &mut self.pending_room_reset,
+                        binary_files: &mut self.binary_files,
                         host: &mut *host,
                         diagnostics: &mut self.diagnostics,
                         room_instance_updates: &mut with_updates,
@@ -252,16 +255,15 @@ impl RuntimeCore {
         let create_event_entries = self.lowered_event_entries_by_tag_for_runtime("create");
         while let Some(create) = creates.first().cloned() {
             creates.remove(0);
-            let Some((runtime_id, current_room_id)) = self
-                .current_room
-                .as_ref()
-                .map(|room| (room.instances.len(), room.room_id))
-            else {
+            let Some(current_room_id) = self.current_room.as_ref().map(|room| room.room_id) else {
                 return;
             };
-            let Some(mut instance) =
-                self.instantiate_runtime_object(create.object_id, runtime_id, create.x, create.y)
-            else {
+            let Some(mut instance) = self.instantiate_runtime_object(
+                create.object_id,
+                create.runtime_id,
+                create.x,
+                create.y,
+            ) else {
                 continue;
             };
             let Some(mut room_instances) = self
@@ -291,6 +293,7 @@ impl RuntimeCore {
                     other_instance: None,
                     other_runtime_id: None,
                     place_target_ids_by_name: &self.place_target_ids_by_name,
+                    room_ids_by_name: &self.room_ids_by_name,
                 };
                 let destroy_event_entries =
                     self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
@@ -313,6 +316,7 @@ impl RuntimeCore {
                             globals: &mut self.globals,
                             pending_room_transition: &mut self.pending_room_transition,
                             pending_room_reset: &mut self.pending_room_reset,
+                            binary_files: &mut self.binary_files,
                             host: &mut *host,
                             diagnostics: &mut self.diagnostics,
                             room_instance_updates: &mut room_instance_updates,
@@ -328,7 +332,7 @@ impl RuntimeCore {
                         apply_runtime_statement(
                             statement,
                             &mut instance,
-                            runtime_id,
+                            create.runtime_id,
                             &mut scope,
                             &destroy_event_entries,
                             Some(&eval_context),
@@ -351,6 +355,10 @@ impl RuntimeCore {
                 }
             }
 
+            for (key, value) in create.post_create_vars {
+                statement::assign_instance_field_or_var(key, value, &mut instance);
+            }
+
             let created_object_name = instance.object_name.clone();
             let created_x = instance.x;
             let created_y = instance.y;
@@ -366,7 +374,7 @@ impl RuntimeCore {
                     current_room_id,
                     self.tick,
                     created_object_name,
-                    runtime_id,
+                    create.runtime_id,
                     created_x,
                     created_y
                 ),

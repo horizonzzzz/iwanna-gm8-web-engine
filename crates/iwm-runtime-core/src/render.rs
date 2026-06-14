@@ -1,8 +1,7 @@
 use iwm_runtime_host::{Rgba8, RuntimeDrawCommand, RuntimeRenderFrame};
 
-use crate::{RuntimeCore, RuntimeCoreError, RuntimeRoomState};
-
-const DEATH_FEEDBACK_TICKS: u64 = 60;
+use crate::helpers::as_number;
+use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState};
 
 #[derive(Debug, Clone, Copy)]
 struct ActiveView {
@@ -173,14 +172,15 @@ impl RuntimeCore {
                 continue;
             };
 
-            if !object.visible {
+            if !runtime_instance_visible(instance) {
                 continue;
             }
 
-            if object.sprite_index >= 0 {
+            let sprite_id = runtime_instance_sprite_id(instance, object.sprite_index);
+            if sprite_id >= 0 {
                 let sprite = self
                     .sprite_index
-                    .get(&(object.sprite_index as usize))
+                    .get(&(sprite_id as usize))
                     .and_then(|index| self.package.resources.sprites.get(*index));
                 let sprite_width = sprite.map(|sprite| sprite.width as i32).unwrap_or(16);
                 let sprite_height = sprite.map(|sprite| sprite.height as i32).unwrap_or(16);
@@ -199,8 +199,8 @@ impl RuntimeCore {
                     }
                 }
                 commands.push(RuntimeDrawCommand::DrawSprite {
-                    sprite_id: object.sprite_index as usize,
-                    frame_index: 0,
+                    sprite_id: sprite_id as usize,
+                    frame_index: runtime_instance_frame_index(instance),
                     x: active_view
                         .map(|view| view.translate_x(instance.x.round() as i32))
                         .unwrap_or(instance.x.round() as i32),
@@ -209,8 +209,8 @@ impl RuntimeCore {
                         .unwrap_or(instance.y.round() as i32),
                     origin_x: sprite.map(|sprite| sprite.origin_x).unwrap_or(0),
                     origin_y: sprite.map(|sprite| sprite.origin_y).unwrap_or(0),
-                    xscale: if instance.facing_left { -1.0 } else { 1.0 },
-                    yscale: 1.0,
+                    xscale: runtime_instance_xscale(instance),
+                    yscale: runtime_instance_yscale(instance),
                     angle_degrees: 0.0,
                 });
             }
@@ -238,53 +238,6 @@ impl RuntimeCore {
                 }),
         );
 
-        if let Some(feedback) = self.death_feedback {
-            let age = self.tick.saturating_sub(feedback.started_tick);
-            if feedback.room_id == room.room_id && age <= DEATH_FEEDBACK_TICKS {
-                let base_x = active_view
-                    .map(|view| view.translate_x(feedback.x.round() as i32))
-                    .unwrap_or(feedback.x.round() as i32);
-                let base_y = active_view
-                    .map(|view| view.translate_y(feedback.y.round() as i32))
-                    .unwrap_or(feedback.y.round() as i32);
-                let spread = age.min(18) as i32;
-                let alpha = (220_i32 - (age as i32 * 3)).max(48) as u8;
-                let red = Rgba8 {
-                    r: 190,
-                    g: 12,
-                    b: 18,
-                    a: alpha,
-                };
-                for (dx, dy, width, height) in [
-                    (-4 - spread, -3, 18, 8),
-                    (5, -6 - spread / 2, 10, 14),
-                    (-2, 7 + spread / 2, 14, 7),
-                    (10 + spread, 4, 7, 7),
-                ] {
-                    commands.push(RuntimeDrawCommand::FillRect {
-                        x: base_x + dx,
-                        y: base_y + dy,
-                        width,
-                        height,
-                        colour: red,
-                    });
-                }
-                commands.push(RuntimeDrawCommand::DrawText {
-                    text: "GAME OVER".into(),
-                    x: (frame_width / 2) as i32,
-                    y: (frame_height / 2).saturating_sub(48) as i32,
-                    size: 32,
-                    colour: Rgba8 {
-                        r: 232,
-                        g: 36,
-                        b: 48,
-                        a: alpha,
-                    },
-                    align: "center".into(),
-                });
-            }
-        }
-
         commands.push(RuntimeDrawCommand::Present);
 
         Ok(RuntimeRenderFrame {
@@ -295,6 +248,58 @@ impl RuntimeCore {
             commands,
         })
     }
+}
+
+fn runtime_instance_visible(instance: &RuntimeInstance) -> bool {
+    instance
+        .vars
+        .get("visible")
+        .map(|value| match value {
+            crate::RuntimeValue::Bool(flag) => *flag,
+            crate::RuntimeValue::Number(number) => *number >= 0.5,
+            crate::RuntimeValue::Text(text) => !text.is_empty(),
+        })
+        .unwrap_or(instance.visible)
+}
+
+fn runtime_instance_sprite_id(instance: &RuntimeInstance, object_sprite_index: i32) -> i32 {
+    instance
+        .vars
+        .get("sprite_index")
+        .and_then(as_number)
+        .map(|value| value.round() as i32)
+        .unwrap_or(object_sprite_index)
+}
+
+fn runtime_instance_frame_index(instance: &RuntimeInstance) -> usize {
+    instance
+        .vars
+        .get("image_index")
+        .and_then(as_number)
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .map(|value| value.round() as usize)
+        .unwrap_or(0)
+}
+
+fn runtime_instance_xscale(instance: &RuntimeInstance) -> f64 {
+    let xscale = instance
+        .vars
+        .get("image_xscale")
+        .and_then(as_number)
+        .unwrap_or(1.0);
+    if instance.facing_left {
+        -xscale.abs()
+    } else {
+        xscale
+    }
+}
+
+fn runtime_instance_yscale(instance: &RuntimeInstance) -> f64 {
+    instance
+        .vars
+        .get("image_yscale")
+        .and_then(as_number)
+        .unwrap_or(1.0)
 }
 
 fn rect_intersects_view(

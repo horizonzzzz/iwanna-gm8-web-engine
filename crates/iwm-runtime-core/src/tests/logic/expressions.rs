@@ -583,6 +583,137 @@ fn core_evaluates_file_exists_conditions_against_host_files() {
 }
 
 #[test]
+fn core_evaluates_room_identifier_against_named_room_constants() {
+    let mut package = sample_package();
+    package.rooms.push(iwm_runtime_model::RoomDefinition {
+        id: 11,
+        name: "rSelectStage".into(),
+        width: 160,
+        height: 120,
+        speed: 60,
+        persistent: false,
+        backgrounds: vec![],
+        views_enabled: false,
+        views: vec![],
+        tiles: vec![],
+        instances: vec![],
+        creation_block_id: None,
+        playable: true,
+        transition_targets: vec![],
+    });
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: "!=".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("room".into())),
+                right: Box::new(LoweredLogicExpr::Identifier("rSelectStage".into())),
+            },
+            then_branch: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("not_select_stage".into()),
+                value: LoweredLogicExpr::LiteralBool(true),
+            }],
+            else_branch: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("not_select_stage"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn core_executes_file_bin_write_and_read_byte_calls_against_host_files() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::VariableDeclaration {
+                names: vec!["f".into()],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("f".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "file_bin_open".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralText("DeathTime".into()),
+                        LoweredLogicExpr::LiteralNumber(1.0),
+                    ],
+                },
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "file_bin_write_byte".into(),
+                args: vec![
+                    LoweredLogicExpr::Identifier("f".into()),
+                    LoweredLogicExpr::LiteralNumber(65.0),
+                ],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "file_bin_close".into(),
+                args: vec![LoweredLogicExpr::Identifier("f".into())],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("f".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "file_bin_open".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralText("DeathTime".into()),
+                        LoweredLogicExpr::LiteralNumber(0.0),
+                    ],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("first_byte".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "file_bin_read_byte".into(),
+                    args: vec![LoweredLogicExpr::Identifier("f".into())],
+                },
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "file_bin_close".into(),
+                args: vec![LoweredLogicExpr::Identifier("f".into())],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        host.files.read(std::path::Path::new("DeathTime")).unwrap(),
+        vec![65]
+    );
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("first_byte"),
+        Some(&RuntimeValue::Number(65.0))
+    );
+    assert!(!core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-unsupported-function"));
+}
+
+#[test]
 fn core_evaluates_instance_number_against_live_object_instances() {
     let mut package = sample_package();
     package.objects.push(ObjectDefinition {
@@ -702,6 +833,58 @@ fn core_evaluates_abs_calls_in_lowered_expressions() {
         player.vars.get("already_positive"),
         Some(&RuntimeValue::Number(3.0))
     );
+}
+
+#[test]
+fn core_evaluates_random_and_choose_calls_in_lowered_expressions() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("random_value".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "random".into(),
+                    args: vec![LoweredLogicExpr::LiteralNumber(5.0)],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("choose_value".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "choose".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralNumber(2.0),
+                        LoweredLogicExpr::LiteralNumber(4.0),
+                        LoweredLogicExpr::LiteralNumber(6.0),
+                    ],
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    let Some(RuntimeValue::Number(random_value)) = player.vars.get("random_value") else {
+        panic!("random_value should be assigned");
+    };
+    assert!((0.0..5.0).contains(random_value));
+    assert!(matches!(
+        player.vars.get("choose_value"),
+        Some(RuntimeValue::Number(2.0 | 4.0 | 6.0))
+    ));
+    assert!(!core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-unsupported-expression"));
 }
 
 #[test]

@@ -326,6 +326,76 @@ fn runtime_instance_create_event_can_see_created_instance() {
 }
 
 #[test]
+fn repeat_instance_create_expression_assigns_members_to_created_instances_before_motion() {
+    let mut package = sample_package();
+    package.objects[1].name = "blood2".into();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::VariableDeclaration {
+                names: vec!["b".into()],
+            },
+            LoweredLogicStatement::Repeat {
+                count: LoweredLogicExpr::LiteralNumber(2.0),
+                body: vec![
+                    LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::Identifier("b".into()),
+                        value: LoweredLogicExpr::Call {
+                            name: "instance_create".into(),
+                            args: vec![
+                                LoweredLogicExpr::Identifier("x".into()),
+                                LoweredLogicExpr::Identifier("y".into()),
+                                LoweredLogicExpr::Identifier("blood2".into()),
+                            ],
+                        },
+                    },
+                    LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::MemberAccess {
+                            target: Box::new(LoweredLogicExpr::Identifier("b".into())),
+                            member: "direction".into(),
+                        },
+                        value: LoweredLogicExpr::LiteralNumber(0.0),
+                    },
+                    LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::MemberAccess {
+                            target: Box::new(LoweredLogicExpr::Identifier("b".into())),
+                            member: "speed".into(),
+                        },
+                        value: LoweredLogicExpr::LiteralNumber(4.0),
+                    },
+                ],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let original_instance_count = core.current_room().unwrap().instances.len();
+
+    core.tick(&mut host).unwrap();
+
+    let created = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .filter(|instance| {
+            instance.object_name == "blood2" && instance.runtime_id >= original_instance_count
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(created.len(), 2);
+    for instance in created {
+        assert_eq!(instance.previous_x, 12.0);
+        assert_eq!(instance.x, 16.0);
+        assert_eq!(
+            instance.vars.get("direction"),
+            Some(&RuntimeValue::Number(0.0))
+        );
+        assert_eq!(instance.vars.get("speed"), Some(&RuntimeValue::Number(4.0)));
+    }
+}
+
+#[test]
 fn collision_instance_destroy_dispatches_destroy_and_marks_owner_dead() {
     let mut package = sample_package();
     package.objects[0].name = "player".into();
