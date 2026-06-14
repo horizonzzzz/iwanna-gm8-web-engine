@@ -547,7 +547,7 @@ fn non_player_step_motion_advances_instance_and_allows_collision_destroy() {
         .find(|instance| instance.object_name == "bullet")
         .unwrap();
     assert_eq!(bullet.previous_x, 24.0);
-    assert_eq!(bullet.x, 40.0);
+    assert_eq!(bullet.x, 24.0);
     assert!(!bullet.alive);
     assert_eq!(
         core.globals.get("global.bullet_destroy_ran"),

@@ -94,6 +94,7 @@ Important current invariants:
   use view port dimensions as the browser frame size when views are enabled
 - room, instance, and object event block ids should resolve consistently across `scripts.ir.json`, `logic.raw.json`, and `logic.lowered.json`
 - sprite resource collision bounds are emitted in `resources/index.json` for each sprite record; the parser also emits `collision_masks` and `per_frame_collision_masks` from gm8exe collision maps so runtime consumers can perform pixel-level checks after bbox broad-phase filtering
+- sprite PNG frame exports are browser RGBA data; gm8exe BGRA frame buffers are converted during resource export, matching the background export path
 - runtime consumers should validate cross-file references explicitly instead of silently assuming contiguous ids
 
 This matters because normalized package ids may remain sparse even when the emitted JSON arrays are dense. Runtime code must resolve identities by `id` rather than by array offset.

@@ -3,6 +3,7 @@ use std::path::Path;
 
 use iwm_runtime_host::{RuntimeButton, RuntimeHost, RuntimeHostError};
 
+use crate::event_dispatch::RuntimeCollisionSpatialIndex;
 use crate::{RuntimeInstance, RuntimeValue};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -213,6 +214,7 @@ pub(crate) struct RuntimeEvalContext<'a> {
     pub button_states: &'a HashMap<RuntimeButton, iwm_runtime_host::ButtonState>,
     pub room_instances: &'a [RuntimeInstance],
     pub room_instance_indices_by_object_id: &'a HashMap<usize, Vec<usize>>,
+    pub collision_spatial_index: Option<&'a RuntimeCollisionSpatialIndex>,
     pub room_instance_overlay: RuntimeRoomInstanceOverlay<'a>,
     pub room_order: &'a [usize],
     pub known_files: &'a HashSet<String>,
@@ -236,6 +238,7 @@ impl<'a> RuntimeEvalContext<'a> {
             button_states: self.button_states,
             room_instances: self.room_instances,
             room_instance_indices_by_object_id: self.room_instance_indices_by_object_id,
+            collision_spatial_index: self.collision_spatial_index,
             room_instance_overlay,
             room_order: self.room_order,
             known_files: self.known_files,
@@ -282,6 +285,69 @@ impl<'a> RuntimeEvalContext<'a> {
         self.room_instance_indices_matching_object_ids(target_object_ids)
             .into_iter()
             .filter_map(|index| self.room_instance(index).map(|instance| (index, instance)))
+    }
+
+    pub(crate) fn room_instances_matching_object_ids_near<'b>(
+        &'b self,
+        target_object_ids: &[usize],
+        instance: &RuntimeInstance,
+        x: f64,
+        y: f64,
+    ) -> impl Iterator<Item = (usize, &'b RuntimeInstance)> + 'b {
+        self.room_instance_indices_matching_object_ids_near(target_object_ids, instance, x, y)
+            .into_iter()
+            .filter_map(|index| self.room_instance(index).map(|instance| (index, instance)))
+    }
+
+    pub(crate) fn solid_room_instances_near<'b>(
+        &'b self,
+        instance: &RuntimeInstance,
+        x: f64,
+        y: f64,
+    ) -> impl Iterator<Item = (usize, &'b RuntimeInstance)> + 'b {
+        self.solid_room_instance_indices_near(instance, x, y)
+            .into_iter()
+            .filter_map(|index| self.room_instance(index).map(|instance| (index, instance)))
+    }
+
+    fn room_instance_indices_matching_object_ids_near(
+        &self,
+        target_object_ids: &[usize],
+        instance: &RuntimeInstance,
+        x: f64,
+        y: f64,
+    ) -> Vec<usize> {
+        if let Some(spatial_index) = self.collision_spatial_index {
+            let mut indices = Vec::new();
+            for object_id in target_object_ids {
+                for index in spatial_index.candidate_indices(*object_id, instance, x, y) {
+                    if !indices.contains(&index) {
+                        indices.push(index);
+                    }
+                }
+            }
+            return indices;
+        }
+
+        self.room_instance_indices_matching_object_ids(target_object_ids)
+    }
+
+    fn solid_room_instance_indices_near(
+        &self,
+        instance: &RuntimeInstance,
+        x: f64,
+        y: f64,
+    ) -> Vec<usize> {
+        if let Some(spatial_index) = self.collision_spatial_index {
+            return spatial_index.solid_candidate_indices(instance, x, y);
+        }
+
+        self.room_instances
+            .iter()
+            .enumerate()
+            .filter(|(_, candidate)| candidate.solid)
+            .map(|(index, _)| index)
+            .collect()
     }
 
     fn room_instance_indices_matching_object_ids(&self, target_object_ids: &[usize]) -> Vec<usize> {

@@ -9,7 +9,8 @@ use iwm_runtime_host::RuntimeHost;
 use iwm_runtime_model::ObjectDefinition;
 
 use crate::event_dispatch::{
-    object_event_block_ids, runtime_instance_indices_by_object_id,
+    collision_event_target_object_ids, object_event_block_ids,
+    object_ids_matching_or_inheriting_from, runtime_instance_indices_by_object_id,
     runtime_instance_indices_by_object_id_from_instances, RuntimeEventSelector,
 };
 use context::RuntimeInstanceCreateRequest;
@@ -125,6 +126,7 @@ impl RuntimeCore {
                         button_states: &button_states,
                         room_instances: &room.instances,
                         room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                        collision_spatial_index: None,
                         room_instance_overlay: eval_overlay,
                         room_order: room_order.as_slice(),
                         known_files: &known_files,
@@ -287,6 +289,7 @@ impl RuntimeCore {
                     button_states: &button_states,
                     room_instances: &room_instances,
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                    collision_spatial_index: None,
                     room_instance_overlay: RuntimeRoomInstanceOverlay::empty(),
                     room_order: &room_order,
                     known_files: &known_files,
@@ -439,6 +442,31 @@ impl RuntimeCore {
         }
         map
     }
+
+    pub(crate) fn collision_target_ids_by_object_id(&self) -> HashMap<usize, Vec<usize>> {
+        self.package
+            .objects
+            .iter()
+            .filter_map(|object| {
+                let target_ids = collision_event_target_object_ids(&self.package, object.id);
+                (!target_ids.is_empty()).then_some((object.id, target_ids))
+            })
+            .collect()
+    }
+
+    pub(crate) fn collision_matching_object_ids_by_target(&self) -> HashMap<usize, Vec<usize>> {
+        self.cached_collision_target_ids
+            .values()
+            .flatten()
+            .copied()
+            .fold(HashMap::new(), |mut targets, target_object_id| {
+                targets.entry(target_object_id).or_insert_with(|| {
+                    object_ids_matching_or_inheriting_from(&self.package, target_object_id)
+                });
+                targets
+            })
+    }
+
     pub(crate) fn lowered_logic_entry(&self, block_id: &str) -> Option<&LoweredLogicEntry> {
         let index = self.lowered_logic_index.get(block_id)?;
         self.package
@@ -487,7 +515,7 @@ fn object_matches_or_inherits_from(
     false
 }
 
-fn sync_current_instance_from_updates(
+pub(crate) fn sync_current_instance_from_updates(
     current_index: usize,
     current_instance: &mut RuntimeInstance,
     pending_updates: &mut Vec<(usize, RuntimeInstance)>,
@@ -502,7 +530,7 @@ fn sync_current_instance_from_updates(
     pending_updates.retain(|(index, _)| *index != current_index);
 }
 
-fn commit_instance_updates(
+pub(crate) fn commit_instance_updates(
     committed_updates: &mut HashMap<usize, RuntimeInstance>,
     updates: Vec<(usize, RuntimeInstance)>,
 ) {

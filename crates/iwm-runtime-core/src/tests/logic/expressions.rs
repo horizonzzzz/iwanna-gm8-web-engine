@@ -433,6 +433,45 @@ fn core_evaluates_place_queries_and_boolean_operators_inside_conditions() {
 }
 
 #[test]
+fn core_evaluates_two_argument_place_free_against_solid_instances() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("free_below".into()),
+            value: LoweredLogicExpr::Call {
+                name: "place_free".into(),
+                args: vec![
+                    LoweredLogicExpr::Identifier("x".into()),
+                    LoweredLogicExpr::BinaryExpr {
+                        op: "+".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                    },
+                ],
+            },
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("free_below"),
+        Some(&RuntimeValue::Bool(false))
+    );
+}
+
+#[test]
 fn core_preserves_fractional_motion_assignments_from_lowered_logic() {
     let mut package = sample_package();
     add_step_block(

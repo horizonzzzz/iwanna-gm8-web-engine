@@ -36,39 +36,66 @@ pub(crate) fn collides_at(
     others: &[RuntimeInstance],
     ignore_runtime_id: Option<usize>,
 ) -> bool {
-    let (left, top, right, bottom) = bounds_at(instance, x, y);
+    collides_at_with(instance, x, y, others, ignore_runtime_id, |_| true)
+}
 
+pub(crate) fn collides_at_with<F>(
+    instance: &RuntimeInstance,
+    x: f64,
+    y: f64,
+    others: &[RuntimeInstance],
+    ignore_runtime_id: Option<usize>,
+    predicate: F,
+) -> bool
+where
+    F: Fn(&RuntimeInstance) -> bool,
+{
     others.iter().any(|other| {
-        if !other.alive || ignore_runtime_id == Some(other.runtime_id) {
-            return false;
-        }
-
-        let (other_left, other_top, other_right, other_bottom) = bounds_at(other, other.x, other.y);
-        if !(left < other_right && right > other_left && top < other_bottom && bottom > other_top) {
-            return false;
-        }
-
-        match (
-            active_collision_mask(instance),
-            active_collision_mask(other),
-        ) {
-            (Some(mask), Some(other_mask)) => masks_overlap(
-                instance,
-                mask,
-                x,
-                y,
-                other,
-                other_mask,
-                (
-                    left.max(other_left),
-                    top.max(other_top),
-                    right.min(other_right),
-                    bottom.min(other_bottom),
-                ),
-            ),
-            _ => true,
-        }
+        collides_with_instance_at(instance, x, y, other, ignore_runtime_id, &predicate)
     })
+}
+
+pub(crate) fn collides_with_instance_at<F>(
+    instance: &RuntimeInstance,
+    x: f64,
+    y: f64,
+    other: &RuntimeInstance,
+    ignore_runtime_id: Option<usize>,
+    predicate: F,
+) -> bool
+where
+    F: Fn(&RuntimeInstance) -> bool,
+{
+    if !other.alive || ignore_runtime_id == Some(other.runtime_id) || !predicate(other) {
+        return false;
+    }
+
+    let (left, top, right, bottom) = bounds_at(instance, x, y);
+    let (other_left, other_top, other_right, other_bottom) = bounds_at(other, other.x, other.y);
+    if !(left < other_right && right > other_left && top < other_bottom && bottom > other_top) {
+        return false;
+    }
+
+    match (
+        active_collision_mask(instance),
+        active_collision_mask(other),
+    ) {
+        (Some(mask), Some(other_mask)) => masks_overlap(
+            instance,
+            mask,
+            x,
+            y,
+            other,
+            other_mask,
+            (
+                left.max(other_left),
+                top.max(other_top),
+                right.min(other_right),
+                bottom.min(other_bottom),
+            ),
+        ),
+        _ => true,
+    }
 }
 
 pub(crate) fn collision_candidates_near<F>(

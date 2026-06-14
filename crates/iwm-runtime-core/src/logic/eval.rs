@@ -414,15 +414,38 @@ fn evaluate_place_query(
         .and_then(|arg| evaluate_expr(arg, Some(instance), globals, scope, eval_context))
         .and_then(|value| as_number(&value))
         .map(|value| value.round() as i32)?;
-    let targets = place_query_targets(args.get(2)?, context)?;
-    let collides = !targets.is_empty()
-        && crate::helpers::collides_at(
-            instance,
-            x as f64,
-            y as f64,
-            &targets,
-            Some(instance.runtime_id),
-        );
+    let query_x = x as f64;
+    let query_y = y as f64;
+    let collides = if let Some(target_expr) = args.get(2) {
+        let target_object_ids = instance_target_object_ids(target_expr, context)?;
+        context
+            .room_instances_matching_object_ids_near(&target_object_ids, instance, query_x, query_y)
+            .any(|(_, candidate)| {
+                crate::helpers::collides_with_instance_at(
+                    instance,
+                    query_x,
+                    query_y,
+                    candidate,
+                    Some(instance.runtime_id),
+                    |_| true,
+                )
+            })
+    } else if !want_meeting {
+        context
+            .solid_room_instances_near(instance, query_x, query_y)
+            .any(|(_, candidate)| {
+                crate::helpers::collides_with_instance_at(
+                    instance,
+                    query_x,
+                    query_y,
+                    candidate,
+                    Some(instance.runtime_id),
+                    |candidate| candidate.solid,
+                )
+            })
+    } else {
+        return None;
+    };
     Some(RuntimeValue::Bool(if want_meeting {
         collides
     } else {
@@ -447,19 +470,20 @@ fn evaluate_instance_place(
         .get(1)
         .and_then(|arg| evaluate_expr(arg, Some(instance), globals, scope, eval_context))
         .and_then(|value| as_number(&value))?;
-    let targets = place_query_targets(args.get(2)?, context)?;
-    let hit = targets
-        .iter()
-        .find(|candidate| {
-            crate::helpers::collides_at(
+    let target_object_ids = instance_target_object_ids(args.get(2)?, context)?;
+    let hit = context
+        .room_instances_matching_object_ids_near(&target_object_ids, instance, x, y)
+        .find(|(_, candidate)| {
+            crate::helpers::collides_with_instance_at(
                 instance,
                 x,
                 y,
-                std::slice::from_ref(candidate),
+                candidate,
                 Some(instance.runtime_id),
+                |_| true,
             )
         })
-        .map(|candidate| candidate.instance_id as f64)
+        .map(|(_, candidate)| candidate.instance_id as f64)
         .unwrap_or(-4.0);
     Some(RuntimeValue::Number(hit))
 }
@@ -505,20 +529,6 @@ fn evaluate_instance_number(
         .filter(|(_, instance)| instance.alive)
         .count();
     Some(RuntimeValue::Number(count as f64))
-}
-
-fn place_query_targets(
-    target_expr: &LoweredLogicExpr,
-    context: &RuntimeEvalContext<'_>,
-) -> Option<Vec<RuntimeInstance>> {
-    let target_object_ids = instance_target_object_ids(target_expr, context)?;
-    Some(
-        context
-            .room_instances_matching_object_ids(&target_object_ids)
-            .filter(|(_, candidate)| candidate.alive)
-            .map(|(_, candidate)| candidate.clone())
-            .collect(),
-    )
 }
 
 fn instance_target_object_ids(

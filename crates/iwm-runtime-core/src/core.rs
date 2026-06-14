@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 
 use crate::event_dispatch::{
-    collision_event_target_object_ids, object_event_block_ids,
-    object_ids_matching_or_inheriting_from, runtime_instance_indices_by_object_id,
-    runtime_instance_indices_by_object_id_from_instances, RuntimeEventSelector,
+    object_event_block_ids, runtime_collision_spatial_index,
+    runtime_instance_indices_by_object_id_from_instances, RuntimeCollisionSpatialIndex,
+    RuntimeEventSelector,
 };
 use crate::helpers::{as_number, collides_at, is_player_instance};
 use crate::logic::RuntimeBinaryFileState;
@@ -32,6 +32,8 @@ pub struct RuntimeCore {
     pub(crate) cached_script_entries: HashMap<String, LoweredLogicEntry>,
     pub(crate) cached_room_order: Vec<usize>,
     pub(crate) cached_step_event_blocks: HashMap<usize, Vec<String>>,
+    pub(crate) cached_collision_target_ids: HashMap<usize, Vec<usize>>,
+    pub(crate) cached_collision_matching_object_ids: HashMap<usize, Vec<usize>>,
     /// Maps a lowercased object name to the full set of object ids that match or
     /// inherit from it, so `place_meeting`/`place_free` skip the per-call
     /// inheritance walk over every object.
@@ -115,6 +117,8 @@ impl RuntimeCore {
             cached_script_entries: HashMap::new(),
             cached_room_order: Vec::new(),
             cached_step_event_blocks: HashMap::new(),
+            cached_collision_target_ids: HashMap::new(),
+            cached_collision_matching_object_ids: HashMap::new(),
             place_target_ids_by_name: HashMap::new(),
             room_ids_by_name,
             current_room: None,
@@ -141,6 +145,8 @@ impl RuntimeCore {
         core.cached_script_entries = core.lowered_script_entries();
         core.cached_room_order = core.runtime_room_order();
         core.cached_step_event_blocks = core.object_event_blocks_by_tag("step");
+        core.cached_collision_target_ids = core.collision_target_ids_by_object_id();
+        core.cached_collision_matching_object_ids = core.collision_matching_object_ids_by_target();
         core.place_target_ids_by_name = core.compute_place_target_ids_by_name();
         core.package_bootstrap_globals = core.collect_package_bootstrap_globals();
         core.boot_default_room()?;
@@ -504,6 +510,7 @@ impl RuntimeCore {
                 &block_ids,
                 None,
                 selector_event_tag(&selector),
+                None,
             );
             if self.pending_room_reset || self.pending_room_transition.is_some() {
                 break;
@@ -520,6 +527,7 @@ impl RuntimeCore {
         block_ids: &[String],
         other_instance: Option<RuntimeInstance>,
         event_tag: String,
+        collision_spatial_index: Option<&RuntimeCollisionSpatialIndex>,
     ) {
         // Clone entries first to avoid borrow conflicts
         let entries: Vec<LoweredLogicEntry> = block_ids
@@ -527,22 +535,13 @@ impl RuntimeCore {
             .filter_map(|block_id| self.lowered_logic_entry(block_id).cloned())
             .collect();
 
-        let script_entries = self.lowered_script_entries();
+        let script_entries = &self.cached_script_entries;
         let destroy_event_entries =
             self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
         let button_states = host
             .active_buttons()
             .into_iter()
             .collect::<std::collections::HashMap<_, _>>();
-        let room_instances = {
-            let Some(room) = self.current_room.as_ref() else {
-                return;
-            };
-            room.instances.clone()
-        };
-        let room_instance_indices_by_object_id =
-            runtime_instance_indices_by_object_id_from_instances(&room_instances);
-        let room_order = self.runtime_room_order();
         let current_room_id = {
             let Some(room) = self.current_room.as_ref() else {
                 return;
@@ -550,19 +549,7 @@ impl RuntimeCore {
             room.room_id
         };
         let known_files = crate::logic::sample_known_files(host);
-        let eval_context = crate::logic::RuntimeEvalContext {
-            current_room_id,
-            button_states: &button_states,
-            room_instances: &room_instances,
-            room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
-            room_instance_overlay: crate::logic::RuntimeRoomInstanceOverlay::empty(),
-            room_order: &room_order,
-            known_files: &known_files,
-            other_instance: other_instance.as_ref(),
-            other_runtime_id: other_instance.as_ref().map(|instance| instance.runtime_id),
-            place_target_ids_by_name: &self.place_target_ids_by_name,
-            room_ids_by_name: &self.room_ids_by_name,
-        };
+        let room_order = self.cached_room_order.clone();
 
         let mut instance = {
             let Some(room) = self.current_room.as_ref() else {
@@ -575,6 +562,14 @@ impl RuntimeCore {
         };
 
         let mut instance_creates = Vec::new();
+        let mut instance_updates = HashMap::new();
+        let room_instance_indices_by_object_id = {
+            let Some(room) = self.current_room.as_ref() else {
+                return;
+            };
+            runtime_instance_indices_by_object_id_from_instances(&room.instances)
+        };
+
         for entry in &entries {
             crate::diagnostics::record_execution_trace(
                 host,
@@ -588,8 +583,31 @@ impl RuntimeCore {
             let mut scope = crate::logic::RuntimeExecutionScope::default();
             let mut with_updates = Vec::new();
             for statement in &entry.statements {
+                let Some(room) = self.current_room.as_ref() else {
+                    return;
+                };
+                let eval_overlay = crate::logic::RuntimeRoomInstanceOverlay::with_current(
+                    &instance_updates,
+                    &with_updates,
+                    instance_idx,
+                    &instance,
+                );
+                let eval_context = crate::logic::RuntimeEvalContext {
+                    current_room_id,
+                    button_states: &button_states,
+                    room_instances: &room.instances,
+                    room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                    collision_spatial_index,
+                    room_instance_overlay: eval_overlay,
+                    room_order: &room_order,
+                    known_files: &known_files,
+                    other_instance: other_instance.as_ref(),
+                    other_runtime_id: other_instance.as_ref().map(|instance| instance.runtime_id),
+                    place_target_ids_by_name: &self.place_target_ids_by_name,
+                    room_ids_by_name: &self.room_ids_by_name,
+                };
                 let mut statement_env = crate::logic::RuntimeStatementEnvironment {
-                    script_entries: &script_entries,
+                    script_entries,
                     sound_index: &self.sound_index,
                     globals: &mut self.globals,
                     pending_room_transition: &mut self.pending_room_transition,
@@ -616,19 +634,26 @@ impl RuntimeCore {
                     Some(&eval_context),
                     &mut statement_env,
                 );
+                crate::logic::sync_current_instance_from_updates(
+                    instance_idx,
+                    &mut instance,
+                    &mut with_updates,
+                );
                 if self.pending_room_reset || self.pending_room_transition.is_some() {
                     break;
                 }
             }
-            if let Some(room) = self.current_room.as_mut() {
-                for (update_index, updated_instance) in with_updates {
-                    if let Some(slot) = room.instances.get_mut(update_index) {
-                        *slot = updated_instance;
-                    }
-                }
-            }
+            crate::logic::commit_instance_updates(&mut instance_updates, with_updates);
             if self.pending_room_reset || self.pending_room_transition.is_some() {
                 break;
+            }
+        }
+
+        if let Some(room) = self.current_room.as_mut() {
+            for (update_index, updated_instance) in instance_updates {
+                if let Some(slot) = room.instances.get_mut(update_index) {
+                    *slot = updated_instance;
+                }
             }
         }
         self.apply_runtime_instance_creates(host, &mut instance_creates);
@@ -707,6 +732,7 @@ impl RuntimeCore {
                 &block_ids,
                 None,
                 format!("alarm:{slot}"),
+                None,
             );
         }
 
@@ -717,31 +743,39 @@ impl RuntimeCore {
         &mut self,
         host: &mut H,
     ) -> Result<(), RuntimeCoreError> {
-        let collisions = {
+        let (collisions, spatial_index) = {
             let Some(room) = self.current_room.as_ref() else {
                 return Err(RuntimeCoreError::NoRooms);
             };
             let mut hits = Vec::new();
-            let indices_by_object_id = runtime_instance_indices_by_object_id(room);
-            for instance in &room.instances {
+            let spatial_index = runtime_collision_spatial_index(room);
+            for (instance_index, instance) in room.instances.iter().enumerate() {
                 if !instance.alive {
                     continue;
                 }
-                let target_object_ids =
-                    collision_event_target_object_ids(&self.package, instance.object_id);
+                let Some(target_object_ids) =
+                    self.cached_collision_target_ids.get(&instance.object_id)
+                else {
+                    continue;
+                };
                 if target_object_ids.is_empty() {
                     continue;
                 }
-                for target_object_id in target_object_ids {
-                    let matching_object_ids =
-                        object_ids_matching_or_inheriting_from(&self.package, target_object_id);
+                for &target_object_id in target_object_ids {
+                    let Some(matching_object_ids) = self
+                        .cached_collision_matching_object_ids
+                        .get(&target_object_id)
+                    else {
+                        continue;
+                    };
                     for matching_object_id in matching_object_ids {
-                        let Some(target_indices) = indices_by_object_id.get(&matching_object_id)
-                        else {
-                            continue;
-                        };
-                        for other_index in target_indices {
-                            let Some(other) = room.instances.get(*other_index) else {
+                        for other_index in spatial_index.candidate_indices(
+                            *matching_object_id,
+                            instance,
+                            instance.x,
+                            instance.y,
+                        ) {
+                            let Some(other) = room.instances.get(other_index) else {
                                 continue;
                             };
                             if instance.runtime_id == other.runtime_id {
@@ -754,16 +788,46 @@ impl RuntimeCore {
                                 std::slice::from_ref(other),
                                 Some(instance.runtime_id),
                             ) {
-                                hits.push((instance.runtime_id, target_object_id, other.clone()));
+                                hits.push((
+                                    instance_index,
+                                    target_object_id,
+                                    other_index,
+                                    instance.solid || other.solid,
+                                ));
                             }
                         }
                     }
                 }
             }
-            hits
+            (hits, spatial_index)
         };
 
-        for (instance_idx, target_object_id, other_instance) in collisions {
+        for (instance_idx, target_object_id, other_idx, solid_collision) in collisions {
+            let other_instance = {
+                let Some(room) = self.current_room.as_mut() else {
+                    continue;
+                };
+                if instance_idx >= room.instances.len() || other_idx >= room.instances.len() {
+                    continue;
+                }
+                if !room.instances[instance_idx].alive || !room.instances[other_idx].alive {
+                    continue;
+                }
+                if solid_collision {
+                    if let Some(instance) = room.instances.get_mut(instance_idx) {
+                        instance.x = instance.previous_x;
+                        instance.y = instance.previous_y;
+                    }
+                    if let Some(other) = room.instances.get_mut(other_idx) {
+                        other.x = other.previous_x;
+                        other.y = other.previous_y;
+                    }
+                }
+                room.instances.get(other_idx).cloned()
+            };
+            let Some(other_instance) = other_instance else {
+                continue;
+            };
             let block_ids = {
                 let Some(room) = self.current_room.as_ref() else {
                     continue;
@@ -783,6 +847,7 @@ impl RuntimeCore {
                 &block_ids,
                 Some(other_instance),
                 "collision".into(),
+                Some(&spatial_index),
             );
         }
 

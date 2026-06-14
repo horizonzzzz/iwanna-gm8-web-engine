@@ -7,7 +7,7 @@ use super::context::{
     RuntimeInstanceCreateRequest, RuntimeRoomInstanceOverlay,
 };
 use super::eval::{assignable_key, evaluate_expr, is_truthy};
-use crate::helpers::{as_number, parse_room_id, record_host_diagnostic};
+use crate::helpers::{as_number, collides_with_instance_at, parse_room_id, record_host_diagnostic};
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeInstance, RuntimeValue,
 };
@@ -208,6 +208,9 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }) {
                     env.host.set_keyboard_numlock(is_truthy(Some(value)));
                 }
+            }
+            "move_contact_solid" => {
+                dispatch_move_contact_solid(env, args, instance, scope, eval_context);
             }
             "file_bin_write_byte" => {
                 let Some(handle) =
@@ -609,6 +612,95 @@ fn finite_sound_number_to_id(number: f64) -> Option<i32> {
         Some(number.round() as i32)
     } else {
         None
+    }
+}
+
+fn dispatch_move_contact_solid<H: RuntimeHost>(
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+    args: &[LoweredLogicExpr],
+    instance: &mut RuntimeInstance,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) {
+    let Some(context) = eval_context else {
+        return;
+    };
+    let Some(direction) = args
+        .first()
+        .and_then(|arg| {
+            evaluate_with_diagnostics(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .and_then(|value| as_number(&value))
+        .filter(|value| value.is_finite())
+    else {
+        return;
+    };
+    let max_distance = args
+        .get(1)
+        .and_then(|arg| {
+            evaluate_with_diagnostics(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .and_then(|value| as_number(&value))
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .map(|value| value.round().clamp(0.0, 1000.0) as usize)
+        .unwrap_or(1000);
+
+    if context
+        .solid_room_instances_near(instance, instance.x, instance.y)
+        .any(|(_, candidate)| {
+            collides_with_instance_at(
+                instance,
+                instance.x,
+                instance.y,
+                candidate,
+                Some(instance.runtime_id),
+                |candidate| candidate.solid,
+            )
+        })
+    {
+        return;
+    }
+
+    let radians = direction.to_radians();
+    let step_x = radians.cos();
+    let step_y = -radians.sin();
+    for _ in 0..max_distance {
+        let old_x = instance.x;
+        let old_y = instance.y;
+        instance.x += step_x;
+        instance.y += step_y;
+
+        if context
+            .solid_room_instances_near(instance, instance.x, instance.y)
+            .any(|(_, candidate)| {
+                collides_with_instance_at(
+                    instance,
+                    instance.x,
+                    instance.y,
+                    candidate,
+                    Some(instance.runtime_id),
+                    |candidate| candidate.solid,
+                )
+            })
+        {
+            instance.x = old_x;
+            instance.y = old_y;
+            break;
+        }
     }
 }
 

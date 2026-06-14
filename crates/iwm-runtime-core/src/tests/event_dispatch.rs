@@ -1,12 +1,14 @@
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
 use iwm_runtime_host::{ButtonState, RuntimeButton};
+use iwm_runtime_model::ObjectEventEntry;
 
 use super::support::{
     add_alarm_block, add_collision_block, add_create_block, add_keyboard_block,
-    add_keyboard_press_block, add_keyboard_release_block, host, sample_package,
+    add_keyboard_press_block, add_keyboard_release_block, append_lowered_entry, host,
+    sample_package,
 };
 use crate::event_dispatch::{
-    collision_event_target_object_ids, object_event_block_ids,
+    collision_event_target_object_ids, object_event_block_ids, runtime_collision_spatial_index,
     runtime_instance_indices_by_object_id, RuntimeEventSelector,
 };
 
@@ -455,6 +457,76 @@ fn collision_dispatch_can_index_runtime_instances_by_object_id() {
 }
 
 #[test]
+fn collision_spatial_index_excludes_far_instances_for_same_object_id() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let block = room
+            .instances
+            .iter()
+            .find(|instance| instance.solid)
+            .unwrap()
+            .clone();
+        for offset in 0..128 {
+            let mut clone = block.clone();
+            clone.runtime_id = room.instances.len();
+            clone.instance_id = 10_000 + offset;
+            clone.x = 10_000.0 + f64::from(offset);
+            room.instances.push(clone);
+        }
+    }
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    let index = runtime_collision_spatial_index(room);
+    let candidates = index.candidate_indices(2, player, player.x, player.y);
+
+    assert_eq!(candidates, vec![2]);
+}
+
+#[test]
+fn collision_spatial_index_finds_near_solid_instances_only() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let block = room
+            .instances
+            .iter()
+            .find(|instance| instance.solid)
+            .unwrap()
+            .clone();
+        let mut far_block = block.clone();
+        far_block.runtime_id = room.instances.len();
+        far_block.instance_id = 10_000;
+        far_block.x = 10_000.0;
+        room.instances.push(far_block);
+
+        let mut nonsolid_block = block.clone();
+        nonsolid_block.runtime_id = room.instances.len();
+        nonsolid_block.instance_id = 10_001;
+        nonsolid_block.solid = false;
+        nonsolid_block.x = block.x;
+        nonsolid_block.y = block.y;
+        room.instances.push(nonsolid_block);
+    }
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    let index = runtime_collision_spatial_index(room);
+    let candidates = index.solid_candidate_indices(player, player.x, player.y);
+
+    assert_eq!(candidates, vec![2]);
+}
+
+#[test]
 fn core_dispatches_collision_event_blocks_when_player_overlaps_target() {
     let mut package = sample_package();
     package.objects[0].name = "player".into();
@@ -496,6 +568,39 @@ fn core_dispatches_collision_event_blocks_when_player_overlaps_target() {
         player.vars.get("collision_hit"),
         Some(&RuntimeValue::Bool(true))
     );
+}
+
+#[test]
+fn collision_event_execution_does_not_emit_hot_path_trace_diagnostics() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[2].name = "block".into();
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("collision_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.y = 48.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    assert!(core.diagnostics().iter().all(|entry| {
+        entry.code != "runtime-exec-block-trace" || !entry.message.contains("event_tag=collision")
+    }));
 }
 
 #[test]
@@ -592,4 +697,73 @@ fn collision_event_can_read_other_member_values() {
         player.vars.get("other_vspeed_seen"),
         Some(&RuntimeValue::Number(0.0))
     );
+}
+
+#[test]
+fn solid_collision_rolls_back_before_move_contact_solid_event() {
+    let mut package = sample_package();
+    package.objects[1].name = "blood2".into();
+    package.objects[2].name = "block".into();
+    package.objects[1].events.push(ObjectEventEntry {
+        event_type: 4,
+        sub_event: 2,
+        event_tag: "collision".into(),
+        block_id: "object:1:event:4:2".into(),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:1:event:4:2".into(),
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "move_contact_solid".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::LiteralNumber(16.0),
+                ],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("hspeed".into()),
+                value: LoweredLogicExpr::LiteralNumber(0.0),
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let blood = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "blood2")
+            .unwrap();
+        blood.x = 24.0;
+        blood.y = 40.0;
+        blood.previous_x = 24.0;
+        blood.previous_y = 40.0;
+        blood.hspeed = 16.0;
+
+        let block = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "block")
+            .unwrap();
+        block.x = 40.0;
+        block.y = 40.0;
+        block.previous_x = 40.0;
+        block.previous_y = 40.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let blood = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "blood2")
+        .unwrap();
+    assert_eq!(blood.x, 24.0);
+    assert_eq!(blood.hspeed, 0.0);
 }

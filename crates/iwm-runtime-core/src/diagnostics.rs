@@ -34,6 +34,10 @@ pub(crate) fn record_execution_trace<H: RuntimeHost>(
     block_id: &str,
     event_tag: &str,
 ) {
+    if event_tag == "collision" {
+        return;
+    }
+
     let diagnostic = RuntimeDiagnostic {
         level: RuntimeDiagnosticLevel::Info,
         code: "runtime-exec-block-trace".into(),

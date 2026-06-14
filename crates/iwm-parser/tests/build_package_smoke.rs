@@ -4,6 +4,13 @@ use iwm_runtime_model::{
 use std::fs;
 use std::process::Command;
 
+use gm8exe::{
+    asset::sprite::{CollisionMap, Frame},
+    asset::Sprite,
+    settings::{GameHelpDialog, Settings},
+    Colour, GameAssets, GameVersion,
+};
+
 #[test]
 fn runtime_manifest_serializes_expected_fields() {
     let manifest = RuntimeManifest {
@@ -61,15 +68,55 @@ fn bgra_pixels_are_converted_to_rgba_order() {
 
 #[test]
 fn exported_sprite_resources_include_collision_bounding_box_fields() {
-    use gm8exe::{
-        asset::sprite::{CollisionMap, Frame},
-        asset::Sprite,
-        settings::{GameHelpDialog, Settings},
-        Colour, GameAssets, GameVersion,
-    };
     use iwm_parser::resource_export::export_resources;
 
-    let assets = GameAssets {
+    let assets = game_assets_with_sprite_frame(vec![0; 16 * 16 * 4], 16, 16);
+
+    let temp = tempfile::tempdir().unwrap();
+    let resources = export_resources(&assets, temp.path()).unwrap();
+    let json = serde_json::to_value(&resources).unwrap();
+    let sprite = &json["sprites"][0];
+
+    assert_eq!(sprite["bbox_left"], 1);
+    assert_eq!(sprite["bbox_right"], 14);
+    assert_eq!(sprite["bbox_top"], 2);
+    assert_eq!(sprite["bbox_bottom"], 13);
+    assert_eq!(sprite["per_frame_collision_masks"], false);
+
+    let mask = &sprite["collision_masks"][0];
+    assert_eq!(mask["width"], 16);
+    assert_eq!(mask["height"], 16);
+    assert_eq!(mask["bbox_left"], 1);
+    assert_eq!(mask["bbox_right"], 14);
+    assert_eq!(mask["bbox_top"], 2);
+    assert_eq!(mask["bbox_bottom"], 13);
+    assert_eq!(mask["data"].as_array().unwrap().len(), 16 * 16);
+    assert_eq!(mask["data"][2 * 16 + 1], true);
+    assert_eq!(mask["data"][13 * 16 + 14], true);
+    assert_eq!(mask["data"][2 * 16 + 2], false);
+}
+
+#[test]
+fn exported_sprite_pixels_are_converted_from_bgra_to_rgba_order() {
+    use iwm_parser::resource_export::export_resources;
+
+    let assets = game_assets_with_sprite_frame(vec![0, 0, 255, 255], 1, 1);
+    let temp = tempfile::tempdir().unwrap();
+    let resources = export_resources(&assets, temp.path()).unwrap();
+    let sprite_path = temp.path().join(&resources.sprites[0].frame_paths[0]);
+
+    let bytes = fs::read(sprite_path).unwrap();
+    let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    let mut reader = decoder.read_info().unwrap();
+    let mut output = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut output).unwrap();
+    let pixels = &output[..info.buffer_size()];
+
+    assert_eq!(pixels, &[255, 0, 0, 255]);
+}
+
+fn game_assets_with_sprite_frame(data: Vec<u8>, width: u32, height: u32) -> GameAssets {
+    GameAssets {
         triggers: vec![],
         constants: vec![],
         extensions: vec![],
@@ -78,19 +125,19 @@ fn exported_sprite_resources_include_collision_bounding_box_fields() {
             origin_x: 4,
             origin_y: 8,
             frames: vec![Frame {
-                width: 16,
-                height: 16,
-                data: vec![0; 16 * 16 * 4].into_boxed_slice(),
+                width,
+                height,
+                data: data.into_boxed_slice(),
             }],
             colliders: vec![CollisionMap {
-                width: 16,
-                height: 16,
+                width,
+                height,
                 bbox_left: 1,
                 bbox_right: 14,
                 bbox_top: 2,
                 bbox_bottom: 13,
-                data: (0..16 * 16)
-                    .map(|index| index == 2 * 16 + 1 || index == 13 * 16 + 14)
+                data: (0..width * height)
+                    .map(|index| index == 2 * width + 1 || index == 13 * width + 14)
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             }],
@@ -167,30 +214,7 @@ fn exported_sprite_resources_include_collision_bounding_box_fields() {
         },
         game_id: 0,
         guid: [0; 4],
-    };
-
-    let temp = tempfile::tempdir().unwrap();
-    let resources = export_resources(&assets, temp.path()).unwrap();
-    let json = serde_json::to_value(&resources).unwrap();
-    let sprite = &json["sprites"][0];
-
-    assert_eq!(sprite["bbox_left"], 1);
-    assert_eq!(sprite["bbox_right"], 14);
-    assert_eq!(sprite["bbox_top"], 2);
-    assert_eq!(sprite["bbox_bottom"], 13);
-    assert_eq!(sprite["per_frame_collision_masks"], false);
-
-    let mask = &sprite["collision_masks"][0];
-    assert_eq!(mask["width"], 16);
-    assert_eq!(mask["height"], 16);
-    assert_eq!(mask["bbox_left"], 1);
-    assert_eq!(mask["bbox_right"], 14);
-    assert_eq!(mask["bbox_top"], 2);
-    assert_eq!(mask["bbox_bottom"], 13);
-    assert_eq!(mask["data"].as_array().unwrap().len(), 16 * 16);
-    assert_eq!(mask["data"][2 * 16 + 1], true);
-    assert_eq!(mask["data"][13 * 16 + 14], true);
-    assert_eq!(mask["data"][2 * 16 + 2], false);
+    }
 }
 
 #[test]

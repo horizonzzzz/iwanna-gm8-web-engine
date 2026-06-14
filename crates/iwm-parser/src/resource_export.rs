@@ -27,7 +27,8 @@ pub fn export_resources(assets: &GameAssets, output_dir: &Path) -> Result<Resour
             let mut frame_paths = Vec::new();
             for (frame_index, frame) in sprite.frames.iter().enumerate() {
                 let path = sprite_dir.join(format!("{id}-{frame_index}.png"));
-                write_rgba_png(&path, frame.width, frame.height, &frame.data)?;
+                let rgba = bgra_to_rgba(frame.data.to_vec());
+                write_rgba_png(&path, frame.width, frame.height, &rgba)?;
                 frame_paths.push(relative_path(output_dir, &path)?);
             }
 

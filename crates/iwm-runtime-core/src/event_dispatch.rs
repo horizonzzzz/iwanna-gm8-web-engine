@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
+use crate::helpers::bounds_at;
 use crate::{RuntimeInstance, RuntimePackage, RuntimeRoomState};
+
+const COLLISION_SPATIAL_CELL_SIZE: i32 = 64;
 
 #[derive(Clone)]
 pub(crate) enum RuntimeEventSelector {
@@ -88,6 +91,101 @@ pub(crate) fn runtime_instance_indices_by_object_id_from_instances(
         }
     }
     indices
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct RuntimeCollisionSpatialIndex {
+    cells_by_object_id: HashMap<usize, HashMap<(i32, i32), Vec<usize>>>,
+    solid_cells: HashMap<(i32, i32), Vec<usize>>,
+}
+
+impl RuntimeCollisionSpatialIndex {
+    pub(crate) fn candidate_indices(
+        &self,
+        object_id: usize,
+        instance: &RuntimeInstance,
+        x: f64,
+        y: f64,
+    ) -> Vec<usize> {
+        let Some(cells) = self.cells_by_object_id.get(&object_id) else {
+            return Vec::new();
+        };
+        candidate_indices_from_cells(cells, instance, x, y)
+    }
+
+    pub(crate) fn solid_candidate_indices(
+        &self,
+        instance: &RuntimeInstance,
+        x: f64,
+        y: f64,
+    ) -> Vec<usize> {
+        candidate_indices_from_cells(&self.solid_cells, instance, x, y)
+    }
+}
+
+pub(crate) fn runtime_collision_spatial_index(
+    room: &RuntimeRoomState,
+) -> RuntimeCollisionSpatialIndex {
+    let mut index = RuntimeCollisionSpatialIndex::default();
+    for (instance_index, instance) in room.instances.iter().enumerate() {
+        if !instance.alive {
+            continue;
+        }
+        let (left, top, right, bottom) = bounds_at(instance, instance.x, instance.y);
+        let object_cells = index
+            .cells_by_object_id
+            .entry(instance.object_id)
+            .or_default();
+        for cell in cells_for_bounds(left, top, right, bottom) {
+            object_cells.entry(cell).or_default().push(instance_index);
+            if instance.solid {
+                index
+                    .solid_cells
+                    .entry(cell)
+                    .or_default()
+                    .push(instance_index);
+            }
+        }
+    }
+    index
+}
+
+fn candidate_indices_from_cells(
+    cells: &HashMap<(i32, i32), Vec<usize>>,
+    instance: &RuntimeInstance,
+    x: f64,
+    y: f64,
+) -> Vec<usize> {
+    let mut candidates = Vec::new();
+    let (left, top, right, bottom) = bounds_at(instance, x, y);
+    for cell in cells_for_bounds(left, top, right, bottom) {
+        let Some(indices) = cells.get(&cell) else {
+            continue;
+        };
+        for index in indices {
+            if !candidates.contains(index) {
+                candidates.push(*index);
+            }
+        }
+    }
+    candidates
+}
+
+fn cells_for_bounds(left: i32, top: i32, right: i32, bottom: i32) -> Vec<(i32, i32)> {
+    let right = (right - 1).max(left);
+    let bottom = (bottom - 1).max(top);
+    let left_cell = left.div_euclid(COLLISION_SPATIAL_CELL_SIZE);
+    let right_cell = right.div_euclid(COLLISION_SPATIAL_CELL_SIZE);
+    let top_cell = top.div_euclid(COLLISION_SPATIAL_CELL_SIZE);
+    let bottom_cell = bottom.div_euclid(COLLISION_SPATIAL_CELL_SIZE);
+
+    let mut cells = Vec::new();
+    for y in top_cell..=bottom_cell {
+        for x in left_cell..=right_cell {
+            cells.push((x, y));
+        }
+    }
+    cells
 }
 
 pub(crate) fn collision_event_target_object_ids(
