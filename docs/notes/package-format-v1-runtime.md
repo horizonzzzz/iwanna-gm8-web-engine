@@ -114,7 +114,7 @@ cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sa
 cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --select-room 143 --ticks 240 --press-keys 16
 ```
 
-This is a command-line debugging feature, not a package-format invariant. It ranks runtime blockers from actual lowered execution and includes the first triggering room, tick, block id, object, event tag, and runtime instance id for unsupported functions and statement kinds. When `--trace-player` is enabled, the command also emits `trace_summary` for compact behavior-baseline comparison plus row-level `player_trace` details.
+This is a command-line debugging feature, not a package-format invariant. It ranks runtime blockers from actual lowered execution and includes the first triggering room, tick, block id, object, event tag, and runtime instance id for unsupported functions and statement kinds. When `--trace-player` is enabled, the command also emits `trace_summary` for compact behavior-baseline comparison plus row-level `player_trace` details. `runtime_events` keep the original diagnostic message and also expose parsed fields when present, such as `room`, `tick`, `object`, `block_id`, `event_tag`, `runtime_id`, `x`, `y`, and transition `reason`, so behavior checks can filter lifecycle events without ad hoc message parsing.
 
 ### Currently Executable Action-List Subset
 

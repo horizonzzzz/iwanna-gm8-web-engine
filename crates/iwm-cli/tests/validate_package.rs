@@ -140,6 +140,57 @@ fn runtime_diagnostics_input_script_drives_player_trace_edges() {
 }
 
 #[test]
+fn runtime_diagnostics_input_script_ticks_start_after_preselect() {
+    let temp_root = copy_fixture_to_temp();
+    make_fixture_player_traceable(&temp_root);
+    let input_script_path = temp_root.join("input-script.json");
+    fs::write(
+        &input_script_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "ticks": [
+                {
+                    "tick": 0,
+                    "press_keys": [32]
+                }
+            ]
+        }))
+        .expect("input script should serialize"),
+    )
+    .expect("input script should write");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_iwm-cli"))
+        .arg("runtime-diagnostics")
+        .arg("--input")
+        .arg(&temp_root)
+        .arg("--preselect-ticks")
+        .arg("2")
+        .arg("--ticks")
+        .arg("1")
+        .arg("--trace-player")
+        .arg("--trace-every")
+        .arg("1")
+        .arg("--input-script")
+        .arg(&input_script_path)
+        .output()
+        .expect("cli should run");
+
+    assert!(output.status.success(), "stderr={}", stderr(&output));
+    let diagnostics: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("diagnostics output should be json");
+    let trace = diagnostics["player_trace"]
+        .as_array()
+        .expect("player trace should be present");
+
+    assert!(trace.iter().any(|entry| {
+        entry["tick"] == serde_json::json!(3)
+            && entry["jump_pressed"] == serde_json::json!(true)
+            && entry["jump_just_pressed"] == serde_json::json!(true)
+    }));
+
+    fs::remove_dir_all(temp_root).expect("temporary fixture should be removed");
+}
+
+#[test]
 fn runtime_diagnostics_outputs_runtime_events() {
     let temp_root = copy_fixture_to_temp();
 
@@ -164,6 +215,45 @@ fn runtime_diagnostics_outputs_runtime_events() {
     assert!(events
         .iter()
         .any(|entry| { entry["code"] == serde_json::json!("runtime-room-restart-requested") }));
+
+    fs::remove_dir_all(temp_root).expect("temporary fixture should be removed");
+}
+
+#[test]
+fn runtime_diagnostics_runtime_events_include_structured_fields() {
+    let temp_root = copy_fixture_to_temp();
+    make_fixture_spawn_sparse_player_each_step(&temp_root);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_iwm-cli"))
+        .arg("runtime-diagnostics")
+        .arg("--input")
+        .arg(&temp_root)
+        .arg("--ticks")
+        .arg("1")
+        .output()
+        .expect("cli should run");
+
+    assert!(output.status.success(), "stderr={}", stderr(&output));
+    let diagnostics: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("diagnostics output should be json");
+    let events = diagnostics["runtime_events"]
+        .as_array()
+        .expect("runtime events should be present");
+    let created = events
+        .iter()
+        .find(|entry| entry["code"] == serde_json::json!("runtime-instance-created"))
+        .expect("instance create event should be present");
+
+    assert_eq!(created["room"], serde_json::json!(300));
+    assert_eq!(created["tick"], serde_json::json!(1));
+    assert_eq!(created["object"], serde_json::json!("obj_sparse_player"));
+    assert!(created["runtime_id"].is_number());
+    assert_eq!(created["x"], serde_json::json!(32.0));
+    assert_eq!(created["y"], serde_json::json!(64.0));
+    assert!(created["message"]
+        .as_str()
+        .unwrap()
+        .contains("object=obj_sparse_player"));
 
     fs::remove_dir_all(temp_root).expect("temporary fixture should be removed");
 }
@@ -204,6 +294,36 @@ fn make_fixture_player_traceable(root: &Path) {
         serde_json::to_vec_pretty(&objects).expect("objects fixture should serialize"),
     )
     .expect("objects fixture should write");
+}
+
+fn make_fixture_spawn_sparse_player_each_step(root: &Path) {
+    let lowered_path = root.join("logic.lowered.json");
+    let mut lowered: serde_json::Value =
+        serde_json::from_slice(&fs::read(&lowered_path).expect("lowered fixture should read"))
+            .expect("lowered fixture should parse");
+    let entries = lowered["entries"]
+        .as_array_mut()
+        .expect("lowered fixture entries should be an array");
+    let step_entry = entries
+        .iter_mut()
+        .find(|entry| entry["block_id"] == serde_json::json!("object:705:event:3:0"))
+        .expect("step entry should exist");
+    step_entry["statements"] = serde_json::json!([
+        {
+            "kind": "function-call",
+            "name": "instance_create",
+            "args": [
+                { "kind": "literal-number", "value": 32.0 },
+                { "kind": "literal-number", "value": 64.0 },
+                { "kind": "identifier", "value": "obj_sparse_player" }
+            ]
+        }
+    ]);
+    fs::write(
+        &lowered_path,
+        serde_json::to_vec_pretty(&lowered).expect("lowered fixture should serialize"),
+    )
+    .expect("lowered fixture should write");
 }
 
 fn stdout(output: &std::process::Output) -> String {

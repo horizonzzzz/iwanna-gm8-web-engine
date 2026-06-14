@@ -184,7 +184,6 @@ fn main() {
             for _ in 0..preselect_ticks {
                 apply_cli_input(
                     &mut host,
-                    core.tick_count(),
                     u64::MAX,
                     &[],
                     &[],
@@ -226,7 +225,6 @@ fn main() {
             for run_tick in 0..ticks {
                 apply_cli_input(
                     &mut host,
-                    core.tick_count(),
                     u64::from(run_tick),
                     &press_keys,
                     &hold_keys,
@@ -286,7 +284,6 @@ fn main() {
 
 fn apply_cli_input(
     host: &mut HeadlessHost,
-    runtime_tick: u64,
     run_tick: u64,
     press_keys: &[u16],
     hold_keys: &[u16],
@@ -294,7 +291,7 @@ fn apply_cli_input(
     scripted_input_state: &mut RuntimeInputScriptState,
 ) {
     let mut states = HashMap::<RuntimeButton, ButtonState>::new();
-    let script_frame = input_script.and_then(|script| script.ticks.get(&runtime_tick));
+    let script_frame = input_script.and_then(|script| script.ticks.get(&run_tick));
     let previous_script_holds = scripted_input_state.held_keys.clone();
 
     if let Some(frame) = script_frame {
@@ -396,6 +393,28 @@ struct RuntimeBlockerSummary {
 struct RuntimeEventEntry {
     code: String,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    room: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    from_room: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    to_room: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tick: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    block_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    object: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    event_tag: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime_id: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    y: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -663,10 +682,25 @@ fn collect_runtime_events(
         if !seen_messages.insert(message_key) {
             continue;
         }
-        events.push(RuntimeEventEntry {
-            code: diagnostic.code.clone(),
-            message: diagnostic.message.clone(),
-        });
+        events.push(runtime_event_entry(diagnostic));
+    }
+}
+
+fn runtime_event_entry(diagnostic: &RuntimeDiagnostic) -> RuntimeEventEntry {
+    RuntimeEventEntry {
+        code: diagnostic.code.clone(),
+        message: diagnostic.message.clone(),
+        room: message_field(&diagnostic.message, "room").and_then(parse_usize_field),
+        from_room: message_field(&diagnostic.message, "from_room").and_then(parse_usize_field),
+        to_room: message_field(&diagnostic.message, "to_room").and_then(parse_usize_field),
+        tick: message_field(&diagnostic.message, "tick").and_then(parse_u64_field),
+        block_id: message_field(&diagnostic.message, "block_id").map(str::to_owned),
+        object: message_field(&diagnostic.message, "object").map(str::to_owned),
+        event_tag: message_field(&diagnostic.message, "event_tag").map(str::to_owned),
+        runtime_id: message_field(&diagnostic.message, "runtime_id").and_then(parse_usize_field),
+        x: message_field(&diagnostic.message, "x").and_then(parse_f64_field),
+        y: message_field(&diagnostic.message, "y").and_then(parse_f64_field),
+        reason: message_field(&diagnostic.message, "reason").map(str::to_owned),
     }
 }
 
@@ -710,4 +744,16 @@ fn message_field<'a>(message: &'a str, field: &str) -> Option<&'a str> {
     message
         .split_whitespace()
         .find_map(|part| part.strip_prefix(&prefix))
+}
+
+fn parse_usize_field(value: &str) -> Option<usize> {
+    value.parse().ok()
+}
+
+fn parse_u64_field(value: &str) -> Option<u64> {
+    value.parse().ok()
+}
+
+fn parse_f64_field(value: &str) -> Option<f64> {
+    value.parse().ok()
 }

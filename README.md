@@ -147,6 +147,7 @@ Useful options:
 - `--press-keys 16,39` sends one-tick key press edges by GM virtual-key code
 - `--hold-keys 16,39` holds keys for the whole run
 - `--input-script <path>` replays a JSON tick script with per-tick `press_keys`, `hold_keys`, and `release_keys` for more complex diagnostics than the one-shot CLI flags
+- input-script `tick` values are relative to the main diagnostics run after any `--preselect-ticks` warmup and manual room selection; `tick: 0` applies to the first tick of the selected diagnostic window
 - `--trace-player` adds `trace_summary` plus a `player_trace` array to the same diagnostics JSON, recording the selected player instance's room, tick, object/runtime id, position, velocity, alive flag, grounded flag, jump phase, input trace, and diagnostic count
 - `--trace-every <n>` samples player trace every `n` ticks; it defaults to `1` when tracing is enabled
 - `--trace-output <path>` writes the full diagnostics JSON to a file instead of stdout, useful for longer behavior traces
@@ -164,6 +165,7 @@ Input-script JSON shape:
 ```
 
 The JSON output groups runtime blockers such as `runtime-unsupported-function:abs` or `runtime-unsupported-statement:for`, and also exposes a `runtime_events` array for high-value lifecycle markers such as room changes, restart requests, player death, and runtime instance create/destroy events. When player tracing is enabled, `trace_summary` gives a compact behavior-baseline record with first/last frames, coordinate ranges, peak absolute speeds, sample count, and room segments before you inspect the full row-level trace.
+Runtime events keep the original diagnostic `message` and also expose parsed fields when present, such as `room`, `from_room`, `to_room`, `tick`, `block_id`, `object`, `event_tag`, `runtime_id`, `x`, `y`, and `reason`, so lifecycle checks can filter events without parsing message strings.
 
 ### 5. Launch the browser shell
 
