@@ -2,6 +2,8 @@ use iwm_runtime_host::{Rgba8, RuntimeDrawCommand, RuntimeRenderFrame};
 
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeRoomState};
 
+const DEATH_FEEDBACK_TICKS: u64 = 60;
+
 #[derive(Debug, Clone, Copy)]
 struct ActiveView {
     source_x: i32,
@@ -90,7 +92,7 @@ impl RuntimeCore {
         // Pre-size for clear + backgrounds + tiles + per-instance sprites +
         // present, so large rooms don't repeatedly grow the command buffer.
         let estimated_commands =
-            2 + source_room.backgrounds.len() + source_room.tiles.len() + room.instances.len();
+            8 + source_room.backgrounds.len() + source_room.tiles.len() + room.instances.len();
         let mut commands = Vec::with_capacity(estimated_commands);
         commands.push(RuntimeDrawCommand::Clear {
             colour: Rgba8 {
@@ -235,6 +237,53 @@ impl RuntimeCore {
                     is_foreground: true,
                 }),
         );
+
+        if let Some(feedback) = self.death_feedback {
+            let age = self.tick.saturating_sub(feedback.started_tick);
+            if feedback.room_id == room.room_id && age <= DEATH_FEEDBACK_TICKS {
+                let base_x = active_view
+                    .map(|view| view.translate_x(feedback.x.round() as i32))
+                    .unwrap_or(feedback.x.round() as i32);
+                let base_y = active_view
+                    .map(|view| view.translate_y(feedback.y.round() as i32))
+                    .unwrap_or(feedback.y.round() as i32);
+                let spread = age.min(18) as i32;
+                let alpha = (220_i32 - (age as i32 * 3)).max(48) as u8;
+                let red = Rgba8 {
+                    r: 190,
+                    g: 12,
+                    b: 18,
+                    a: alpha,
+                };
+                for (dx, dy, width, height) in [
+                    (-4 - spread, -3, 18, 8),
+                    (5, -6 - spread / 2, 10, 14),
+                    (-2, 7 + spread / 2, 14, 7),
+                    (10 + spread, 4, 7, 7),
+                ] {
+                    commands.push(RuntimeDrawCommand::FillRect {
+                        x: base_x + dx,
+                        y: base_y + dy,
+                        width,
+                        height,
+                        colour: red,
+                    });
+                }
+                commands.push(RuntimeDrawCommand::DrawText {
+                    text: "GAME OVER".into(),
+                    x: (frame_width / 2) as i32,
+                    y: (frame_height / 2).saturating_sub(48) as i32,
+                    size: 32,
+                    colour: Rgba8 {
+                        r: 232,
+                        g: 36,
+                        b: 48,
+                        a: alpha,
+                    },
+                    align: "center".into(),
+                });
+            }
+        }
 
         commands.push(RuntimeDrawCommand::Present);
 

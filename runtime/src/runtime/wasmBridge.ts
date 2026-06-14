@@ -72,6 +72,7 @@ export type WasmRuntimeFrame = {
     | { kind: 'drawTile'; backgroundId: number; x: number; y: number; tileX: number; tileY: number; width: number; height: number; xscale: number; yscale: number }
     | { kind: 'drawSprite'; spriteId: number; frameIndex: number; x: number; y: number; originX: number; originY: number; xscale: number; yscale: number; angleDegrees: number }
     | { kind: 'fillRect'; x: number; y: number; width: number; height: number; colour: [number, number, number, number] }
+    | { kind: 'drawText'; text: string; x: number; y: number; size: number; colour: [number, number, number, number]; align: CanvasTextAlign }
     | { kind: 'present' }
   >;
 };

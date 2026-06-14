@@ -146,6 +146,7 @@ The current `iwm-runtime-web` bridge can now:
 - accept browser-submitted keyboard input snapshots
 - return runtime snapshots
 - return browser-consumable frame snapshots
+- return browser-consumable text draw commands for narrow runtime overlays such as the current death `GAME OVER` feedback
 - advance deterministic ticks
 - reset the runtime
 - switch rooms by room id

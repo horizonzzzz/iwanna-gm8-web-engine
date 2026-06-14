@@ -8,6 +8,7 @@ use crate::event_dispatch::{
     RuntimeEventSelector,
 };
 use crate::helpers::{as_number, collides_at, is_player_instance};
+use crate::types::RuntimeDeathFeedback;
 use crate::{
     LoweredLogicEntry, RuntimeCoreError, RuntimeInputTraceSnapshot, RuntimeInstance,
     RuntimeJumpSnapshot, RuntimePackage, RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot,
@@ -46,6 +47,7 @@ pub struct RuntimeCore {
     pub(crate) package_bootstrap_globals: HashMap<String, RuntimeValue>,
     pub(crate) last_input_trace: RuntimeInputTraceSnapshot,
     pub(crate) last_tick_phases: RuntimeTickPhaseSnapshot,
+    pub(crate) death_feedback: Option<RuntimeDeathFeedback>,
 }
 
 impl RuntimeCore {
@@ -124,6 +126,7 @@ impl RuntimeCore {
                 active_keys: Vec::new(),
             },
             last_tick_phases: RuntimeTickPhaseSnapshot::default(),
+            death_feedback: None,
         };
 
         core.cached_script_entries = core.lowered_script_entries();
@@ -231,7 +234,7 @@ impl RuntimeCore {
         let left = self.bound_button_state(host, "global.leftbutton", 0x25);
         let right = self.bound_button_state(host, "global.rightbutton", 0x27);
         let mut jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
-        let restart = host.button_state(RuntimeButton::Keyboard(0x52));
+        let restart = self.bound_restart_button_state(host);
         self.record_jump_input_diagnostic(host, jump);
 
         self.tick += 1;
@@ -440,10 +443,22 @@ impl RuntimeCore {
         host.button_state(RuntimeButton::Keyboard(key_code))
     }
 
+    fn bound_restart_button_state<H: RuntimeHost>(&self, host: &H) -> ButtonState {
+        let key_code = self
+            .globals
+            .get("global.restartbutton")
+            .or_else(|| self.globals.get("global.resetbutton"))
+            .and_then(as_number)
+            .map(|value| value.round() as u16)
+            .unwrap_or(0x52);
+        host.button_state(RuntimeButton::Keyboard(key_code))
+    }
+
     pub fn reload_room(&mut self, room_id: usize) -> Result<(), RuntimeCoreError> {
         self.hydrate_missing_package_bootstrap_globals();
         self.current_room = Some(self.build_room(room_id)?);
         self.room_needs_first_render_settle = true;
+        self.death_feedback = None;
         self.status = RuntimeStatus::Ready;
         Ok(())
     }

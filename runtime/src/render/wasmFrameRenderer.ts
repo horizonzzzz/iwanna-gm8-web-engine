@@ -139,6 +139,15 @@ export async function renderWasmFrame(
         context.fillStyle = rgbaToCss(command.colour);
         context.fillRect(command.x, command.y, command.width, command.height);
         break;
+      case 'drawText':
+        context.save();
+        context.fillStyle = rgbaToCss(command.colour);
+        context.font = `700 ${command.size}px sans-serif`;
+        context.textAlign = command.align;
+        context.textBaseline = 'middle';
+        context.fillText(command.text, command.x, command.y);
+        context.restore();
+        break;
       case 'present':
         break;
     }

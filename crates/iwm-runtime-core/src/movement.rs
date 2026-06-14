@@ -223,11 +223,27 @@ impl RuntimeCore {
             &hazards,
             Some(player.runtime_id),
         ) {
+            self.death_feedback = Some(crate::types::RuntimeDeathFeedback {
+                room_id: room.room_id,
+                x: player.x,
+                y: player.y,
+                started_tick: self.tick,
+            });
+            let death_message = format!(
+                "room={} tick={} object={} runtime_id={} x={} y={} reason=hazard message=player-hit-hazard-in-{}",
+                room.room_id,
+                self.tick,
+                player.object_name,
+                player.runtime_id,
+                player.x,
+                player.y,
+                room_name
+            );
             self.record_diagnostic(
                 host,
                 iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
                 "runtime-player-died",
-                format!("player hit a hazard in {}", room_name),
+                death_message,
             );
             self.pending_room_reset = true;
         } else if player_out_of_bounds(player, room_width, room_height)

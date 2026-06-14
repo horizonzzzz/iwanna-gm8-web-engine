@@ -16,3 +16,18 @@ cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sa
 Script `tick` values are relative to the main diagnostics run after any
 `--preselect-ticks` warmup and manual room selection. A script entry at `tick: 0`
 therefore applies to the first tick after the selected room has been settled.
+
+Current Dife scenarios:
+
+- `dife-room143-tap-jump.json`
+- `dife-room143-hold-jump.json`
+- `dife-room143-release-cut.json`
+- `dife-room143-move-right.json`
+- `dife-room143-shoot.json`
+- `dife-room151-death-right.json`
+- `dife-room151-r-reset.json`
+
+The room 151 reset script uses key code `82` (`R`) because that is the current
+runtime host fallback reset key. That should not be interpreted as a fixed IWanna
+rule: runtime-core now checks package/runtime globals such as
+`global.restartbutton` and `global.resetbutton` before falling back to `R`.

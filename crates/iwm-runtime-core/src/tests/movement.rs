@@ -258,6 +258,15 @@ fn core_emits_hazard_diagnostic_and_requests_reset() {
         .diagnostics()
         .iter()
         .any(|diagnostic| diagnostic.code == "runtime-player-died"));
+    let death = core
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.code == "runtime-player-died")
+        .unwrap();
+    assert!(death.message.contains("room=7"));
+    assert!(death.message.contains("tick=1"));
+    assert!(death.message.contains("object=obj_player"));
+    assert!(death.message.contains("reason=hazard"));
     assert_eq!(core.snapshot().status, crate::RuntimeStatus::Ready);
 }
 

@@ -88,6 +88,45 @@ fn runtime_core_skips_dead_instances_when_rendering_sprites() {
 }
 
 #[test]
+fn runtime_core_renders_death_feedback_after_hazard_reset() {
+    let mut package = sample_package();
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 99,
+        object_id: 1,
+        x: 12,
+        y: 24,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: true,
+        is_checkpoint: false,
+    });
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::FillRect {
+            colour,
+            ..
+        } if colour.r >= 160 && colour.g <= 40 && colour.b <= 40
+    )));
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawText {
+            text,
+            ..
+        } if text == "GAME OVER"
+    )));
+}
+
+#[test]
 fn runtime_core_renders_visible_view_as_canvas_frame() {
     let mut package = sample_package();
     package.rooms[0].width = 2400;

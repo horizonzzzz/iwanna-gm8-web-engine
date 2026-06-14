@@ -275,6 +275,14 @@ pub struct RuntimeTickPhaseSnapshot {
     pub total_nanos: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RuntimeDeathFeedback {
+    pub room_id: usize,
+    pub x: f64,
+    pub y: f64,
+    pub started_tick: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct RuntimeSnapshot {
     pub status: RuntimeStatus,

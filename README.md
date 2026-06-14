@@ -183,8 +183,10 @@ Current browser controls for the WASM runtime path:
 - use `ArrowLeft` / `A` for left
 - use `ArrowRight` / `D` for right
 - use `Space` / `ArrowUp` / `W` for jump
-- use `R` for restart
+- use `R` for restart when the package/runtime has not bound a different restart key
 - the WASM path now auto-runs at 60 Hz; use `Pause` to pause and `Resume` to continue
+
+The runtime-core restart path checks runtime/package globals such as `global.restartbutton` and `global.resetbutton` before falling back to `R`. Hazard death currently renders a narrow browser-visible feedback overlay with red splatter rectangles and `GAME OVER` text; this is diagnostic feedback, not full original death object/draw-event parity.
 
 Important local-only paths:
 

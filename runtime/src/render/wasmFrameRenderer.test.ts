@@ -80,6 +80,15 @@ const sampleFrame: WasmRuntimeFrame = {
       height: 9,
       colour: [96, 112, 138, 255],
     },
+    {
+      kind: 'drawText',
+      text: 'GAME OVER',
+      x: 160,
+      y: 88,
+      size: 32,
+      colour: [232, 36, 48, 220],
+      align: 'center',
+    },
     { kind: 'present' },
   ],
 };
@@ -94,16 +103,21 @@ describe('renderWasmFrame', () => {
     const translate = vi.fn();
     const rotate = vi.fn();
     const scale = vi.fn();
+    const fillText = vi.fn();
     const context = {
       clearRect,
       fillRect,
       drawImage,
+      fillText,
       save,
       restore,
       translate,
       rotate,
       scale,
       fillStyle: '',
+      font: '',
+      textAlign: '',
+      textBaseline: '',
     };
 
     const canvas = {
@@ -126,29 +140,39 @@ describe('renderWasmFrame', () => {
     expect(fillRect).toHaveBeenNthCalledWith(1, 0, 0, 320, 240);
     expect(drawImage).toHaveBeenNthCalledWith(1, backgroundImage, 3, 4);
     expect(drawImage).toHaveBeenNthCalledWith(2, backgroundImage, 1, 2, 16, 18, 12, 14, 32, 27);
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalled();
     expect(translate).toHaveBeenCalledWith(10, 20);
     expect(rotate).toHaveBeenCalledWith(Math.PI / 2);
     expect(scale).toHaveBeenCalledWith(2, 3);
     expect(drawImage).toHaveBeenNthCalledWith(3, spriteImage, -5, -6);
     expect(fillRect).toHaveBeenNthCalledWith(2, 30, 40, 8, 9);
-    expect(restore).toHaveBeenCalledTimes(1);
+    expect(fillText).toHaveBeenCalledWith('GAME OVER', 160, 88);
+    expect(context.font).toBe('700 32px sans-serif');
+    expect(context.textAlign).toBe('center');
+    expect(context.textBaseline).toBe('middle');
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(restore).toHaveBeenCalledTimes(2);
   });
 
   it('does not reset canvas dimensions when the frame size is unchanged', async () => {
     const clearRect = vi.fn();
     const fillRect = vi.fn();
     const drawImage = vi.fn();
+    const fillText = vi.fn();
     const context = {
       clearRect,
       fillRect,
       drawImage,
+      fillText,
       save: vi.fn(),
       restore: vi.fn(),
       translate: vi.fn(),
       rotate: vi.fn(),
       scale: vi.fn(),
       fillStyle: '',
+      font: '',
+      textAlign: '',
+      textBaseline: '',
     };
 
     let width = 320;

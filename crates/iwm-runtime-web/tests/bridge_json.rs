@@ -60,6 +60,19 @@ fn bridge_frame_json_preserves_draw_command_wire_shape() {
                     a: 253,
                 },
             },
+            BridgeDrawCommand::DrawText {
+                text: "GAME OVER".into(),
+                x: 160,
+                y: 88,
+                size: 32,
+                colour: BridgeRgba8 {
+                    r: 232,
+                    g: 36,
+                    b: 48,
+                    a: 220,
+                },
+                align: "center".into(),
+            },
             BridgeDrawCommand::Present,
         ],
     })
@@ -115,5 +128,13 @@ fn bridge_frame_json_preserves_draw_command_wire_shape() {
     assert_eq!(commands[4].get("width"), Some(&json!(3)));
     assert_eq!(commands[4].get("height"), Some(&json!(4)));
 
-    assert_eq!(commands[5], json!({ "kind": "present" }));
+    assert_eq!(commands[5].get("kind"), Some(&json!("drawText")));
+    assert_eq!(commands[5].get("text"), Some(&json!("GAME OVER")));
+    assert_eq!(commands[5].get("x"), Some(&json!(160)));
+    assert_eq!(commands[5].get("y"), Some(&json!(88)));
+    assert_eq!(commands[5].get("size"), Some(&json!(32)));
+    assert_eq!(commands[5].get("align"), Some(&json!("center")));
+    assert_eq!(commands[5].get("colour"), Some(&json!([232, 36, 48, 220])));
+
+    assert_eq!(commands[6], json!({ "kind": "present" }));
 }

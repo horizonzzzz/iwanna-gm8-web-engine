@@ -88,6 +88,14 @@ pub enum RuntimeDrawCommand {
         height: u32,
         colour: Rgba8,
     },
+    DrawText {
+        text: String,
+        x: i32,
+        y: i32,
+        size: u32,
+        colour: Rgba8,
+        align: String,
+    },
     Present,
 }
 

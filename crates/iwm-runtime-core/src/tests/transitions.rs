@@ -1,6 +1,6 @@
 use iwm_runtime_host::{ButtonState, RuntimeButton};
 
-use crate::{RuntimeCore, RuntimeStatus};
+use crate::{RuntimeCore, RuntimeStatus, RuntimeValue};
 
 use super::support::{capture_jump_trace, host, sample_package};
 
@@ -190,6 +190,70 @@ fn core_emits_restart_request_diagnostic_on_restart_press_edge() {
         .diagnostics()
         .iter()
         .any(|diagnostic| diagnostic.code == "runtime-room-restart-requested"));
+}
+
+#[test]
+fn core_uses_runtime_bound_restart_key_before_default_r() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    core.globals.insert(
+        "global.restartbutton".into(),
+        RuntimeValue::Number(0x53 as f64),
+    );
+    let mut host = host();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x27),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    host.input.replace_button_states([(
+        RuntimeButton::Keyboard(0x52),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    )]);
+    core.tick(&mut host).unwrap();
+
+    let player_after_r = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert!(
+        player_after_r.x > 12.0,
+        "default R should not reset when global.restartbutton is bound elsewhere"
+    );
+
+    host.input.replace_button_states([(
+        RuntimeButton::Keyboard(0x53),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    )]);
+    core.tick(&mut host).unwrap();
+
+    let player_after_bound_key = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        (player_after_bound_key.x, player_after_bound_key.y),
+        (12.0, 24.0)
+    );
 }
 
 #[test]
