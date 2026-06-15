@@ -102,7 +102,7 @@ export function App(): JSX.Element {
         backendStatus={shell.backendStatus}
       />
       <section className="mx-auto flex w-full max-w-[1800px] flex-col gap-4 px-6 py-6">
-        <CanvasStage ref={shell.canvasRef} error={shell.error} />
+        <CanvasStage ref={shell.canvasRef} error={shell.error} width={shell.displayWidth} height={shell.displayHeight} />
         <RuntimeHud cards={hudCards} />
         <DebugReportPanel title="Debug Report" report={debugReport} />
         <InspectorTabs pkg={shell.loadedPackage} />

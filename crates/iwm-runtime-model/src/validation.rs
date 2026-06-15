@@ -83,6 +83,11 @@ pub enum RuntimePackageValidationError {
         block_id: String,
         missing_from: String,
     },
+    IncompleteManifestDisplay {
+        display_source: bool,
+        display_width: bool,
+        display_height: bool,
+    },
 }
 
 pub fn validate_runtime_package(
@@ -90,6 +95,7 @@ pub fn validate_runtime_package(
 ) -> RuntimePackageValidationReport {
     let mut errors = Vec::new();
 
+    validate_manifest_display(&package.manifest, &mut errors);
     validate_manifest_counts(package, &mut errors);
 
     let room_ids = package
@@ -252,6 +258,25 @@ pub fn validate_runtime_package(
         valid: errors.is_empty(),
         errors,
     }
+}
+
+fn validate_manifest_display(
+    manifest: &RuntimeManifest,
+    errors: &mut Vec<RuntimePackageValidationError>,
+) {
+    let has_source = manifest.display_source.is_some();
+    let has_width = manifest.display_width.is_some();
+    let has_height = manifest.display_height.is_some();
+
+    if has_source == has_width && has_width == has_height {
+        return;
+    }
+
+    errors.push(RuntimePackageValidationError::IncompleteManifestDisplay {
+        display_source: has_source,
+        display_width: has_width,
+        display_height: has_height,
+    });
 }
 
 pub fn read_runtime_package_dir(

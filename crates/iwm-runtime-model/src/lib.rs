@@ -14,6 +14,13 @@ pub enum CompatibilityLevel {
     Blocked,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeDisplaySource {
+    ExeResolution,
+    DefaultRoom,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeManifest {
     pub format_version: u32,
@@ -33,6 +40,12 @@ pub struct RuntimeManifest {
     pub sound_count: usize,
     pub resource_index_path: String,
     pub warnings: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_source: Option<RuntimeDisplaySource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_height: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

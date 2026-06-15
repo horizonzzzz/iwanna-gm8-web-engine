@@ -17,6 +17,12 @@ export type RuntimeManifest = {
   sound_count: number;
   resource_index_path: string;
   warnings: string[];
+  /** Source of the manifest display size. */
+  display_source?: 'exe-resolution' | 'default-room';
+  /** Manifest display width, from EXE resolution or default-room fallback. */
+  display_width?: number;
+  /** Manifest display height, from EXE resolution or default-room fallback. */
+  display_height?: number;
 };
 
 export type ResourceIndex = {

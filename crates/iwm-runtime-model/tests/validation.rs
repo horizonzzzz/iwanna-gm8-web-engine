@@ -3,8 +3,8 @@ use iwm_runtime_model::{
     LogicBlock, LoweredLogicEntry, LoweredLogicFile, ObjectDefinition, ObjectEventEntry,
     RawCodeAction, RawLogicEventBinding, RawLogicFile, RawLogicOwner, RawLogicOwnerKind,
     ResourceIndex, RoomBackgroundLayer, RoomDefinition, RoomInstancePlacement, RoomTilePlacement,
-    RuntimeManifest, RuntimePackageContract, RuntimePackageValidationError, ScriptIrFile,
-    SpriteResource,
+    RuntimeDisplaySource, RuntimeManifest, RuntimePackageContract, RuntimePackageValidationError,
+    ScriptIrFile, SpriteResource,
 };
 
 fn valid_sparse_package() -> RuntimePackageContract {
@@ -26,6 +26,9 @@ fn valid_sparse_package() -> RuntimePackageContract {
             sound_count: 0,
             resource_index_path: "resources/index.json".into(),
             warnings: vec![],
+            display_source: None,
+            display_width: None,
+            display_height: None,
         },
         rooms: vec![RoomDefinition {
             id: 300,
@@ -246,6 +249,44 @@ fn accepts_hidden_room_background_layers_that_reference_missing_resources() {
         "expected hidden layer to be ignored, got {report:?}"
     );
     assert!(report.errors.is_empty());
+}
+
+#[test]
+fn rejects_manifest_display_width_without_height() {
+    let mut package = valid_sparse_package();
+    package.manifest.display_source = Some(RuntimeDisplaySource::ExeResolution);
+    package.manifest.display_width = Some(640);
+
+    let report = validate_runtime_package(&package);
+
+    assert!(!report.valid);
+    assert_eq!(
+        report.errors,
+        vec![RuntimePackageValidationError::IncompleteManifestDisplay {
+            display_source: true,
+            display_width: true,
+            display_height: false,
+        }]
+    );
+}
+
+#[test]
+fn rejects_manifest_display_size_without_source() {
+    let mut package = valid_sparse_package();
+    package.manifest.display_width = Some(640);
+    package.manifest.display_height = Some(480);
+
+    let report = validate_runtime_package(&package);
+
+    assert!(!report.valid);
+    assert_eq!(
+        report.errors,
+        vec![RuntimePackageValidationError::IncompleteManifestDisplay {
+            display_source: false,
+            display_width: true,
+            display_height: true,
+        }]
+    );
 }
 
 #[test]

@@ -48,9 +48,9 @@ function defaultInputTrace(): WasmRuntimeBridgeSnapshot['inputTrace'] {
   };
 }
 
-function clearCanvas(canvas: HTMLCanvasElement): void {
-  canvas.width = 960;
-  canvas.height = 540;
+function clearCanvas(canvas: HTMLCanvasElement, width = 800, height = 600): void {
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) {
     return;
@@ -167,7 +167,7 @@ export function useRuntimeShell() {
         return;
       }
 
-      clearCanvas(canvas);
+      clearCanvas(canvas, pkg.manifest.display_width, pkg.manifest.display_height);
     },
     []
   );
@@ -409,6 +409,9 @@ export function useRuntimeShell() {
     return () => stopAutoTick();
   }, [stopAutoTick]);
 
+  const displayWidth = loadedPackage?.manifest.display_width ?? 800;
+  const displayHeight = loadedPackage?.manifest.display_height ?? 600;
+
   return {
     packagePath,
     setPackagePath,
@@ -431,5 +434,7 @@ export function useRuntimeShell() {
     tickRuntimeOnce,
     startAutoTick,
     stopAutoTick,
+    displayWidth,
+    displayHeight,
   };
 }

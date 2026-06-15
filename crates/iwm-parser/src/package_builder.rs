@@ -1,7 +1,10 @@
 use crate::gm8_adapter::read_gm8_assets;
 use crate::gml_lowering::lower_raw_logic_file;
 use crate::logic_export::export_rooms_and_logic;
-use crate::models::{AnalysisReport, CompatibilityLevel, LogicOp, RawLogicFile, RuntimeManifest};
+use crate::models::{
+    AnalysisReport, CompatibilityLevel, LogicOp, RawLogicFile, RuntimeDisplaySource,
+    RuntimeManifest,
+};
 use crate::raw_logic_export::export_raw_logic;
 use crate::resource_export::export_resources;
 use crate::LoweredLogicStatement;
@@ -124,6 +127,8 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
         unsupported_features: vec!["logic-execution-not-yet-implemented".into()],
     };
 
+    let display = manifest_display_metadata(&assets.settings, &room_order, &rooms);
+
     let manifest = RuntimeManifest {
         format_version: 1,
         package_kind: "runtime-v1".into(),
@@ -148,6 +153,9 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
         sound_count: resource_index.sounds.len(),
         resource_index_path: "resources/index.json".into(),
         warnings,
+        display_source: display.source,
+        display_width: display.dimensions.map(|(w, _)| w),
+        display_height: display.dimensions.map(|(_, h)| h),
     };
 
     write_json(output_dir.join("manifest.json"), &manifest)?;
@@ -163,6 +171,63 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     )?;
 
     Ok(())
+}
+
+// Manifest display metadata source and dimensions.
+//
+/// Index 0 = No Change → returns None.
+/// Indices 1-6 map to standard resolutions defined in gm8exe settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ManifestDisplayMetadata {
+    source: Option<RuntimeDisplaySource>,
+    dimensions: Option<(u32, u32)>,
+}
+
+fn manifest_display_metadata(
+    settings: &gm8exe::settings::Settings,
+    room_order: &[usize],
+    rooms: &[crate::models::RoomDefinition],
+) -> ManifestDisplayMetadata {
+    if settings.set_resolution {
+        if let Some(dimensions) = resolution_to_dimensions(settings.resolution) {
+            return ManifestDisplayMetadata {
+                source: Some(RuntimeDisplaySource::ExeResolution),
+                dimensions: Some(dimensions),
+            };
+        }
+    }
+
+    let dimensions = default_room_dimensions(room_order, rooms);
+    ManifestDisplayMetadata {
+        source: dimensions.map(|_| RuntimeDisplaySource::DefaultRoom),
+        dimensions,
+    }
+}
+
+fn default_room_dimensions(
+    room_order: &[usize],
+    rooms: &[crate::models::RoomDefinition],
+) -> Option<(u32, u32)> {
+    let default_id = room_order
+        .first()
+        .copied()
+        .or_else(|| rooms.first().map(|room| room.id))?;
+    rooms
+        .iter()
+        .find(|room| room.id == default_id)
+        .map(|room| (room.width, room.height))
+}
+
+fn resolution_to_dimensions(index: u32) -> Option<(u32, u32)> {
+    match index {
+        1 => Some((320, 240)),
+        2 => Some((640, 480)),
+        3 => Some((800, 600)),
+        4 => Some((1024, 768)),
+        5 => Some((1280, 1024)),
+        6 => Some((1600, 1200)),
+        _ => None,
+    }
 }
 
 fn normalized_room_order(
@@ -203,4 +268,94 @@ fn write_json<T: Serialize>(path: impl AsRef<Path>, value: &T) -> Result<()> {
     fs::write(path.as_ref(), bytes)
         .with_context(|| format!("failed to write {}", path.as_ref().display()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{RoomDefinition, RuntimeDisplaySource};
+    use gm8exe::settings::Settings;
+
+    fn settings_with_resolution(set_resolution: bool, resolution: u32) -> Settings {
+        Settings {
+            fullscreen: false,
+            scaling: 0,
+            interpolate_pixels: false,
+            clear_colour: 0,
+            allow_resize: false,
+            window_on_top: false,
+            dont_draw_border: false,
+            dont_show_buttons: false,
+            display_cursor: false,
+            freeze_on_lose_focus: false,
+            disable_screensaver: false,
+            force_cpu_render: false,
+            set_resolution,
+            colour_depth: 0,
+            resolution,
+            frequency: 0,
+            vsync: false,
+            esc_close_game: false,
+            treat_close_as_esc: false,
+            f1_help_menu: false,
+            f4_fullscreen_toggle: false,
+            f5_save_f6_load: false,
+            f9_screenshot: false,
+            priority: 0,
+            custom_load_image: None,
+            transparent: false,
+            translucency: 0,
+            loading_bar: 0,
+            backdata: None,
+            frontdata: None,
+            scale_progress_bar: false,
+            show_error_messages: false,
+            log_errors: false,
+            always_abort: false,
+            zero_uninitialized_vars: false,
+            error_on_uninitialized_args: false,
+            swap_creation_events: false,
+        }
+    }
+
+    fn room(id: usize, width: u32, height: u32) -> RoomDefinition {
+        RoomDefinition {
+            id,
+            name: format!("room{id}"),
+            width,
+            height,
+            speed: 60,
+            persistent: false,
+            backgrounds: vec![],
+            views_enabled: false,
+            views: vec![],
+            tiles: vec![],
+            instances: vec![],
+            creation_block_id: None,
+            playable: false,
+            transition_targets: vec![],
+        }
+    }
+
+    #[test]
+    fn manifest_display_metadata_uses_exe_resolution_when_enabled() {
+        let settings = settings_with_resolution(true, 2);
+        let rooms = vec![room(7, 320, 240)];
+
+        let display = manifest_display_metadata(&settings, &[7], &rooms);
+
+        assert_eq!(display.source, Some(RuntimeDisplaySource::ExeResolution));
+        assert_eq!(display.dimensions, Some((640, 480)));
+    }
+
+    #[test]
+    fn manifest_display_metadata_falls_back_to_default_room_dimensions() {
+        let settings = settings_with_resolution(false, 0);
+        let rooms = vec![room(7, 320, 240), room(9, 800, 600)];
+
+        let display = manifest_display_metadata(&settings, &[9, 7], &rooms);
+
+        assert_eq!(display.source, Some(RuntimeDisplaySource::DefaultRoom));
+        assert_eq!(display.dimensions, Some((800, 600)));
+    }
 }

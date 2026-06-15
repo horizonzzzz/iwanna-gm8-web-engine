@@ -24,6 +24,9 @@ pub fn sample_package() -> RuntimePackage {
             sound_count: 0,
             resource_index_path: "resources/index.json".into(),
             warnings: vec![],
+            display_source: None,
+            display_width: None,
+            display_height: None,
         },
         rooms: vec![
             RoomDefinition {

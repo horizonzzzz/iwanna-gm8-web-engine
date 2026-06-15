@@ -30,6 +30,9 @@ fn runtime_manifest_serializes_expected_fields() {
         sound_count: 6,
         resource_index_path: "resources/index.json".into(),
         warnings: vec!["missing dll support".into()],
+        display_source: None,
+        display_width: None,
+        display_height: None,
     };
 
     let json = serde_json::to_value(&manifest).unwrap();

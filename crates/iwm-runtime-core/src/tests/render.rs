@@ -1,5 +1,7 @@
 use iwm_runtime_host::RuntimeDrawCommand;
-use iwm_runtime_model::{ObjectDefinition, ObjectEventEntry, RoomInstancePlacement};
+use iwm_runtime_model::{
+    ObjectDefinition, ObjectEventEntry, RoomInstancePlacement, RuntimeDisplaySource,
+};
 
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore};
 
@@ -258,6 +260,45 @@ fn runtime_core_renders_visible_view_as_canvas_frame() {
             ..
         }
     )));
+}
+
+#[test]
+fn runtime_core_uses_exe_display_size_for_room_without_active_view() {
+    let mut package = sample_package();
+    package.manifest.display_source = Some(RuntimeDisplaySource::ExeResolution);
+    package.manifest.display_width = Some(640);
+    package.manifest.display_height = Some(480);
+    package.rooms[0].width = 320;
+    package.rooms[0].height = 240;
+    package.rooms[0].views_enabled = false;
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert_eq!((frame.width, frame.height), (640, 480));
+}
+
+#[test]
+fn runtime_core_prefers_active_view_over_exe_display_size() {
+    let mut package = sample_package();
+    package.manifest.display_source = Some(RuntimeDisplaySource::ExeResolution);
+    package.manifest.display_width = Some(640);
+    package.manifest.display_height = Some(480);
+    package.rooms[0].views_enabled = true;
+    package.rooms[0].views[0].visible = true;
+    package.rooms[0].views[0].port_w = 800;
+    package.rooms[0].views[0].port_h = 600;
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert_eq!((frame.width, frame.height), (800, 600));
 }
 
 #[test]

@@ -1,4 +1,5 @@
 use iwm_runtime_host::{Rgba8, RuntimeDrawCommand, RuntimeRenderFrame};
+use iwm_runtime_model::RuntimeDisplaySource;
 
 use crate::helpers::as_number;
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState};
@@ -81,11 +82,25 @@ impl RuntimeCore {
             .ok_or(RuntimeCoreError::RoomMissing(room.room_id))?;
         let active_view = active_view_for_room(room);
         let active_bounds = active_view.map(ActiveView::source_bounds);
+        let manifest_display = match (
+            self.package.manifest.display_source,
+            self.package.manifest.display_width,
+            self.package.manifest.display_height,
+        ) {
+            (
+                Some(RuntimeDisplaySource::ExeResolution),
+                Some(display_width),
+                Some(display_height),
+            ) => Some((display_width, display_height)),
+            _ => None,
+        };
         let frame_width = active_view
             .map(ActiveView::frame_width)
+            .or_else(|| manifest_display.map(|(width, _)| width))
             .unwrap_or(room.width);
         let frame_height = active_view
             .map(ActiveView::frame_height)
+            .or_else(|| manifest_display.map(|(_, height)| height))
             .unwrap_or(room.height);
 
         // Pre-size for clear + backgrounds + tiles + per-instance sprites +
