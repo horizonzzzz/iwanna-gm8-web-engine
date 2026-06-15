@@ -32,3 +32,6 @@ game_errors.log
 
 # Worktrees
 .worktrees/
+
+# graphify
+/graphify-out
