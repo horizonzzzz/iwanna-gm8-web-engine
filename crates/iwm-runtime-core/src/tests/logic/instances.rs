@@ -326,6 +326,294 @@ fn runtime_instance_create_event_can_see_created_instance() {
 }
 
 #[test]
+fn instance_create_events_remain_visible_across_multiple_queued_creates() {
+    let mut package = sample_package();
+    package.objects.push(ObjectDefinition {
+        id: 4,
+        name: "obj_spawned".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 0,
+            sub_event: 0,
+            event_tag: "create".into(),
+            block_id: "object:4:event:0:0".into(),
+            action_count: 0,
+        }],
+    });
+    package.manifest.object_count = package.objects.len();
+    append_lowered_entry(
+        &mut package,
+        "object:4:event:0:0".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("saw_spawned_count".into()),
+            value: LoweredLogicExpr::Call {
+                name: "instance_number".into(),
+                args: vec![LoweredLogicExpr::Identifier("obj_spawned".into())],
+            },
+        }],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Repeat {
+            count: LoweredLogicExpr::LiteralNumber(3.0),
+            body: vec![LoweredLogicStatement::FunctionCall {
+                name: "instance_create".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(80.0),
+                    LoweredLogicExpr::LiteralNumber(96.0),
+                    LoweredLogicExpr::Identifier("obj_spawned".into()),
+                ],
+            }],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let created = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .filter(|instance| instance.object_name == "obj_spawned")
+        .collect::<Vec<_>>();
+    assert_eq!(created.len(), 3);
+    let seen_counts = created
+        .iter()
+        .map(|instance| instance.vars.get("saw_spawned_count"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        seen_counts,
+        vec![
+            Some(&RuntimeValue::Number(1.0)),
+            Some(&RuntimeValue::Number(2.0)),
+            Some(&RuntimeValue::Number(3.0))
+        ]
+    );
+}
+
+#[test]
+fn instance_create_nested_queue_keeps_instance_counts_visible_in_order() {
+    let mut package = sample_package();
+    package.objects.push(ObjectDefinition {
+        id: 4,
+        name: "obj_spawned".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 0,
+            sub_event: 0,
+            event_tag: "create".into(),
+            block_id: "object:4:event:0:0".into(),
+            action_count: 0,
+        }],
+    });
+    package.manifest.object_count = package.objects.len();
+    append_lowered_entry(
+        &mut package,
+        "object:4:event:0:0".into(),
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("spawned_count".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "instance_number".into(),
+                    args: vec![LoweredLogicExpr::Identifier("obj_spawned".into())],
+                },
+            },
+            LoweredLogicStatement::Conditional {
+                condition: LoweredLogicExpr::BinaryExpr {
+                    op: "==".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("spawned_count".into())),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                },
+                then_branch: vec![LoweredLogicStatement::FunctionCall {
+                    name: "instance_create".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralNumber(112.0),
+                        LoweredLogicExpr::LiteralNumber(96.0),
+                        LoweredLogicExpr::Identifier("obj_spawned".into()),
+                    ],
+                }],
+                else_branch: vec![],
+            },
+        ],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Repeat {
+            count: LoweredLogicExpr::LiteralNumber(2.0),
+            body: vec![LoweredLogicStatement::FunctionCall {
+                name: "instance_create".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(80.0),
+                    LoweredLogicExpr::LiteralNumber(96.0),
+                    LoweredLogicExpr::Identifier("obj_spawned".into()),
+                ],
+            }],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let created = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .filter(|instance| instance.object_name == "obj_spawned")
+        .collect::<Vec<_>>();
+    assert_eq!(created.len(), 3);
+    let seen_counts = created
+        .iter()
+        .map(|instance| instance.vars.get("spawned_count"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        seen_counts,
+        vec![
+            Some(&RuntimeValue::Number(1.0)),
+            Some(&RuntimeValue::Number(2.0)),
+            Some(&RuntimeValue::Number(3.0))
+        ]
+    );
+}
+
+#[test]
+fn destroyed_create_instance_is_not_counted_by_later_queued_creates() {
+    let mut package = sample_package();
+    package.objects.push(ObjectDefinition {
+        id: 4,
+        name: "obj_spawned".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 0,
+            sub_event: 0,
+            event_tag: "create".into(),
+            block_id: "object:4:event:0:0".into(),
+            action_count: 0,
+        }],
+    });
+    package.manifest.object_count = package.objects.len();
+    append_lowered_entry(
+        &mut package,
+        "object:4:event:0:0".into(),
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("spawned_count".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "instance_number".into(),
+                    args: vec![LoweredLogicExpr::Identifier("obj_spawned".into())],
+                },
+            },
+            LoweredLogicStatement::Conditional {
+                condition: LoweredLogicExpr::BinaryExpr {
+                    op: "&&".into(),
+                    left: Box::new(LoweredLogicExpr::BinaryExpr {
+                        op: "==".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("spawned_count".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                    }),
+                    right: Box::new(LoweredLogicExpr::BinaryExpr {
+                        op: "==".into(),
+                        left: Box::new(LoweredLogicExpr::MemberAccess {
+                            target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                            member: "first_spawn_destroyed".into(),
+                        }),
+                        right: Box::new(LoweredLogicExpr::LiteralBool(false)),
+                    }),
+                },
+                then_branch: vec![
+                    LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::MemberAccess {
+                            target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                            member: "first_spawn_destroyed".into(),
+                        },
+                        value: LoweredLogicExpr::LiteralBool(true),
+                    },
+                    LoweredLogicStatement::FunctionCall {
+                        name: "instance_destroy".into(),
+                        args: vec![],
+                    },
+                ],
+                else_branch: vec![],
+            },
+        ],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Repeat {
+            count: LoweredLogicExpr::LiteralNumber(2.0),
+            body: vec![LoweredLogicStatement::FunctionCall {
+                name: "instance_create".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(80.0),
+                    LoweredLogicExpr::LiteralNumber(96.0),
+                    LoweredLogicExpr::Identifier("obj_spawned".into()),
+                ],
+            }],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.globals.insert(
+        "global.first_spawn_destroyed".into(),
+        RuntimeValue::Bool(false),
+    );
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let created = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .filter(|instance| instance.object_name == "obj_spawned")
+        .collect::<Vec<_>>();
+    assert_eq!(created.len(), 2);
+    assert_eq!(
+        created[0].vars.get("spawned_count"),
+        Some(&RuntimeValue::Number(1.0))
+    );
+    assert!(!created[0].alive);
+    assert_eq!(
+        created[1].vars.get("spawned_count"),
+        Some(&RuntimeValue::Number(1.0))
+    );
+    assert!(created[1].alive);
+}
+
+#[test]
 fn repeat_instance_create_expression_assigns_members_to_created_instances_before_motion() {
     let mut package = sample_package();
     package.objects[1].name = "blood2".into();

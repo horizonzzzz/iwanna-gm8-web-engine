@@ -291,4 +291,74 @@ describe('wasm bridge loader', () => {
 
     expect((await bridge.frame()).tick).toBe(1);
   });
+
+  it('wraps combined step export when wasm provides it', async () => {
+    const encodedStep = new TextEncoder().encode(
+      JSON.stringify({
+        snapshot: {
+          tick: 1,
+          roomId: 0,
+          diagnostics: [],
+          inputTrace: {
+            jumpButtonKey: 32,
+            jumpPressed: false,
+            jumpJustPressed: false,
+            jumpJustReleased: false,
+            activeKeys: []
+          },
+          player: null
+        },
+        frame: {
+          tick: 1,
+          roomId: 0,
+          width: 320,
+          height: 240,
+          commands: [{ kind: 'present' }]
+        }
+      })
+    );
+
+    const memory = {
+      buffer: new ArrayBuffer(4096)
+    };
+    const pointer = 1024;
+    let lastResultLength = encodedStep.byteLength;
+    const writeStep = () => {
+      new Uint8Array(memory.buffer).fill(0, pointer, pointer + encodedStep.byteLength + 1);
+      new Uint8Array(memory.buffer).set(encodedStep, pointer);
+      lastResultLength = encodedStep.byteLength;
+    };
+
+    const bridge = makeWasmRuntimeBridge({
+      memory,
+      iwm_alloc: () => 8,
+      iwm_free: () => undefined,
+      iwm_boot_json: () => pointer,
+      iwm_set_input_json: () => pointer,
+      iwm_step_json: () => {
+        writeStep();
+        return pointer;
+      },
+      iwm_tick: () => pointer,
+      iwm_reset: () => pointer,
+      iwm_select_room: () => pointer,
+      iwm_snapshot_json: () => pointer,
+      iwm_frame_json: () => pointer,
+      iwm_diagnostics_json: () => pointer,
+      iwm_last_result_len: () => lastResultLength,
+    });
+
+    const result = await bridge.step?.({
+      left: true,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false,
+    });
+
+    expect(result?.snapshot.tick).toBe(1);
+    expect(result?.frame.tick).toBe(1);
+    expect(result?.frame.commands[0]?.kind).toBe('present');
+  });
 });

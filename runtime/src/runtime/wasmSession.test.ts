@@ -16,6 +16,10 @@ function makeBridge(): WasmRuntimeBridge {
     snapshot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
     frame: vi.fn(async () => ({ tick: 1, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] })),
     setInput: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
+    step: vi.fn(async () => ({
+      snapshot: { tick: 1, roomId: 0, diagnostics: [], inputTrace },
+      frame: { tick: 1, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] }
+    })),
     tick: vi.fn(async () => ({ tick: 1, roomId: 0, diagnostics: [], inputTrace })),
     reset: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
     selectRoom: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
@@ -31,7 +35,7 @@ describe('WasmRuntimeSession', () => {
 
     const result = await session.stepOnce();
 
-    expect(bridge.setInput).toHaveBeenCalledWith({
+    expect(bridge.step).toHaveBeenCalledWith({
       left: true,
       right: false,
       jump: true,
@@ -42,11 +46,12 @@ describe('WasmRuntimeSession', () => {
       keysPressed: [],
       keysReleased: [],
     });
-    expect(bridge.tick).toHaveBeenCalledWith(1);
-    expect(bridge.snapshot).toHaveBeenCalledTimes(1);
-    expect(bridge.frame).toHaveBeenCalledTimes(1);
+    expect(bridge.setInput).not.toHaveBeenCalled();
+    expect(bridge.tick).not.toHaveBeenCalled();
+    expect(bridge.snapshot).not.toHaveBeenCalled();
+    expect(bridge.frame).not.toHaveBeenCalled();
     expect(result.frame.width).toBe(320);
-    expect(result.snapshot.tick).toBe(0);
+    expect(result.snapshot.tick).toBe(1);
   });
 
   it('clears jump edge transitions after a step', async () => {
@@ -57,7 +62,7 @@ describe('WasmRuntimeSession', () => {
     await session.stepOnce();
     await session.stepOnce();
 
-    expect(bridge.setInput).toHaveBeenNthCalledWith(2, {
+    expect(bridge.step).toHaveBeenNthCalledWith(2, {
       left: false,
       right: false,
       jump: true,
@@ -77,7 +82,7 @@ describe('WasmRuntimeSession', () => {
 
     await session.stepOnce();
 
-    expect(bridge.setInput).toHaveBeenNthCalledWith(1, {
+    expect(bridge.step).toHaveBeenNthCalledWith(1, {
       left: false,
       right: false,
       jump: false,
@@ -92,7 +97,7 @@ describe('WasmRuntimeSession', () => {
     session.setInputState({ left: false, right: false, jump: false, restart: false, keysHeld: [0x10] });
     await session.stepOnce();
 
-    expect(bridge.setInput).toHaveBeenNthCalledWith(2, {
+    expect(bridge.step).toHaveBeenNthCalledWith(2, {
       left: false,
       right: false,
       jump: false,
@@ -114,7 +119,7 @@ describe('WasmRuntimeSession', () => {
 
     await session.stepOnce();
 
-    expect(bridge.setInput).toHaveBeenNthCalledWith(1, {
+    expect(bridge.step).toHaveBeenNthCalledWith(1, {
       left: false,
       right: false,
       jump: false,
@@ -140,7 +145,7 @@ describe('WasmRuntimeSession', () => {
     session.setInputState({ left: false, right: false, jump: false, restart: false, keysHeld: [0x10] });
     await session.stepOnce();
 
-    expect(bridge.setInput).toHaveBeenNthCalledWith(3, {
+    expect(bridge.step).toHaveBeenNthCalledWith(3, {
       left: false,
       right: false,
       jump: false,
@@ -151,5 +156,20 @@ describe('WasmRuntimeSession', () => {
       keysPressed: [0x10],
       keysReleased: [],
     });
+  });
+
+  it('falls back to legacy setInput/tick/snapshot/frame bridge calls when step is unavailable', async () => {
+    const bridge = makeBridge();
+    delete bridge.step;
+    const session = new WasmRuntimeSession(bridge);
+
+    session.setInputState({ left: true, right: false, jump: false, restart: false });
+    const result = await session.stepOnce();
+
+    expect(bridge.setInput).toHaveBeenCalledTimes(1);
+    expect(bridge.tick).toHaveBeenCalledWith(1);
+    expect(bridge.snapshot).toHaveBeenCalledTimes(1);
+    expect(bridge.frame).toHaveBeenCalledTimes(1);
+    expect(result.frame.tick).toBe(1);
   });
 });

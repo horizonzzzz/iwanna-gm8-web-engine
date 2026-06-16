@@ -32,6 +32,8 @@ pub struct RuntimeCore {
     pub(crate) cached_script_entries: HashMap<String, LoweredLogicEntry>,
     pub(crate) cached_room_order: Vec<usize>,
     pub(crate) cached_step_event_blocks: HashMap<usize, Vec<String>>,
+    pub(crate) cached_create_event_entries: HashMap<usize, Vec<LoweredLogicEntry>>,
+    pub(crate) cached_destroy_event_entries: HashMap<usize, Vec<LoweredLogicEntry>>,
     pub(crate) cached_collision_target_ids: HashMap<usize, Vec<usize>>,
     pub(crate) cached_collision_matching_object_ids: HashMap<usize, Vec<usize>>,
     /// Maps a lowercased object name to the full set of object ids that match or
@@ -117,6 +119,8 @@ impl RuntimeCore {
             cached_script_entries: HashMap::new(),
             cached_room_order: Vec::new(),
             cached_step_event_blocks: HashMap::new(),
+            cached_create_event_entries: HashMap::new(),
+            cached_destroy_event_entries: HashMap::new(),
             cached_collision_target_ids: HashMap::new(),
             cached_collision_matching_object_ids: HashMap::new(),
             place_target_ids_by_name: HashMap::new(),
@@ -145,6 +149,9 @@ impl RuntimeCore {
         core.cached_script_entries = core.lowered_script_entries();
         core.cached_room_order = core.runtime_room_order();
         core.cached_step_event_blocks = core.object_event_blocks_by_tag("step");
+        core.cached_create_event_entries = core.lowered_event_entries_by_tag_for_runtime("create");
+        core.cached_destroy_event_entries =
+            core.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
         core.cached_collision_target_ids = core.collision_target_ids_by_object_id();
         core.cached_collision_matching_object_ids = core.collision_matching_object_ids_by_target();
         core.place_target_ids_by_name = core.compute_place_target_ids_by_name();
@@ -536,8 +543,7 @@ impl RuntimeCore {
             .collect();
 
         let script_entries = &self.cached_script_entries;
-        let destroy_event_entries =
-            self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
+        let destroy_event_entries = &self.cached_destroy_event_entries;
         let button_states = host
             .active_buttons()
             .into_iter()
@@ -549,7 +555,7 @@ impl RuntimeCore {
             room.room_id
         };
         let known_files = crate::logic::sample_known_files(host);
-        let room_order = self.cached_room_order.clone();
+        let room_order = &self.cached_room_order;
 
         let mut instance = {
             let Some(room) = self.current_room.as_ref() else {
@@ -599,7 +605,7 @@ impl RuntimeCore {
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
                     collision_spatial_index,
                     room_instance_overlay: eval_overlay,
-                    room_order: &room_order,
+                    room_order,
                     known_files: &known_files,
                     other_instance: other_instance.as_ref(),
                     other_runtime_id: other_instance.as_ref().map(|instance| instance.runtime_id),

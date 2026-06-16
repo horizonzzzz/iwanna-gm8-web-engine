@@ -8,7 +8,7 @@ use iwm_runtime_host::{
 use std::path::{Path, PathBuf};
 
 use crate::translate::{bridge_snapshot, format_core_error};
-use crate::{BridgeFrameSnapshot, BridgeSnapshot, WebAudioHost, WebInputState};
+use crate::{BridgeFrameSnapshot, BridgeSnapshot, BridgeStepResult, WebAudioHost, WebInputState};
 
 #[derive(Debug)]
 struct WebRuntimeHostBoundary {
@@ -159,6 +159,13 @@ impl WebRuntimeHost {
         }
 
         Ok(bridge_snapshot(core.snapshot()))
+    }
+
+    pub fn step(&mut self, input: WebInputState) -> Result<BridgeStepResult, String> {
+        self.set_input(input);
+        let snapshot = self.tick(1)?;
+        let frame = self.frame_snapshot()?.clone();
+        Ok(BridgeStepResult { snapshot, frame })
     }
 
     pub fn reset(&mut self) -> Result<BridgeSnapshot, String> {

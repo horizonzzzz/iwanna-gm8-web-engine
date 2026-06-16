@@ -3,7 +3,7 @@ mod context;
 mod eval;
 mod statement;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use iwm_runtime_host::RuntimeHost;
 use iwm_runtime_model::ObjectDefinition;
@@ -38,8 +38,7 @@ impl RuntimeCore {
         let step_event_blocks = &self.cached_step_event_blocks;
         let script_entries = &self.cached_script_entries;
         let room_order = &self.cached_room_order;
-        let destroy_event_entries =
-            self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
+        let destroy_event_entries = &self.cached_destroy_event_entries;
         let button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
         let known_files = sample_known_files(host);
         let (current_room_id, dispatches, room_instance_indices_by_object_id) = {
@@ -254,9 +253,13 @@ impl RuntimeCore {
         host: &mut H,
         creates: &mut Vec<RuntimeInstanceCreateRequest>,
     ) {
-        let create_event_entries = self.lowered_event_entries_by_tag_for_runtime("create");
-        while let Some(create) = creates.first().cloned() {
-            creates.remove(0);
+        let mut pending_creates: VecDeque<RuntimeInstanceCreateRequest> =
+            std::mem::take(creates).into();
+        let mut room_instance_indices_by_object_id = self
+            .current_room
+            .as_ref()
+            .map(|room| runtime_instance_indices_by_object_id_from_instances(&room.instances));
+        while let Some(create) = pending_creates.pop_front() {
             let Some(current_room_id) = self.current_room.as_ref().map(|room| room.room_id) else {
                 return;
             };
@@ -268,40 +271,52 @@ impl RuntimeCore {
             ) else {
                 continue;
             };
-            let Some(mut room_instances) = self
-                .current_room
-                .as_ref()
-                .map(|room| room.instances.clone())
+            let Some(room_instances) = self.current_room.as_ref().map(|room| &room.instances) else {
+                return;
+            };
+            let create_index = room_instances.len();
+            let Some(room_instance_indices_by_object_id) =
+                room_instance_indices_by_object_id.as_mut()
             else {
                 return;
             };
-            room_instances.push(instance.clone());
-            let room_instance_indices_by_object_id =
-                runtime_instance_indices_by_object_id_from_instances(&room_instances);
+            room_instance_indices_by_object_id
+                .entry(instance.object_id)
+                .or_default()
+                .push(create_index);
 
-            if let Some(entries) = create_event_entries.get(&instance.object_id) {
+            let create_entries = self
+                .cached_create_event_entries
+                .get(&instance.object_id)
+                .cloned();
+            if let Some(entries) = create_entries {
                 let script_entries = &self.cached_script_entries;
                 let button_states = HashMap::new();
                 let known_files = HashSet::new();
-                let room_order = self.cached_room_order.clone();
+                let room_order = &self.cached_room_order;
+                let committed_updates = HashMap::new();
                 let eval_context = RuntimeEvalContext {
                     current_room_id,
                     button_states: &button_states,
-                    room_instances: &room_instances,
+                    room_instances,
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
                     collision_spatial_index: None,
-                    room_instance_overlay: RuntimeRoomInstanceOverlay::empty(),
-                    room_order: &room_order,
+                    room_instance_overlay: RuntimeRoomInstanceOverlay::with_current(
+                        &committed_updates,
+                        &[],
+                        create_index,
+                        &instance,
+                    ),
+                    room_order,
                     known_files: &known_files,
                     other_instance: None,
                     other_runtime_id: None,
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                     room_ids_by_name: &self.room_ids_by_name,
                 };
-                let destroy_event_entries =
-                    self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
+                let destroy_event_entries = &self.cached_destroy_event_entries;
                 let mut room_instance_updates = Vec::new();
-                for entry in entries {
+                for entry in &entries {
                     crate::diagnostics::record_execution_trace(
                         host,
                         &mut self.diagnostics,
@@ -323,7 +338,7 @@ impl RuntimeCore {
                             host: &mut *host,
                             diagnostics: &mut self.diagnostics,
                             room_instance_updates: &mut room_instance_updates,
-                            room_instance_creates: &mut *creates,
+                            room_instance_creates: creates,
                             trace: RuntimeExecutionTrace {
                                 room_id: current_room_id,
                                 tick: self.tick,
@@ -365,6 +380,7 @@ impl RuntimeCore {
             let created_object_name = instance.object_name.clone();
             let created_x = instance.x;
             let created_y = instance.y;
+            let created_object_id = instance.object_id;
             if let Some(room) = self.current_room.as_mut() {
                 room.instances.push(instance);
             }
@@ -382,14 +398,24 @@ impl RuntimeCore {
                     created_y
                 ),
             );
+            room_instance_indices_by_object_id
+                .entry(created_object_id)
+                .or_default();
 
             if self.pending_room_reset || self.pending_room_transition.is_some() {
                 break;
             }
+
+            if !creates.is_empty() {
+                pending_creates.extend(std::mem::take(creates));
+            }
+        }
+        while let Some(create) = pending_creates.pop_front() {
+            creates.push(create);
         }
     }
 
-    fn lowered_event_entries_by_tag_for_runtime(
+    pub(crate) fn lowered_event_entries_by_tag_for_runtime(
         &self,
         event_tag: &str,
     ) -> HashMap<usize, Vec<LoweredLogicEntry>> {

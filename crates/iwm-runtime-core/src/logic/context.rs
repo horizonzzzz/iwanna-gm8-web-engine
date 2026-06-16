@@ -180,6 +180,16 @@ impl<'a> RuntimeRoomInstanceOverlay<'a> {
         }
         fallback
     }
+
+    fn extra_current_instance<'b>(&'b self, base_len: usize) -> Option<(usize, &'b RuntimeInstance)>
+    where
+        'a: 'b,
+    {
+        match &self.current_instance {
+            Some((index, instance)) if *index >= base_len => Some((*index, instance)),
+            _ => None,
+        }
+    }
 }
 
 impl RuntimeExecutionScope {
@@ -259,9 +269,12 @@ impl<'a> RuntimeEvalContext<'a> {
     }
 
     pub(crate) fn room_instance(&self, index: usize) -> Option<&RuntimeInstance> {
-        self.room_instances
-            .get(index)
-            .map(|fallback| self.room_instance_overlay.instance_at(index, fallback))
+        if let Some(fallback) = self.room_instances.get(index) {
+            return Some(self.room_instance_overlay.instance_at(index, fallback));
+        }
+        self.room_instance_overlay
+            .extra_current_instance(self.room_instances.len())
+            .and_then(|(extra_index, instance)| (extra_index == index).then_some(instance))
     }
 
     pub(crate) fn room_instances_iter(
@@ -276,6 +289,11 @@ impl<'a> RuntimeEvalContext<'a> {
                     self.room_instance_overlay.instance_at(index, instance),
                 )
             })
+            .chain(
+                self.room_instance_overlay
+                    .extra_current_instance(self.room_instances.len())
+                    .into_iter(),
+            )
     }
 
     pub(crate) fn room_instances_matching_object_ids<'b>(

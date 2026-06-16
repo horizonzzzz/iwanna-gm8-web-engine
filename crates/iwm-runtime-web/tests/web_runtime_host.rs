@@ -218,6 +218,35 @@ fn web_runtime_host_accepts_raw_virtual_key_input() {
 }
 
 #[test]
+fn web_runtime_host_step_returns_snapshot_and_frame_together() {
+    let mut host = WebRuntimeHost::new();
+    host.boot(sample_package()).unwrap();
+
+    let step = host
+        .step(WebInputState {
+            left: false,
+            right: true,
+            jump: false,
+            jump_pressed: false,
+            jump_released: false,
+            restart: false,
+            keys_held: vec![],
+            keys_pressed: vec![],
+            keys_released: vec![],
+        })
+        .unwrap();
+
+    assert_eq!(step.snapshot.tick, 1);
+    assert_eq!(step.frame.tick, 1);
+    assert_eq!(step.frame.width, 320);
+    assert!(step
+        .frame
+        .commands
+        .iter()
+        .any(|command| matches!(command, BridgeDrawCommand::Present)));
+}
+
+#[test]
 fn web_runtime_host_preserves_raw_key_edges_when_semantic_jump_is_false() {
     let mut host = WebRuntimeHost::new();
     host.boot(sample_package()).unwrap();

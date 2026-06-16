@@ -89,6 +89,38 @@ export async function renderWasmFrame(
   const backgroundPaths = makeBackgroundPathMap(basePath, resources);
   const spritePaths = makeSpriteFrameMap(basePath, resources);
 
+  // PHASE 1: Scan commands and collect unique images to preload
+  const imagesToLoad = new Set<string>();
+  for (const command of frame.commands) {
+    switch (command.kind) {
+      case 'drawBackground': {
+        const path = backgroundPaths.get(command.backgroundId);
+        if (path) {
+          imagesToLoad.add(path);
+        }
+        break;
+      }
+      case 'drawTile': {
+        const path = backgroundPaths.get(command.backgroundId);
+        if (path) {
+          imagesToLoad.add(path);
+        }
+        break;
+      }
+      case 'drawSprite': {
+        const sprite = spritePaths.get(command.spriteId);
+        if (sprite) {
+          imagesToLoad.add(sprite.imagePath);
+        }
+        break;
+      }
+    }
+  }
+
+  // PHASE 2: Preload all unique images in parallel
+  await Promise.all([...imagesToLoad].map(path => cache.getImage(path)));
+
+  // PHASE 3: Synchronous render loop (no await)
   for (const command of frame.commands) {
     switch (command.kind) {
       case 'clear':
@@ -96,33 +128,36 @@ export async function renderWasmFrame(
         context.fillStyle = rgbaToCss(command.colour);
         context.fillRect(0, 0, frame.width, frame.height);
         break;
+
       case 'drawBackground': {
         const path = backgroundPaths.get(command.backgroundId);
         if (!path) {
           continue;
         }
 
-        const image = await cache.getImage(path);
+        const image = cache.getCachedImage(path);
         drawBackground(context, frame, image, command);
         break;
       }
+
       case 'drawTile': {
         const path = backgroundPaths.get(command.backgroundId);
         if (!path) {
           continue;
         }
 
-        const image = await cache.getImage(path);
+        const image = cache.getCachedImage(path);
         drawTile(context, image, command);
         break;
       }
+
       case 'drawSprite': {
         const sprite = spritePaths.get(command.spriteId);
         if (!sprite) {
           continue;
         }
 
-        const image = await cache.getImage(sprite.imagePath);
+        const image = cache.getCachedImage(sprite.imagePath);
         context.save();
         context.translate(command.x, command.y);
         if (command.angleDegrees !== 0) {
@@ -135,10 +170,12 @@ export async function renderWasmFrame(
         context.restore();
         break;
       }
+
       case 'fillRect':
         context.fillStyle = rgbaToCss(command.colour);
         context.fillRect(command.x, command.y, command.width, command.height);
         break;
+
       case 'drawText':
         context.save();
         context.fillStyle = rgbaToCss(command.colour);
@@ -148,6 +185,7 @@ export async function renderWasmFrame(
         context.fillText(command.text, command.x, command.y);
         context.restore();
         break;
+
       case 'present':
         break;
     }

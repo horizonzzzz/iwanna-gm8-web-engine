@@ -89,18 +89,37 @@ export class WasmRuntimeSession {
   async stepOnce(): Promise<WasmRuntimeStepResult> {
     const input = { ...this.input };
     const runtimeStart = this.now();
-    const inputStart = this.now();
-    await this.bridge.setInput(input);
-    const inputMs = this.now() - inputStart;
-    const tickStart = this.now();
-    await this.bridge.tick(1);
-    const tickMs = this.now() - tickStart;
-    const snapshotStart = this.now();
-    const snapshot = await this.bridge.snapshot();
-    const snapshotMs = this.now() - snapshotStart;
-    const frameStart = this.now();
-    const frame = await this.bridge.frame();
-    const frameMs = this.now() - frameStart;
+    let snapshot: WasmRuntimeBridgeSnapshot;
+    let frame: WasmRuntimeFrame;
+    let inputMs = 0;
+    let tickMs = 0;
+    let snapshotMs = 0;
+    let frameMs = 0;
+
+    if (this.bridge.step) {
+      const stepStart = this.now();
+      const result = await this.bridge.step(input);
+      const stepMs = this.now() - stepStart;
+      inputMs = stepMs;
+      tickMs = 0;
+      snapshotMs = 0;
+      frameMs = 0;
+      snapshot = result.snapshot;
+      frame = result.frame;
+    } else {
+      const inputStart = this.now();
+      await this.bridge.setInput(input);
+      inputMs = this.now() - inputStart;
+      const tickStart = this.now();
+      await this.bridge.tick(1);
+      tickMs = this.now() - tickStart;
+      const snapshotStart = this.now();
+      snapshot = await this.bridge.snapshot();
+      snapshotMs = this.now() - snapshotStart;
+      const frameStart = this.now();
+      frame = await this.bridge.frame();
+      frameMs = this.now() - frameStart;
+    }
     const runtimeMs = this.now() - runtimeStart;
     this.pendingJumpPressed = false;
     this.pendingJumpReleased = false;

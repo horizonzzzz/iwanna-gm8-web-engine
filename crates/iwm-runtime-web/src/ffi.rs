@@ -5,6 +5,11 @@ use crate::result_store::{
 };
 use crate::{WebInputState, WebRuntimeHost};
 
+fn parse_web_input_state(pointer: *const u8, len: usize) -> Result<WebInputState, String> {
+    let input_json = read_utf8_from_ptr(pointer, len)?;
+    serde_json::from_str::<WebInputState>(&input_json).map_err(|error| error.to_string())
+}
+
 fn runtime_host() -> &'static Mutex<WebRuntimeHost> {
     static RUNTIME: OnceLock<Mutex<WebRuntimeHost>> = OnceLock::new();
     RUNTIME.get_or_init(|| Mutex::new(WebRuntimeHost::new()))
@@ -50,14 +55,9 @@ pub extern "C" fn iwm_boot_json(pointer: *const u8, len: usize) -> usize {
 
 #[no_mangle]
 pub extern "C" fn iwm_set_input_json(pointer: *const u8, len: usize) -> usize {
-    let input_json = match read_utf8_from_ptr(pointer, len) {
+    let input = match parse_web_input_state(pointer, len) {
         Ok(value) => value,
         Err(error) => return store_error_result(error),
-    };
-
-    let input = match serde_json::from_str::<WebInputState>(&input_json) {
-        Ok(value) => value,
-        Err(error) => return store_error_result(error.to_string()),
     };
 
     let mut host = runtime_host().lock().expect("runtime host mutex poisoned");
@@ -65,6 +65,20 @@ pub extern "C" fn iwm_set_input_json(pointer: *const u8, len: usize) -> usize {
     match host.snapshot() {
         Some(snapshot) => store_json_result(&snapshot),
         None => store_error_result("runtime core is not booted".into()),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn iwm_step_json(pointer: *const u8, len: usize) -> usize {
+    let input = match parse_web_input_state(pointer, len) {
+        Ok(value) => value,
+        Err(error) => return store_error_result(error),
+    };
+
+    let mut host = runtime_host().lock().expect("runtime host mutex poisoned");
+    match host.step(input) {
+        Ok(result) => store_json_result(&result),
+        Err(error) => store_error_result(error),
     }
 }
 

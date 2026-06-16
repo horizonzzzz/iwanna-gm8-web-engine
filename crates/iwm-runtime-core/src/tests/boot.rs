@@ -183,3 +183,53 @@ fn core_loads_structured_lowered_logic_entries() {
         .iter()
         .any(|instance| instance.player_candidate)));
 }
+
+#[test]
+fn core_caches_create_and_destroy_event_entries_on_load() {
+    let mut package = sample_package();
+    package.objects[0].events.push(iwm_runtime_model::ObjectEventEntry {
+        event_type: 0,
+        sub_event: 0,
+        event_tag: "create".into(),
+        block_id: "object:0:event:0:0".into(),
+        action_count: 0,
+    });
+    package.objects[0].events.push(iwm_runtime_model::ObjectEventEntry {
+        event_type: 1,
+        sub_event: 0,
+        event_tag: "destroy".into(),
+        block_id: "object:0:event:1:0".into(),
+        action_count: 0,
+    });
+    package.lowered_logic = Some(LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![
+            LoweredLogicEntry {
+                block_id: "object:0:event:0:0".into(),
+                statements: vec![LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("created".into()),
+                    value: LoweredLogicExpr::LiteralBool(true),
+                }],
+            },
+            LoweredLogicEntry {
+                block_id: "object:0:event:1:0".into(),
+                statements: vec![LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("destroyed".into()),
+                    value: LoweredLogicExpr::LiteralBool(true),
+                }],
+            },
+        ],
+    });
+
+    let core = RuntimeCore::load(package).unwrap();
+
+    let create_entries = core.cached_create_event_entries.get(&0).unwrap();
+    assert!(create_entries
+        .iter()
+        .any(|entry| entry.block_id == "object:0:event:0:0"));
+
+    let destroy_entries = core.cached_destroy_event_entries.get(&0).unwrap();
+    assert!(destroy_entries
+        .iter()
+        .any(|entry| entry.block_id == "object:0:event:1:0"));
+}

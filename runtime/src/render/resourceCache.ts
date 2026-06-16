@@ -28,6 +28,14 @@ export class ResourceCache {
     this.images.set(src, image);
     return loaded;
   }
+
+  getCachedImage(src: string): HTMLImageElement {
+    const cached = this.images.get(src);
+    if (!cached) {
+      throw new Error(`Image not preloaded: ${src}`);
+    }
+    return cached;
+  }
 }
 
 export function makeBackgroundPathMap(basePath: string, resources: ResourceIndex): BackgroundPathMap {

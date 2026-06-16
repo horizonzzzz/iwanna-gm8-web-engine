@@ -77,12 +77,18 @@ export type WasmRuntimeFrame = {
   >;
 };
 
+export type WasmRuntimeBridgeStepResult = {
+  snapshot: WasmRuntimeBridgeSnapshot;
+  frame: WasmRuntimeFrame;
+};
+
 export type WasmRuntimeBridge = {
   backend: 'opengmk-wasm';
   boot: (pkg: RuntimePackage, options?: { basePath?: string }) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   snapshot: () => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   frame: () => Promise<WasmRuntimeFrame> | WasmRuntimeFrame;
   setInput: (input: WasmRuntimeInputState) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
+  step?: (input: WasmRuntimeInputState) => Promise<WasmRuntimeBridgeStepResult> | WasmRuntimeBridgeStepResult;
   tick: (frames?: number) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   reset: () => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   selectRoom: (roomId: number) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
@@ -99,6 +105,7 @@ type WasmRuntimeExports = {
   iwm_free: (pointer: number, size: number) => void;
   iwm_boot_json: (pointer: number, size: number) => number;
   iwm_set_input_json: (pointer: number, size: number) => number;
+  iwm_step_json?: (pointer: number, size: number) => number;
   iwm_tick: (frames: number) => number;
   iwm_reset: () => number;
   iwm_select_room: (roomId: number) => number;
@@ -192,6 +199,19 @@ export function makeWasmRuntimeBridge(exports: WasmRuntimeExports): WasmRuntimeB
         exports.iwm_free(pointer, byteLength);
       }
     },
+    step: exports.iwm_step_json
+      ? async (input) => {
+          const { pointer, byteLength } = writeJsonInput(exports, input);
+          try {
+            return readJsonResult<WasmRuntimeBridgeStepResult>(
+              exports,
+              exports.iwm_step_json!(pointer, byteLength)
+            );
+          } finally {
+            exports.iwm_free(pointer, byteLength);
+          }
+        }
+      : undefined,
     tick: async (frames = 1) => {
       return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_tick(Math.max(1, frames)));
     },

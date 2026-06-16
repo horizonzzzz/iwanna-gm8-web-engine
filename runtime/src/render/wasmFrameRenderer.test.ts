@@ -130,6 +130,7 @@ describe('renderWasmFrame', () => {
     const spriteImage = { id: 'sprite', width: 30, height: 40 } as unknown as HTMLImageElement;
     const cache = {
       getImage: vi.fn(async (src: string) => src.includes('backgrounds') ? backgroundImage : spriteImage),
+      getCachedImage: vi.fn((src: string) => src.includes('backgrounds') ? backgroundImage : spriteImage),
     };
 
     await renderWasmFrame(canvas, sampleFrame, sampleResources, '/packages/sample', cache as never);
@@ -201,6 +202,7 @@ describe('renderWasmFrame', () => {
     const spriteImage = { id: 'sprite', width: 30, height: 40 } as unknown as HTMLImageElement;
     const cache = {
       getImage: vi.fn(async (src: string) => src.includes('backgrounds') ? backgroundImage : spriteImage),
+      getCachedImage: vi.fn((src: string) => src.includes('backgrounds') ? backgroundImage : spriteImage),
     };
 
     await renderWasmFrame(canvas, sampleFrame, sampleResources, '/packages/sample', cache as never);
@@ -212,5 +214,71 @@ describe('renderWasmFrame', () => {
     expect(heightSetCount).toBe(0);
     expect(clearRect).toHaveBeenCalledTimes(2);
     expect(fillRect).toHaveBeenNthCalledWith(1, 0, 0, 320, 240);
+  });
+});
+
+describe('renderWasmFrame - preloading', () => {
+  it('preloads all unique images before rendering', async () => {
+    const context = {
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      scale: vi.fn(),
+      fillStyle: '',
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+    };
+
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    const getImageCalls: string[] = [];
+    const getCachedImageCalls: string[] = [];
+
+    const backgroundImage = { id: 'bg' } as unknown as HTMLImageElement;
+    const spriteImage = { id: 'sprite' } as unknown as HTMLImageElement;
+
+    const cache = {
+      getImage: vi.fn(async (src: string) => {
+        getImageCalls.push(src);
+        return src.includes('backgrounds') ? backgroundImage : spriteImage;
+      }),
+      getCachedImage: vi.fn((src: string) => {
+        getCachedImageCalls.push(src);
+        return src.includes('backgrounds') ? backgroundImage : spriteImage;
+      }),
+    };
+
+    const frameWithDuplicates: WasmRuntimeFrame = {
+      tick: 1,
+      roomId: 0,
+      width: 320,
+      height: 240,
+      commands: [
+        { kind: 'clear', colour: [0, 0, 0, 255] },
+        { kind: 'drawSprite', spriteId: 0, frameIndex: 0, x: 10, y: 20, originX: 5, originY: 6, xscale: 1, yscale: 1, angleDegrees: 0 },
+        { kind: 'drawSprite', spriteId: 0, frameIndex: 0, x: 30, y: 40, originX: 5, originY: 6, xscale: 1, yscale: 1, angleDegrees: 0 },
+        { kind: 'drawSprite', spriteId: 0, frameIndex: 0, x: 50, y: 60, originX: 5, originY: 6, xscale: 1, yscale: 1, angleDegrees: 0 },
+        { kind: 'present' },
+      ],
+    };
+
+    await renderWasmFrame(canvas, frameWithDuplicates, sampleResources, '/packages/sample', cache as never);
+
+    // Should call getImage once per unique image during preload
+    expect(getImageCalls.length).toBe(1);
+    expect(getImageCalls[0]).toContain('sprites/0-0.png');
+
+    // Should call getCachedImage for each draw command during render
+    expect(getCachedImageCalls.length).toBe(3);
+    expect(getCachedImageCalls.every(call => call.includes('sprites/0-0.png'))).toBe(true);
   });
 });

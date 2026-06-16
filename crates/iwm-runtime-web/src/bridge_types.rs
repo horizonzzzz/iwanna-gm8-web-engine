@@ -84,3 +84,10 @@ pub struct BridgeSnapshot {
     pub tick_phases: BridgeTickPhaseSnapshot,
     pub diagnostics: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeStepResult {
+    pub snapshot: BridgeSnapshot,
+    pub frame: BridgeFrameSnapshot,
+}
