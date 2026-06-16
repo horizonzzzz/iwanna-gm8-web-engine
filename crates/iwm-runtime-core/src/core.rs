@@ -379,6 +379,8 @@ impl RuntimeCore {
         }
         tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
+        self.advance_instance_sprite_animations();
+
         self.render(host)?;
         tick_phases.render_submit_nanos += mark_phase_elapsed(host, &mut phase_start);
         tick_phases.total_nanos = elapsed_since(host, tick_start);
@@ -447,6 +449,59 @@ impl RuntimeCore {
     fn sync_current_room_views_from_globals(&mut self) {
         if let Some(room) = self.current_room.as_mut() {
             crate::logic::apply_view_globals_to_room(room, &self.globals);
+        }
+    }
+
+    fn advance_instance_sprite_animations(&mut self) {
+        let Some(room) = self.current_room.as_mut() else {
+            return;
+        };
+
+        for instance in room.instances.iter_mut().filter(|instance| instance.alive) {
+            let sprite_id = instance
+                .vars
+                .get("sprite_index")
+                .and_then(as_number)
+                .map(|value| value.round() as i32)
+                .unwrap_or_else(|| {
+                    self.object_index
+                        .get(&instance.object_id)
+                        .and_then(|index| self.package.objects.get(*index))
+                        .map(|object| object.sprite_index)
+                        .unwrap_or(-1)
+                });
+            if sprite_id < 0 {
+                continue;
+            }
+
+            let Some(frame_count) = self
+                .sprite_index
+                .get(&(sprite_id as usize))
+                .and_then(|index| self.package.resources.sprites.get(*index))
+                .map(|sprite| sprite.frame_paths.len())
+                .filter(|count| *count > 0)
+            else {
+                continue;
+            };
+
+            let image_speed = instance
+                .vars
+                .get("image_speed")
+                .and_then(as_number)
+                .unwrap_or(1.0);
+            if !image_speed.is_finite() || image_speed == 0.0 {
+                continue;
+            }
+
+            let image_index = instance
+                .vars
+                .get("image_index")
+                .and_then(as_number)
+                .unwrap_or(0.0);
+            let next_index = (image_index + image_speed).rem_euclid(frame_count as f64);
+            instance
+                .vars
+                .insert("image_index".into(), RuntimeValue::Number(next_index));
         }
     }
 

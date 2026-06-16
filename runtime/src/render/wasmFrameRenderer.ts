@@ -68,6 +68,19 @@ function drawTile(
   );
 }
 
+function resolveSpriteFrame(
+  sprite: ReturnType<typeof makeSpriteFrameMap> extends Map<number, infer TValue> ? TValue : never,
+  frameIndex: number
+) {
+  if (sprite.frames.length === 0) {
+    return null;
+  }
+  const resolvedIndex = Number.isFinite(frameIndex) && frameIndex >= 0
+    ? frameIndex % sprite.frames.length
+    : 0;
+  return sprite.frames[resolvedIndex] ?? sprite.frames[0] ?? null;
+}
+
 export async function renderWasmFrame(
   canvas: HTMLCanvasElement,
   frame: WasmRuntimeFrame,
@@ -109,8 +122,9 @@ export async function renderWasmFrame(
       }
       case 'drawSprite': {
         const sprite = spritePaths.get(command.spriteId);
-        if (sprite) {
-          imagesToLoad.add(sprite.imagePath);
+        const frame = sprite ? resolveSpriteFrame(sprite, command.frameIndex) : null;
+        if (frame) {
+          imagesToLoad.add(frame.imagePath);
         }
         break;
       }
@@ -157,7 +171,11 @@ export async function renderWasmFrame(
           continue;
         }
 
-        const image = cache.getCachedImage(sprite.imagePath);
+        const frame = resolveSpriteFrame(sprite, command.frameIndex);
+        if (!frame) {
+          continue;
+        }
+        const image = cache.getCachedImage(frame.imagePath);
         context.save();
         context.translate(command.x, command.y);
         if (command.angleDegrees !== 0) {

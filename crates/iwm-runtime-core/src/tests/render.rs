@@ -153,6 +153,44 @@ fn runtime_core_uses_instance_sprite_and_image_index_when_rendering_sprites() {
 }
 
 #[test]
+fn runtime_core_uses_floored_image_index_when_rendering_sprites() {
+    let mut package = sample_package();
+    package.resources.sprites[1].frame_paths = vec![
+        "resources/sprites/1-0.png".into(),
+        "resources/sprites/1-1.png".into(),
+        "resources/sprites/1-2.png".into(),
+    ];
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let marker = core
+        .current_room
+        .as_mut()
+        .unwrap()
+        .instances
+        .iter_mut()
+        .find(|instance| instance.object_id == 1)
+        .unwrap();
+    marker
+        .vars
+        .insert("sprite_index".into(), crate::RuntimeValue::Number(1.0));
+    marker
+        .vars
+        .insert("image_index".into(), crate::RuntimeValue::Number(1.9));
+
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawSprite {
+            sprite_id: 1,
+            frame_index: 1,
+            ..
+        }
+    )));
+}
+
+#[test]
 fn runtime_core_does_not_render_custom_death_feedback_after_direct_hazard_death() {
     let mut package = sample_package();
     package.rooms[0].instances.push(RoomInstancePlacement {

@@ -8,7 +8,13 @@ export type SpriteFrame = {
   originY: number;
 };
 
-export type SpriteFrameMap = Map<number, SpriteFrame>;
+export type SpriteFrameSet = {
+  frames: SpriteFrame[];
+  originX: number;
+  originY: number;
+};
+
+export type SpriteFrameMap = Map<number, SpriteFrameSet>;
 
 export class ResourceCache {
   private readonly images = new Map<string, HTMLImageElement>();
@@ -51,7 +57,11 @@ export function makeSpriteFrameMap(basePath: string, resources: ResourceIndex): 
       .map((sprite) => [
         sprite.id,
         {
-          imagePath: `${basePath}/${sprite.frame_paths[0]}`,
+          frames: sprite.frame_paths.map((framePath) => ({
+            imagePath: `${basePath}/${framePath}`,
+            originX: sprite.origin_x,
+            originY: sprite.origin_y
+          })),
           originX: sprite.origin_x,
           originY: sprite.origin_y
         }

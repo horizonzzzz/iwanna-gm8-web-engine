@@ -58,6 +58,8 @@ impl RuntimeCore {
                     "image_yscale".into(),
                     crate::RuntimeValue::Number(instance.yscale),
                 );
+                vars.insert("image_index".into(), crate::RuntimeValue::Number(0.0));
+                vars.insert("image_speed".into(), crate::RuntimeValue::Number(1.0));
                 Some(RuntimeInstance {
                     runtime_id,
                     instance_id: instance.instance_id,
@@ -156,6 +158,8 @@ impl RuntimeCore {
         let mut vars = HashMap::new();
         vars.insert("image_xscale".into(), crate::RuntimeValue::Number(1.0));
         vars.insert("image_yscale".into(), crate::RuntimeValue::Number(1.0));
+        vars.insert("image_index".into(), crate::RuntimeValue::Number(0.0));
+        vars.insert("image_speed".into(), crate::RuntimeValue::Number(1.0));
         Some(RuntimeInstance {
             runtime_id,
             instance_id: -1 - runtime_id as i32,

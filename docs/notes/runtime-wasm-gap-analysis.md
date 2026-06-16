@@ -126,14 +126,31 @@ This gap is partly runtime-side and partly parser-side. The parser now carries s
 
 ### 4. Sprite Animation
 
-Sprites are still effectively static.
+Runtime-core now advances ordinary multi-frame sprite animation from instance
+`image_speed` and renders sprite frames using `floor(image_index)`, matching the
+ GM/OpenGMK draw-path expectation more closely for slow fractional animations.
+
+Current Dife evidence:
+
+- the local `savePoint` object (`object_id = 5`) is not animated by a hardcoded
+  runtime rule
+- its visible loop comes from a two-frame sprite (`sprSave`) plus object logic
+  that sets `image_speed` in `Create` / `Step` and adjusts `image_index` during
+  save activation
+- the object also declares `other:animation-end`, which is consistent with
+  sprite-driven animation lifecycle rather than a pure room-position bob being
+  baked into the runtime
+
+This means the Dife savepoint's current proven dynamic effect is primarily
+sprite-driven, with object logic controlling playback speed and activation-state
+frame selection. A separate vertical bob path has not yet been proven on the
+current package/runtime path and should not be hardcoded as a savepoint rule.
 
 Missing pieces include:
 
-- `image_index` progression
-- `image_speed`
-- frame looping / wraparound
 - per-frame animation advancement
+- `other:animation-end` dispatch on animation wrap
+- per-frame collision-mask selection when `per_frame_collision_masks` is true
 
 ### 5. Keyboard And Mouse Edge Events
 

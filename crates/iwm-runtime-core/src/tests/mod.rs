@@ -1,3 +1,4 @@
+mod animation;
 mod boot;
 mod event_dispatch;
 mod logic;

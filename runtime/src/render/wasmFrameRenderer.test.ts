@@ -10,7 +10,7 @@ const sampleResources: ResourceIndex = {
       name: 'Player',
       origin_x: 5,
       origin_y: 6,
-      frame_paths: ['resources/sprites/0-0.png'],
+      frame_paths: ['resources/sprites/0-0.png', 'resources/sprites/0-1.png'],
       width: 30,
       height: 40,
       bbox_left: 2,
@@ -127,10 +127,21 @@ describe('renderWasmFrame', () => {
     } as unknown as HTMLCanvasElement;
 
     const backgroundImage = { id: 'bg', width: 320, height: 240 } as unknown as HTMLImageElement;
-    const spriteImage = { id: 'sprite', width: 30, height: 40 } as unknown as HTMLImageElement;
+    const spriteImage0 = { id: 'sprite-0', width: 30, height: 40 } as unknown as HTMLImageElement;
+    const spriteImage1 = { id: 'sprite-1', width: 30, height: 40 } as unknown as HTMLImageElement;
     const cache = {
-      getImage: vi.fn(async (src: string) => src.includes('backgrounds') ? backgroundImage : spriteImage),
-      getCachedImage: vi.fn((src: string) => src.includes('backgrounds') ? backgroundImage : spriteImage),
+      getImage: vi.fn(async (src: string) => {
+        if (src.includes('backgrounds')) {
+          return backgroundImage;
+        }
+        return src.includes('0-1') ? spriteImage1 : spriteImage0;
+      }),
+      getCachedImage: vi.fn((src: string) => {
+        if (src.includes('backgrounds')) {
+          return backgroundImage;
+        }
+        return src.includes('0-1') ? spriteImage1 : spriteImage0;
+      }),
     };
 
     await renderWasmFrame(canvas, sampleFrame, sampleResources, '/packages/sample', cache as never);
@@ -145,7 +156,7 @@ describe('renderWasmFrame', () => {
     expect(translate).toHaveBeenCalledWith(10, 20);
     expect(rotate).toHaveBeenCalledWith(Math.PI / 2);
     expect(scale).toHaveBeenCalledWith(2, 3);
-    expect(drawImage).toHaveBeenNthCalledWith(3, spriteImage, -5, -6);
+    expect(drawImage).toHaveBeenNthCalledWith(3, spriteImage0, -5, -6);
     expect(fillRect).toHaveBeenNthCalledWith(2, 30, 40, 8, 9);
     expect(fillText).toHaveBeenCalledWith('GAME OVER', 160, 88);
     expect(context.font).toBe('700 32px sans-serif');
@@ -199,10 +210,21 @@ describe('renderWasmFrame', () => {
     } as unknown as HTMLCanvasElement;
 
     const backgroundImage = { id: 'bg', width: 320, height: 240 } as unknown as HTMLImageElement;
-    const spriteImage = { id: 'sprite', width: 30, height: 40 } as unknown as HTMLImageElement;
+    const spriteImage0 = { id: 'sprite-0', width: 30, height: 40 } as unknown as HTMLImageElement;
+    const spriteImage1 = { id: 'sprite-1', width: 30, height: 40 } as unknown as HTMLImageElement;
     const cache = {
-      getImage: vi.fn(async (src: string) => src.includes('backgrounds') ? backgroundImage : spriteImage),
-      getCachedImage: vi.fn((src: string) => src.includes('backgrounds') ? backgroundImage : spriteImage),
+      getImage: vi.fn(async (src: string) => {
+        if (src.includes('backgrounds')) {
+          return backgroundImage;
+        }
+        return src.includes('0-1') ? spriteImage1 : spriteImage0;
+      }),
+      getCachedImage: vi.fn((src: string) => {
+        if (src.includes('backgrounds')) {
+          return backgroundImage;
+        }
+        return src.includes('0-1') ? spriteImage1 : spriteImage0;
+      }),
     };
 
     await renderWasmFrame(canvas, sampleFrame, sampleResources, '/packages/sample', cache as never);
@@ -244,16 +266,23 @@ describe('renderWasmFrame - preloading', () => {
     const getCachedImageCalls: string[] = [];
 
     const backgroundImage = { id: 'bg' } as unknown as HTMLImageElement;
-    const spriteImage = { id: 'sprite' } as unknown as HTMLImageElement;
+    const spriteImage0 = { id: 'sprite-0' } as unknown as HTMLImageElement;
+    const spriteImage1 = { id: 'sprite-1' } as unknown as HTMLImageElement;
 
     const cache = {
       getImage: vi.fn(async (src: string) => {
         getImageCalls.push(src);
-        return src.includes('backgrounds') ? backgroundImage : spriteImage;
+        if (src.includes('backgrounds')) {
+          return backgroundImage;
+        }
+        return src.includes('0-1') ? spriteImage1 : spriteImage0;
       }),
       getCachedImage: vi.fn((src: string) => {
         getCachedImageCalls.push(src);
-        return src.includes('backgrounds') ? backgroundImage : spriteImage;
+        if (src.includes('backgrounds')) {
+          return backgroundImage;
+        }
+        return src.includes('0-1') ? spriteImage1 : spriteImage0;
       }),
     };
 
@@ -280,5 +309,57 @@ describe('renderWasmFrame - preloading', () => {
     // Should call getCachedImage for each draw command during render
     expect(getCachedImageCalls.length).toBe(3);
     expect(getCachedImageCalls.every(call => call.includes('sprites/0-0.png'))).toBe(true);
+  });
+
+  it('uses frameIndex to select the requested sprite frame', async () => {
+    const context = {
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      scale: vi.fn(),
+      fillStyle: '',
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+    };
+
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    const spriteImage0 = { id: 'sprite-0' } as unknown as HTMLImageElement;
+    const spriteImage1 = { id: 'sprite-1' } as unknown as HTMLImageElement;
+    const cache = {
+      getImage: vi.fn(async (src: string) => src.includes('0-1') ? spriteImage1 : spriteImage0),
+      getCachedImage: vi.fn((src: string) => src.includes('0-1') ? spriteImage1 : spriteImage0),
+    };
+
+    await renderWasmFrame(
+      canvas,
+      {
+        tick: 1,
+        roomId: 0,
+        width: 320,
+        height: 240,
+        commands: [
+          { kind: 'clear', colour: [0, 0, 0, 255] },
+          { kind: 'drawSprite', spriteId: 0, frameIndex: 1, x: 10, y: 20, originX: 5, originY: 6, xscale: 1, yscale: 1, angleDegrees: 0 },
+          { kind: 'present' },
+        ],
+      },
+      sampleResources,
+      '/packages/sample',
+      cache as never
+    );
+
+    expect(cache.getImage).toHaveBeenCalledWith('/packages/sample/resources/sprites/0-1.png');
+    expect(cache.getCachedImage).toHaveBeenCalledWith('/packages/sample/resources/sprites/0-1.png');
+    expect(context.drawImage).toHaveBeenCalledWith(spriteImage1, -5, -6);
   });
 });

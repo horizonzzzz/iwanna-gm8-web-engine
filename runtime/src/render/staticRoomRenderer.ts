@@ -204,8 +204,12 @@ export async function renderStaticRoom(
         : null;
 
     if (sprite && objectDefinition) {
-      const image = await cache.getImage(sprite.imagePath);
-      drawSpriteInstance(context, image, instance, sprite);
+      const firstFrame = sprite.frames[0];
+      if (!firstFrame) {
+        continue;
+      }
+      const image = await cache.getImage(firstFrame.imagePath);
+      drawSpriteInstance(context, image, instance, firstFrame);
       continue;
     }
 

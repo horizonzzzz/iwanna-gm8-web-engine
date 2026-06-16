@@ -292,7 +292,7 @@ fn runtime_instance_frame_index(instance: &RuntimeInstance) -> usize {
         .get("image_index")
         .and_then(as_number)
         .filter(|value| value.is_finite() && *value >= 0.0)
-        .map(|value| value.round() as usize)
+        .map(|value| value.floor() as usize)
         .unwrap_or(0)
 }
 
