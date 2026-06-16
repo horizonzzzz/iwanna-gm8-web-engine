@@ -74,8 +74,7 @@ impl RuntimeCore {
             player.y = y as f64;
             player.previous_x = x as f64;
             player.previous_y = y as f64;
-            player.hspeed = 0.0;
-            player.vspeed = 0.0;
+            player.set_hvspeed(0.0, 0.0);
             player.jump = RuntimeJumpState::default();
         }
     }

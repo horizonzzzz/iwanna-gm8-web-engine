@@ -1350,8 +1350,34 @@ pub(super) fn assign_instance_field_or_var(
         "previous_y" => {
             assign_number_field(value, &mut instance.previous_y, &mut instance.vars, key)
         }
-        "hspeed" => assign_number_field(value, &mut instance.hspeed, &mut instance.vars, key),
-        "vspeed" => assign_number_field(value, &mut instance.vspeed, &mut instance.vars, key),
+        "hspeed" => {
+            if let Some(n) = crate::helpers::as_number(&value) {
+                instance.set_hspeed(n);
+            } else {
+                instance.vars.insert(key, value);
+            }
+        }
+        "vspeed" => {
+            if let Some(n) = crate::helpers::as_number(&value) {
+                instance.set_vspeed(n);
+            } else {
+                instance.vars.insert(key, value);
+            }
+        }
+        "speed" => {
+            if let Some(n) = crate::helpers::as_number(&value) {
+                instance.set_speed(n);
+            } else {
+                instance.vars.insert(key, value);
+            }
+        }
+        "direction" => {
+            if let Some(n) = crate::helpers::as_number(&value) {
+                instance.set_direction(n);
+            } else {
+                instance.vars.insert(key, value);
+            }
+        }
         _ => {
             instance.vars.insert(key, value);
         }

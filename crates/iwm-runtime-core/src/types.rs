@@ -173,6 +173,90 @@ pub struct RuntimeInstance {
     pub vars: HashMap<String, RuntimeValue>,
 }
 
+const GM_ROUND_TOLERANCE: f64 = 0.0001;
+
+impl RuntimeInstance {
+    pub fn set_speed(&mut self, speed: f64) {
+        self.vars
+            .insert("speed".into(), RuntimeValue::Number(speed));
+        self.sync_hvspeed_from_speed_direction();
+    }
+
+    pub fn set_direction(&mut self, direction: f64) {
+        let normalized = direction.rem_euclid(360.0);
+        self.vars
+            .insert("direction".into(), RuntimeValue::Number(normalized));
+        self.sync_hvspeed_from_speed_direction();
+    }
+
+    pub fn set_hspeed(&mut self, hspeed: f64) {
+        if (self.hspeed - hspeed).abs() > f64::EPSILON {
+            self.hspeed = hspeed;
+            self.sync_speed_direction_from_hvspeed();
+        }
+    }
+
+    pub fn set_vspeed(&mut self, vspeed: f64) {
+        if (self.vspeed - vspeed).abs() > f64::EPSILON {
+            self.vspeed = vspeed;
+            self.sync_speed_direction_from_hvspeed();
+        }
+    }
+
+    pub fn set_hvspeed(&mut self, hspeed: f64, vspeed: f64) {
+        let h_changed = (self.hspeed - hspeed).abs() > f64::EPSILON;
+        let v_changed = (self.vspeed - vspeed).abs() > f64::EPSILON;
+        if h_changed || v_changed {
+            self.hspeed = hspeed;
+            self.vspeed = vspeed;
+            self.sync_speed_direction_from_hvspeed();
+        }
+    }
+
+    pub(crate) fn sync_hvspeed_from_speed_direction(&mut self) {
+        let speed = self.vars.get("speed").and_then(as_number).unwrap_or(0.0);
+        let direction = self
+            .vars
+            .get("direction")
+            .and_then(as_number)
+            .unwrap_or(0.0);
+        let radians = direction.to_radians();
+        let raw_hspeed = radians.cos() * speed;
+        let raw_vspeed = -radians.sin() * speed;
+        self.hspeed = gm_round(raw_hspeed);
+        self.vspeed = gm_round(raw_vspeed);
+    }
+
+    fn sync_speed_direction_from_hvspeed(&mut self) {
+        let direction = (-self.vspeed)
+            .atan2(self.hspeed)
+            .to_degrees()
+            .rem_euclid(360.0);
+        let speed = (self.hspeed * self.hspeed + self.vspeed * self.vspeed).sqrt();
+        self.vars
+            .insert("direction".into(), RuntimeValue::Number(gm_round(direction)));
+        self.vars
+            .insert("speed".into(), RuntimeValue::Number(speed));
+    }
+}
+
+fn as_number(value: &RuntimeValue) -> Option<f64> {
+    match value {
+        RuntimeValue::Number(n) => Some(*n),
+        RuntimeValue::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
+        RuntimeValue::Text(t) => t.parse().ok(),
+    }
+}
+
+fn gm_round(value: f64) -> f64 {
+    let rounded = value.round();
+    if (rounded - value).abs() < GM_ROUND_TOLERANCE {
+        rounded
+    } else {
+        value
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RuntimeCollisionMask {
     pub width: u32,

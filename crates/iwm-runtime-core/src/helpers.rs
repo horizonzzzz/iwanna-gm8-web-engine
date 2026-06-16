@@ -237,8 +237,8 @@ pub(crate) fn move_instance_axis(
 
         if collides_at(instance, next_x, next_y, solids, ignore_runtime_id) {
             match axis {
-                Axis::Horizontal => instance.hspeed = 0.0,
-                Axis::Vertical => instance.vspeed = 0.0,
+                Axis::Horizontal => instance.set_hspeed(0.0),
+                Axis::Vertical => instance.set_vspeed(0.0),
             }
             return true;
         }
@@ -260,8 +260,8 @@ pub(crate) fn move_instance_axis(
 
         if collides_at(instance, next_x, next_y, solids, ignore_runtime_id) {
             match axis {
-                Axis::Horizontal => instance.hspeed = 0.0,
-                Axis::Vertical => instance.vspeed = 0.0,
+                Axis::Horizontal => instance.set_hspeed(0.0),
+                Axis::Vertical => instance.set_vspeed(0.0),
             }
             return true;
         }

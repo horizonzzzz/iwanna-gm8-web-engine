@@ -255,28 +255,43 @@ impl RuntimeCore {
     }
 }
 
-fn apply_gm_motion_vars(instance: &mut crate::RuntimeInstance) {
+pub(crate) fn apply_gm_motion_vars(instance: &mut crate::RuntimeInstance) {
     if instance.hspeed == 0.0 && instance.vspeed == 0.0 {
-        if let Some(speed) = instance.vars.get("speed").and_then(as_number) {
-            let direction = instance
-                .vars
-                .get("direction")
-                .and_then(as_number)
-                .unwrap_or(0.0);
-            let radians = direction.to_radians();
-            instance.hspeed = radians.cos() * speed;
-            instance.vspeed = -radians.sin() * speed;
+        if instance.vars.contains_key("speed") || instance.vars.contains_key("direction") {
+            instance.sync_hvspeed_from_speed_direction();
+        }
+    }
+
+    if let Some(friction) = instance.vars.get("friction").and_then(as_number) {
+        if friction != 0.0 {
+            let speed = instance.vars.get("speed").and_then(as_number).unwrap_or(0.0);
+            if speed > 0.0 {
+                if friction > speed {
+                    instance.set_speed(0.0);
+                } else {
+                    instance.set_speed(speed - friction);
+                }
+            } else if speed < 0.0 {
+                if friction > -speed {
+                    instance.set_speed(0.0);
+                } else {
+                    instance.set_speed(speed + friction);
+                }
+            }
         }
     }
 
     if let Some(gravity) = instance.vars.get("gravity").and_then(as_number) {
-        let gravity_direction = instance
-            .vars
-            .get("gravity_direction")
-            .and_then(as_number)
-            .unwrap_or(270.0);
-        let radians = gravity_direction.to_radians();
-        instance.hspeed += radians.cos() * gravity;
-        instance.vspeed += -radians.sin() * gravity;
+        if gravity != 0.0 {
+            let gravity_direction = instance
+                .vars
+                .get("gravity_direction")
+                .and_then(as_number)
+                .unwrap_or(270.0);
+            let radians = gravity_direction.to_radians();
+            let new_hspeed = instance.hspeed + radians.cos() * gravity;
+            let new_vspeed = instance.vspeed - radians.sin() * gravity;
+            instance.set_hvspeed(new_hspeed, new_vspeed);
+        }
     }
 }

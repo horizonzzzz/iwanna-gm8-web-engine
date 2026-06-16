@@ -108,6 +108,39 @@ fn core_resets_player_back_to_spawn() {
 }
 
 #[test]
+fn core_reset_clears_player_speed_direction() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let room = core.current_room.as_mut().unwrap();
+    let player = room
+        .instances
+        .iter_mut()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    player.set_direction(45.0);
+    player.set_speed(6.0);
+
+    core.reset_player_to_spawn();
+
+    let reset_player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(reset_player.hspeed, 0.0);
+    assert_eq!(reset_player.vspeed, 0.0);
+    assert_eq!(
+        reset_player.vars.get("speed"),
+        Some(&RuntimeValue::Number(0.0))
+    );
+    assert_eq!(
+        reset_player.vars.get("direction"),
+        Some(&RuntimeValue::Number(0.0))
+    );
+}
+
+#[test]
 fn core_transitions_to_target_room_when_requested() {
     let mut package = sample_package();
     package.rooms[0].transition_targets = vec![1];
