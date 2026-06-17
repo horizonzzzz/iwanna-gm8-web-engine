@@ -27,6 +27,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) globals: &'a mut HashMap<String, RuntimeValue>,
     pub(crate) pending_room_transition: &'a mut Option<usize>,
     pub(crate) pending_room_reset: &'a mut bool,
+    pub(crate) pending_game_restart: &'a mut bool,
     pub(crate) binary_files: &'a mut RuntimeBinaryFileState,
     pub(crate) host: &'a mut H,
     pub(crate) diagnostics: &'a mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
@@ -127,6 +128,8 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             .unwrap_or(true)
                     })
                 {
+                    *env.pending_game_restart = false;
+                    *env.pending_room_reset = false;
                     *env.pending_room_transition = Some(room_id);
                 } else {
                     record_host_diagnostic(
@@ -143,6 +146,8 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             }
             "room_goto_next" => {
                 if let Some(room_id) = next_room_id(instance, env.globals, eval_context) {
+                    *env.pending_game_restart = false;
+                    *env.pending_room_reset = false;
                     *env.pending_room_transition = Some(room_id);
                 } else {
                     record_host_diagnostic(
@@ -158,7 +163,9 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
             }
             "game_restart" => {
-                *env.pending_room_reset = true;
+                *env.pending_room_transition = None;
+                *env.pending_room_reset = false;
+                *env.pending_game_restart = true;
             }
             "sound_play" => {
                 dispatch_runtime_sound_call(
@@ -270,11 +277,11 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                                 eval_context,
                                 env,
                             );
-                            if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                            if env_has_pending_scene_change(env) {
                                 break;
                             }
                         }
-                        if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                        if env_has_pending_scene_change(env) {
                             break;
                         }
                     }
@@ -321,9 +328,6 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             eval_context,
                             env,
                         );
-                        if *env.pending_room_reset || env.pending_room_transition.is_some() {
-                            break;
-                        }
                     }
                     env.trace = previous_trace;
                 } else {
@@ -361,11 +365,11 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             instance,
                             env.room_instance_updates,
                         );
-                        if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                        if env_has_pending_scene_change(env) {
                             break;
                         }
                     }
-                    if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                    if env_has_pending_scene_change(env) {
                         break;
                     }
                     continue;
@@ -399,13 +403,13 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         &mut target_instance,
                         env.room_instance_updates,
                     );
-                    if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                    if env_has_pending_scene_change(env) {
                         break;
                     }
                 }
                 env.room_instance_updates
                     .push((target_index, target_instance));
-                if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                if env_has_pending_scene_change(env) {
                     break;
                 }
             }
@@ -436,11 +440,11 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         eval_context,
                         env,
                     );
-                    if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                    if env_has_pending_scene_change(env) {
                         break;
                     }
                 }
-                if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                if env_has_pending_scene_change(env) {
                     break;
                 }
                 execute_assignment_expression(step, instance, scope, eval_context, env);
@@ -485,11 +489,11 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         eval_context,
                         env,
                     );
-                    if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                    if env_has_pending_scene_change(env) {
                         break;
                     }
                 }
-                if *env.pending_room_reset || env.pending_room_transition.is_some() {
+                if env_has_pending_scene_change(env) {
                     break;
                 }
             }
@@ -510,6 +514,10 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             record_unsupported_statement(env, statement, instance);
         }
     }
+}
+
+fn env_has_pending_scene_change<H: RuntimeHost>(env: &RuntimeStatementEnvironment<'_, H>) -> bool {
+    *env.pending_game_restart || *env.pending_room_reset || env.pending_room_transition.is_some()
 }
 
 fn record_unsupported_function<H: RuntimeHost>(
@@ -761,6 +769,17 @@ fn assign_runtime_member_reference<H: RuntimeHost>(
         );
     }
 
+    if assign_pending_create_member_by_object_target(
+        target,
+        member,
+        value.clone(),
+        scope,
+        eval_context,
+        env.room_instance_creates,
+    ) {
+        return true;
+    }
+
     let Some(RuntimeValue::Number(instance_ref)) = evaluate_with_diagnostics(
         target,
         Some(instance),
@@ -888,6 +907,37 @@ fn assign_pending_create_member(
     true
 }
 
+fn assign_pending_create_member_by_object_target(
+    target: &LoweredLogicExpr,
+    member: &str,
+    value: RuntimeValue,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    creates: &mut [RuntimeInstanceCreateRequest],
+) -> bool {
+    let LoweredLogicExpr::Identifier(name) = target else {
+        return false;
+    };
+    if scope.is_local_key(name) {
+        return false;
+    }
+    let Some(object_ids) = eval_context.and_then(|context| {
+        context
+            .place_target_ids_by_name
+            .get(&name.to_ascii_lowercase())
+    }) else {
+        return false;
+    };
+    let Some(create) = creates
+        .iter_mut()
+        .find(|create| object_ids.contains(&create.object_id))
+    else {
+        return false;
+    };
+    create.post_create_vars.insert(member.to_string(), value);
+    true
+}
+
 fn pending_create_member_value(
     creates: &[RuntimeInstanceCreateRequest],
     instance_ref: f64,
@@ -896,7 +946,46 @@ fn pending_create_member_value(
     creates
         .iter()
         .find(|create| create_request_ref_matches(instance_ref, create))
-        .and_then(|create| create.post_create_vars.get(member).cloned())
+        .and_then(|create| create_member_value(create, member))
+}
+
+fn pending_create_member_value_by_object_target(
+    creates: &[RuntimeInstanceCreateRequest],
+    target: &LoweredLogicExpr,
+    member: &str,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let LoweredLogicExpr::Identifier(name) = target else {
+        return None;
+    };
+    if name == "global" || scope.map(|scope| scope.is_local_key(name)).unwrap_or(false) {
+        return None;
+    }
+    let object_ids = eval_context.and_then(|context| {
+        context
+            .place_target_ids_by_name
+            .get(&name.to_ascii_lowercase())
+    })?;
+    creates
+        .iter()
+        .find(|create| object_ids.contains(&create.object_id))
+        .and_then(|create| create_member_value(create, member))
+}
+
+fn create_member_value(
+    create: &RuntimeInstanceCreateRequest,
+    member: &str,
+) -> Option<RuntimeValue> {
+    create
+        .post_create_vars
+        .get(member)
+        .cloned()
+        .or_else(|| match member {
+            "x" => Some(RuntimeValue::Number(create.x)),
+            "y" => Some(RuntimeValue::Number(create.y)),
+            _ => None,
+        })
 }
 
 fn create_request_ref_matches(instance_ref: f64, create: &RuntimeInstanceCreateRequest) -> bool {
@@ -1047,6 +1136,15 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
         }
     }
     if let LoweredLogicExpr::MemberAccess { target, member } = expr {
+        if let Some(value) = pending_create_member_value_by_object_target(
+            env.room_instance_creates,
+            target,
+            member,
+            scope,
+            eval_context,
+        ) {
+            return Some(value);
+        }
         if let Some(RuntimeValue::Number(instance_ref)) =
             evaluate_runtime_expr(target, instance, scope, eval_context, env, trace_instance)
         {

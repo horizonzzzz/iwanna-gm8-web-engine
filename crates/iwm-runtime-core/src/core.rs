@@ -47,6 +47,7 @@ pub struct RuntimeCore {
     pub(crate) diagnostics: Vec<iwm_runtime_host::RuntimeDiagnostic>,
     pub(crate) pending_room_transition: Option<usize>,
     pub(crate) pending_room_reset: bool,
+    pub(crate) pending_game_restart: bool,
     pub(crate) room_needs_first_render_settle: bool,
     pub(crate) globals: HashMap<String, RuntimeValue>,
     pub(crate) package_bootstrap_globals: HashMap<String, RuntimeValue>,
@@ -131,6 +132,7 @@ impl RuntimeCore {
             diagnostics: Vec::new(),
             pending_room_transition: None,
             pending_room_reset: false,
+            pending_game_restart: false,
             room_needs_first_render_settle: false,
             globals: HashMap::new(),
             package_bootstrap_globals: HashMap::new(),
@@ -238,6 +240,12 @@ impl RuntimeCore {
 
     pub fn request_room_transition(&mut self, room_id: usize) {
         self.pending_room_transition = Some(room_id);
+    }
+
+    pub(crate) fn has_pending_scene_change(&self) -> bool {
+        self.pending_game_restart
+            || self.pending_room_reset
+            || self.pending_room_transition.is_some()
     }
 
     pub fn set_global(&mut self, key: impl Into<String>, value: RuntimeValue) {
@@ -367,10 +375,7 @@ impl RuntimeCore {
             }
         }
 
-        if restart.just_pressed
-            && !self.pending_room_reset
-            && self.pending_room_transition.is_none()
-        {
+        if restart.just_pressed && !self.has_pending_scene_change() {
             let current_room_id = self
                 .current_room
                 .as_ref()
@@ -386,14 +391,14 @@ impl RuntimeCore {
         }
         tick_phases.keyboard_events_nanos += mark_phase_elapsed(host, &mut phase_start);
 
-        if self.pending_room_reset || self.pending_room_transition.is_some() {
+        if self.has_pending_scene_change() {
             self.apply_pending_room_change(host)?;
         }
         tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
         let animation_end_indices = self.advance_instance_sprite_animations();
         self.dispatch_animation_end_events(host, animation_end_indices)?;
-        if self.pending_room_reset || self.pending_room_transition.is_some() {
+        if self.has_pending_scene_change() {
             self.apply_pending_room_change(host)?;
         }
 
@@ -443,19 +448,19 @@ impl RuntimeCore {
 
         self.step_non_player_instances()?;
 
-        if self.pending_room_reset || self.pending_room_transition.is_some() {
+        if self.has_pending_scene_change() {
             self.apply_pending_room_change(host)?;
             return Ok(());
         }
 
         self.dispatch_collision_events(host)?;
-        if self.pending_room_reset || self.pending_room_transition.is_some() {
+        if self.has_pending_scene_change() {
             self.apply_pending_room_change(host)?;
             return Ok(());
         }
 
         self.process_alarm_countdowns(host)?;
-        if self.pending_room_reset || self.pending_room_transition.is_some() {
+        if self.has_pending_scene_change() {
             self.apply_pending_room_change(host)?;
         }
 
@@ -565,7 +570,7 @@ impl RuntimeCore {
                 selector_event_tag(&RuntimeEventSelector::OtherAnimationEnd),
                 None,
             );
-            if self.pending_room_reset || self.pending_room_transition.is_some() {
+            if self.has_pending_scene_change() {
                 break;
             }
         }
@@ -642,7 +647,7 @@ impl RuntimeCore {
                 selector_event_tag(&selector),
                 None,
             );
-            if self.pending_room_reset || self.pending_room_transition.is_some() {
+            if self.has_pending_scene_change() {
                 break;
             }
         }
@@ -741,6 +746,7 @@ impl RuntimeCore {
                     globals: &mut self.globals,
                     pending_room_transition: &mut self.pending_room_transition,
                     pending_room_reset: &mut self.pending_room_reset,
+                    pending_game_restart: &mut self.pending_game_restart,
                     binary_files: &mut self.binary_files,
                     host: &mut *host,
                     diagnostics: &mut self.diagnostics,
@@ -768,12 +774,12 @@ impl RuntimeCore {
                     &mut instance,
                     &mut with_updates,
                 );
-                if self.pending_room_reset || self.pending_room_transition.is_some() {
+                if self.has_pending_scene_change() {
                     break;
                 }
             }
             crate::logic::commit_instance_updates(&mut instance_updates, with_updates);
-            if self.pending_room_reset || self.pending_room_transition.is_some() {
+            if self.has_pending_scene_change() {
                 break;
             }
         }

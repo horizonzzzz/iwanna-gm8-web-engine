@@ -253,10 +253,31 @@ fn real_sample_s_key_savepoint_writes_save_file_and_spawns_feedback() {
 }
 
 #[test]
-fn real_sample_player_survives_r_restart_after_s_save() {
-    let Some(package) = real_sample_package() else {
+fn real_sample_r_load_after_s_save_restores_saved_player_position() {
+    let Some(mut package) = real_sample_package() else {
         return;
     };
+    let room143 = package
+        .rooms
+        .iter_mut()
+        .find(|room| room.id == 143)
+        .expect("sample package should include room 143");
+    room143
+        .instances
+        .push(iwm_runtime_model::RoomInstancePlacement {
+            instance_id: 990_143,
+            object_id: 4,
+            x: 64,
+            y: 64,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: false,
+            is_hazard: false,
+            is_checkpoint: false,
+        });
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();
 
@@ -266,6 +287,12 @@ fn real_sample_player_survives_r_restart_after_s_save() {
     core.globals
         .insert("global.difficulty".into(), RuntimeValue::Number(0.0));
     move_real_sample_player_onto_savepoint(&mut core);
+    let saved_position = core
+        .snapshot()
+        .player
+        .as_ref()
+        .map(|player| (player.x, player.y))
+        .expect("test setup should have a player before saving");
 
     press_real_sample_key(&mut host, 0x53);
     core.tick(&mut host).unwrap();
@@ -282,9 +309,16 @@ fn real_sample_player_survives_r_restart_after_s_save() {
     core.tick(&mut host).unwrap();
     release_real_sample_key(&mut host, 0x52);
 
-    assert!(
-        core.snapshot().player.is_some(),
-        "snapshot player should remain available after R restart; room={:?}, difficulty={:?}, grav={:?}, save1={:?}, live players={:?}, recent diagnostics={:?}",
+    let snapshot = core.snapshot();
+    let player = snapshot
+        .player
+        .as_ref()
+        .expect("R load should leave a live player");
+    assert_eq!(snapshot.room_id, Some(143));
+    assert_eq!(
+        (player.x, player.y),
+        saved_position,
+        "R load should restore the exact saved position; room={:?}, difficulty={:?}, grav={:?}, save1={:?}, live players={:?}, recent diagnostics={:?}",
         core.snapshot().room_id,
         core.globals.get("global.difficulty"),
         core.globals.get("global.grav"),
@@ -444,13 +478,11 @@ fn real_sample_death_feedback_waits_for_reset_before_room_reload() {
     }
     assert_eq!(core.snapshot().room_id, Some(151));
 
-    let reset_key = core
-        .globals
-        .get("global.restartbutton")
-        .or_else(|| core.globals.get("global.resetbutton"))
-        .and_then(crate::helpers::as_number)
-        .map(|value| value.round() as u16)
-        .unwrap_or(0x52);
+    let reset_key = 0x74;
+    core.globals.insert(
+        "global.restartbutton".into(),
+        RuntimeValue::Number(reset_key as f64),
+    );
     host.input.set_button_state(
         RuntimeButton::Keyboard(reset_key),
         ButtonState {

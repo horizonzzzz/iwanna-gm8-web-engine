@@ -165,6 +165,7 @@ pub struct RuntimeInstance {
     pub facing_left: bool,
     pub visible: bool,
     pub alive: bool,
+    pub persistent: bool,
     pub solid: bool,
     pub hazard: bool,
     pub checkpoint: bool,

@@ -89,7 +89,7 @@ export function useKeyboardInput(): KeyboardInputState {
       left: held.has(0x25) || held.has(0x41),
       right: held.has(0x27) || held.has(0x44),
       jump: false,
-      restart: held.has(0x52),
+      restart: false,
       keysHeld: [...held],
       keysPressed: [...pressed],
       keysReleased: [...released],

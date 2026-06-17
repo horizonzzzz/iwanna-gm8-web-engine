@@ -23,6 +23,93 @@ fn core_executes_lowered_step_room_goto_calls() {
 }
 
 #[test]
+fn lowered_script_continues_after_room_goto_before_transition_applies() {
+    let mut package = sample_package();
+    add_script_block(
+        &mut package,
+        10,
+        "gotoAndMark",
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "room_goto".into(),
+                args: vec![LoweredLogicExpr::LiteralNumber(9.0)],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                    member: "after_room_goto".into(),
+                },
+                value: LoweredLogicExpr::LiteralNumber(1.0),
+            },
+        ],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "gotoAndMark".into(),
+            args: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        core.globals.get("global.after_room_goto"),
+        Some(&RuntimeValue::Number(1.0))
+    );
+    assert_eq!(core.snapshot().room_id, Some(9));
+}
+
+#[test]
+fn room_goto_carries_persistent_instances_with_late_script_updates() {
+    let mut package = sample_package();
+    package.objects[0].persistent = true;
+    add_script_block(
+        &mut package,
+        10,
+        "gotoAndMove",
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "room_goto".into(),
+                args: vec![LoweredLogicExpr::LiteralNumber(9.0)],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("x".into()),
+                value: LoweredLogicExpr::LiteralNumber(123.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("y".into()),
+                value: LoweredLogicExpr::LiteralNumber(45.0),
+            },
+        ],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "gotoAndMove".into(),
+            args: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "obj_player")
+        .expect("persistent player should carry into target room");
+    assert_eq!(core.snapshot().room_id, Some(9));
+    assert_eq!((player.x, player.y), (123.0, 45.0));
+}
+
+#[test]
 fn core_applies_lowered_step_assignments_before_player_movement() {
     let mut package = sample_package();
     add_step_block(
@@ -453,6 +540,42 @@ fn core_executes_lowered_step_game_restart_calls() {
         .unwrap();
     assert_eq!((player.x, player.y), (12.0, 24.0));
     assert_eq!(core.snapshot().status, crate::RuntimeStatus::Ready);
+}
+
+#[test]
+fn game_restart_returns_to_first_room_and_clears_runtime_globals() {
+    let mut package = sample_package();
+    package.rooms[1].instances.push(RoomInstancePlacement {
+        instance_id: 90,
+        object_id: 0,
+        x: 80,
+        y: 96,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "game_restart".into(),
+            args: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.reload_room(9).unwrap();
+    core.set_global("global.runtime_marker", RuntimeValue::Number(1.0));
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(core.snapshot().room_id, Some(7));
+    assert_eq!(core.globals.get("global.runtime_marker"), None);
 }
 
 #[test]

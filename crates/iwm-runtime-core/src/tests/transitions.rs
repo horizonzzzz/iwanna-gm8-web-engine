@@ -1,4 +1,5 @@
 use iwm_runtime_host::{ButtonState, RuntimeButton};
+use iwm_runtime_model::RoomInstancePlacement;
 
 use crate::{RuntimeCore, RuntimeStatus, RuntimeValue};
 
@@ -150,6 +151,52 @@ fn core_transitions_to_target_room_when_requested() {
     core.request_room_transition(9);
     core.tick(&mut host).unwrap();
     assert_eq!(core.snapshot().room_id, Some(9));
+}
+
+#[test]
+fn core_replaces_room_player_with_persistent_player_on_transition() {
+    let mut package = sample_package();
+    package.objects[0].persistent = true;
+    package.rooms[1].instances.push(RoomInstancePlacement {
+        instance_id: 90,
+        object_id: 0,
+        x: 144,
+        y: 96,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let player = core
+        .current_room
+        .as_mut()
+        .unwrap()
+        .instances
+        .iter_mut()
+        .find(|instance| crate::helpers::is_player_instance(instance))
+        .unwrap();
+    player.x = 72.0;
+    player.y = 80.0;
+
+    core.request_room_transition(9);
+    core.apply_pending_room_change(&mut host).unwrap();
+
+    let players = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .filter(|instance| crate::helpers::is_player_instance(instance))
+        .collect::<Vec<_>>();
+    assert_eq!(players.len(), 1, "room should have a single live player");
+    assert_eq!(players[0].instance_id, 11);
+    assert_eq!((players[0].x, players[0].y), (72.0, 80.0));
 }
 
 #[test]

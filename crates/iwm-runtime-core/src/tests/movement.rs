@@ -1032,6 +1032,7 @@ fn make_test_instance() -> crate::RuntimeInstance {
         facing_left: false,
         visible: true,
         alive: true,
+        persistent: false,
         solid: false,
         hazard: false,
         checkpoint: false,

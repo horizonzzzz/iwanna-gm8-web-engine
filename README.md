@@ -183,10 +183,10 @@ Current browser controls for the WASM runtime path:
 - use `ArrowLeft` / `A` for left
 - use `ArrowRight` / `D` for right
 - use `Space` / `ArrowUp` / `W` for jump
-- use `R` for restart when the package/runtime has not bound a different restart key
+- use `R` as a raw package keyboard input; use the `Reset` button for an explicit shell reset
 - the WASM path now auto-runs at 60 Hz; use `Pause` to pause and `Resume` to continue
 
-The runtime-core restart path checks runtime/package globals such as `global.restartbutton` and `global.resetbutton` before falling back to `R`; treat `R` as the current fallback reset key, not as an IWanna rule. Current Dife room151 diagnostics now run the package-owned death path far enough to play `sndDeath`, create `bloodEmitter2`, create and move red `blood2` particles, create `GAMEOVER`, wait in-room after death, and clear those objects only after reset reloads the room. Runtime-core no longer renders its earlier custom red `GAME OVER` fallback overlay, and collision-event hot paths now use GM-style two-argument `place_free(x,y)` solid checks plus spatial candidates instead of repeatedly scanning the full room for each blood particle.
+The runtime-core restart path still checks runtime/package globals such as `global.restartbutton` and `global.resetbutton` before falling back to `R` for explicit host restart input, but the browser keyboard hook no longer synthesizes that restart from the physical `R` key. Physical `R` is forwarded as raw GM keyboard state so package-owned events such as save/load handlers run without a second shell reset stacked on top. Current Dife room151 diagnostics now run the package-owned death path far enough to play `sndDeath`, create `bloodEmitter2`, create and move red `blood2` particles, create `GAMEOVER`, wait in-room after death, and clear those objects only after reset reloads the room. Runtime-core no longer renders its earlier custom red `GAME OVER` fallback overlay, and collision-event hot paths now use GM-style two-argument `place_free(x,y)` solid checks plus spatial candidates instead of repeatedly scanning the full room for each blood particle.
 
 Important local-only paths:
 

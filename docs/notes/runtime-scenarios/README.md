@@ -25,9 +25,9 @@ Current Dife scenarios:
 - `dife-room143-move-right.json`
 - `dife-room143-shoot.json`
 - `dife-room151-death-right.json`
-- `dife-room151-r-reset.json`
+- `dife-room151-r-reset.json` (historical fallback-host check)
 
-The room 151 reset script uses key code `82` (`R`) because that is the current
-runtime host fallback reset key. That should not be interpreted as a fixed IWanna
-rule: runtime-core now checks package/runtime globals such as
-`global.restartbutton` and `global.resetbutton` before falling back to `R`.
+The room 151 raw-`R` reset scripts predate the browser keyboard change that
+treats physical `R` as package-owned raw keyboard input. They are useful only as
+historical fallback-host references; current browser and real-sample checks
+should let package `keypress R` logic run without adding a second shell reset.

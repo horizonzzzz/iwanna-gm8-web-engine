@@ -140,6 +140,7 @@ impl RuntimeCore {
                         globals: &mut self.globals,
                         pending_room_transition: &mut self.pending_room_transition,
                         pending_room_reset: &mut self.pending_room_reset,
+                        pending_game_restart: &mut self.pending_game_restart,
                         binary_files: &mut self.binary_files,
                         host: &mut *host,
                         diagnostics: &mut self.diagnostics,
@@ -163,7 +164,7 @@ impl RuntimeCore {
                         &mut statement_env,
                     );
                     sync_current_instance_from_updates(index, &mut instance, &mut with_updates);
-                    if self.pending_room_reset || self.pending_room_transition.is_some() {
+                    if self.has_pending_scene_change() {
                         instance_updates.insert(index, instance);
                         commit_instance_updates(&mut instance_updates, with_updates);
                         if let Some(room) = self.current_room.as_mut() {
@@ -335,6 +336,7 @@ impl RuntimeCore {
                             globals: &mut self.globals,
                             pending_room_transition: &mut self.pending_room_transition,
                             pending_room_reset: &mut self.pending_room_reset,
+                            pending_game_restart: &mut self.pending_game_restart,
                             binary_files: &mut self.binary_files,
                             host: &mut *host,
                             diagnostics: &mut self.diagnostics,
@@ -357,11 +359,11 @@ impl RuntimeCore {
                             Some(&eval_context),
                             &mut statement_env,
                         );
-                        if self.pending_room_reset || self.pending_room_transition.is_some() {
+                        if self.has_pending_scene_change() {
                             break;
                         }
                     }
-                    if self.pending_room_reset || self.pending_room_transition.is_some() {
+                    if self.has_pending_scene_change() {
                         break;
                     }
                 }
@@ -403,7 +405,7 @@ impl RuntimeCore {
                 .entry(created_object_id)
                 .or_default();
 
-            if self.pending_room_reset || self.pending_room_transition.is_some() {
+            if self.has_pending_scene_change() {
                 break;
             }
 
