@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 use crate::translate::{bridge_snapshot, format_core_error};
 use crate::{BridgeFrameSnapshot, BridgeSnapshot, BridgeStepResult, WebAudioHost, WebInputState};
 
+const DEFAULT_GM_ROOM_SPEED_HZ: u32 = 30;
+
 #[derive(Debug)]
 struct WebRuntimeHostBoundary {
     headless: HeadlessHost,
@@ -50,6 +52,7 @@ impl WebRuntimeHost {
     pub fn boot(&mut self, package: RuntimePackage) -> Result<BridgeSnapshot, String> {
         let mut core = RuntimeCore::load(package.clone()).map_err(format_core_error)?;
         let mut host = WebRuntimeHostBoundary::new();
+        sync_host_tick_rate_from_core(&mut host, &core);
         core.render(&mut host).map_err(format_core_error)?;
         let snapshot = bridge_snapshot(core.snapshot());
         self.core = Some(core);
@@ -155,6 +158,7 @@ impl WebRuntimeHost {
         for _ in 0..frame_count {
             self.host.headless.clock.advance_frames(1);
             core.tick(&mut self.host).map_err(format_core_error)?;
+            sync_host_tick_rate_from_core(&mut self.host, core);
             self.host.headless.input.clear_transitions();
         }
 
@@ -175,6 +179,7 @@ impl WebRuntimeHost {
 
         let mut host = WebRuntimeHostBoundary::new();
         let mut core = RuntimeCore::load(package).map_err(format_core_error)?;
+        sync_host_tick_rate_from_core(&mut host, &core);
         core.render(&mut host).map_err(format_core_error)?;
         let snapshot = bridge_snapshot(core.snapshot());
         self.host = host;
@@ -191,6 +196,7 @@ impl WebRuntimeHost {
         };
 
         core.reload_room(room_id).map_err(format_core_error)?;
+        sync_host_tick_rate_from_core(&mut self.host, core);
         core.render(&mut self.host).map_err(format_core_error)?;
         Ok(bridge_snapshot(core.snapshot()))
     }
@@ -223,6 +229,14 @@ impl WebRuntimeHost {
     pub fn audio_events(&self) -> &[String] {
         self.host.audio.events()
     }
+}
+
+fn sync_host_tick_rate_from_core(host: &mut WebRuntimeHostBoundary, core: &RuntimeCore) {
+    let tick_rate = core
+        .current_room_speed()
+        .filter(|speed| *speed > 0)
+        .unwrap_or(DEFAULT_GM_ROOM_SPEED_HZ);
+    host.headless.clock.set_tick_rate_hz(tick_rate);
 }
 
 impl RuntimeTimeHost for WebRuntimeHostBoundary {

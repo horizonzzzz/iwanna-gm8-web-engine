@@ -172,6 +172,10 @@ impl RuntimeCore {
         self.current_room.as_ref()
     }
 
+    pub fn current_room_speed(&self) -> Option<u32> {
+        self.current_room.as_ref().map(|room| room.speed)
+    }
+
     pub fn diagnostics(&self) -> &[iwm_runtime_host::RuntimeDiagnostic] {
         &self.diagnostics
     }
@@ -185,6 +189,7 @@ impl RuntimeCore {
                 .current_room
                 .as_ref()
                 .map(|room| room.room_name.clone()),
+            room_speed: self.current_room_speed(),
             instance_count: self
                 .current_room
                 .as_ref()

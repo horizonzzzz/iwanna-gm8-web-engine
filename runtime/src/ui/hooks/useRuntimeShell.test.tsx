@@ -30,7 +30,7 @@ vi.mock('../../runtime/wasmBridge', () => ({
   loadDefaultWasmRuntimeBridge: mocks.loadDefaultWasmRuntimeBridge,
 }));
 
-function makeRuntimePackage(): RuntimePackage {
+function makeRuntimePackage(roomSpeed = 60): RuntimePackage {
   return {
     manifest: {
       format_version: 1,
@@ -55,7 +55,7 @@ function makeRuntimePackage(): RuntimePackage {
         name: 'rTest',
         width: 960,
         height: 540,
-        speed: 60,
+        speed: roomSpeed,
         persistent: false,
         backgrounds: [],
         views_enabled: false,
@@ -163,15 +163,16 @@ function makeKeyboard(): KeyboardInputState {
   };
 }
 
-function arrangeWasmPackage(): WasmRuntimeBridge {
+function arrangeWasmPackage(pkg: RuntimePackage = makeRuntimePackage()): WasmRuntimeBridge {
   const bridge = makeBridge();
-  mocks.loadPackage.mockResolvedValue(makeRuntimePackage());
+  mocks.loadPackage.mockResolvedValue(pkg);
   mocks.loadDefaultWasmRuntimeBridge.mockResolvedValue(bridge);
   mocks.renderWasmFrame.mockResolvedValue(undefined);
   return bridge;
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 
@@ -202,5 +203,18 @@ describe('useRuntimeShell', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled());
     await waitFor(() => expect(screen.getByText(/^Tick: [1-9]\d*/)).toBeInTheDocument());
+  });
+
+  it('schedules automatic ticks from the selected room speed', async () => {
+    vi.useFakeTimers();
+    arrangeWasmPackage(makeRuntimePackage(30));
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const { result } = renderHook(() => useRuntimeShell());
+
+    await act(async () => {
+      await result.current.loadCurrentPackage(makeKeyboard());
+    });
+
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 1000 / 30);
   });
 });

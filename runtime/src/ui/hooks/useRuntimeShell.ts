@@ -14,7 +14,7 @@ import type { RuntimePackage } from '../../types';
 import type { RuntimePerformanceStats } from '../traceView';
 import type { KeyboardInputState } from './useKeyboardInput';
 
-const AUTO_TICK_MS = 1000 / 60;
+const DEFAULT_ROOM_SPEED_HZ = 30;
 
 type ShellBackend =
   | {
@@ -60,6 +60,19 @@ function clearCanvas(canvas: HTMLCanvasElement, width = 800, height = 600): void
   context.fillRect(0, 0, canvas.width, canvas.height);
 }
 
+function roomTickRateHz(pkg: RuntimePackage | null, roomId: number | null): number {
+  const speed = roomId == null
+    ? undefined
+    : pkg?.rooms.find((room) => room.id === roomId)?.speed;
+  return Number.isFinite(speed) && speed != null && speed > 0
+    ? speed
+    : DEFAULT_ROOM_SPEED_HZ;
+}
+
+function autoTickIntervalMs(pkg: RuntimePackage | null, roomId: number | null): number {
+  return 1000 / roomTickRateHz(pkg, roomId);
+}
+
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -100,6 +113,7 @@ export function useRuntimeShell() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const loadedPackageRef = useRef<RuntimePackage | null>(null);
   const packagePathRef = useRef(packagePath);
+  const currentRoomIdRef = useRef<number | null>(null);
   const backendRef = useRef<ShellBackend>({
     kind: 'viewer',
     roomId: null,
@@ -109,6 +123,8 @@ export function useRuntimeShell() {
   const autoTickHandleRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoTickInFlightRef = useRef(false);
   const autoTickInFlightPromiseRef = useRef<Promise<void> | null>(null);
+  const autoTickKeyboardSourceRef = useRef<KeyboardInputSource | null>(null);
+  const autoTickDelayMsRef = useRef<number | null>(null);
   const exclusiveOpRef = useRef(false);
   const skippedAutoTickIntervalsRef = useRef(0);
 
@@ -137,13 +153,15 @@ export function useRuntimeShell() {
         const nextSnapshot = await backend.bridge.snapshot();
         const frame = await backend.bridge.frame();
         await renderWasmFrame(canvas, frame, pkg.resources, currentPath, renderCacheRef.current);
+        const nextRoomId = nextSnapshot.roomId ?? null;
+        currentRoomIdRef.current = nextRoomId;
         setSnapshot(nextSnapshot);
         setMode('wasm');
         setViewerDiagnostics([]);
         if (nextPerformance) {
           setPerformanceStats(nextPerformance);
         }
-        setSelectedRoomId(nextSnapshot.roomId ?? null);
+        setSelectedRoomId(nextRoomId);
         return;
       }
 
@@ -153,6 +171,7 @@ export function useRuntimeShell() {
       const room = backend.roomId != null
         ? pkg.rooms.find((candidate) => candidate.id === backend.roomId)
         : null;
+      currentRoomIdRef.current = backend.roomId;
       setSnapshot({
         tick: 0,
         roomId: backend.roomId,
@@ -178,6 +197,8 @@ export function useRuntimeShell() {
     }
     autoTickHandleRef.current = null;
     autoTickInFlightRef.current = false;
+    autoTickKeyboardSourceRef.current = null;
+    autoTickDelayMsRef.current = null;
     setAutoTickRunning(false);
   }, []);
 
@@ -220,17 +241,24 @@ export function useRuntimeShell() {
       };
       setSnapshot(nextSnapshot);
       setPerformanceStats(nextPerformance);
-      setSelectedRoomId(nextSnapshot.roomId ?? null);
+      const nextRoomId = nextSnapshot.roomId ?? null;
+      currentRoomIdRef.current = nextRoomId;
+      setSelectedRoomId(nextRoomId);
     },
     []
   );
 
-  const startAutoTick = useCallback(
+  const scheduleAutoTickInterval = useCallback(
     (keyboardSource: KeyboardInputSource) => {
-      if (!loadedPackageRef.current || backendRef.current.kind !== 'wasm' || autoTickHandleRef.current != null) {
+      if (!loadedPackageRef.current || backendRef.current.kind !== 'wasm') {
         return;
       }
 
+      if (autoTickHandleRef.current != null) {
+        globalThis.clearInterval(autoTickHandleRef.current);
+      }
+      const delayMs = autoTickIntervalMs(loadedPackageRef.current, currentRoomIdRef.current);
+      autoTickDelayMsRef.current = delayMs;
       autoTickHandleRef.current = globalThis.setInterval(() => {
         if (exclusiveOpRef.current || autoTickInFlightRef.current) {
           skippedAutoTickIntervalsRef.current += 1;
@@ -246,13 +274,35 @@ export function useRuntimeShell() {
           .finally(() => {
             autoTickInFlightRef.current = false;
             autoTickInFlightPromiseRef.current = null;
-          });
+        });
         void autoTickInFlightPromiseRef.current;
-      }, AUTO_TICK_MS);
-      setAutoTickRunning(true);
+      }, delayMs);
     },
     [stopAutoTick, tickRuntimeOnce]
   );
+
+  const startAutoTick = useCallback(
+    (keyboardSource: KeyboardInputSource) => {
+      if (!loadedPackageRef.current || backendRef.current.kind !== 'wasm' || autoTickHandleRef.current != null) {
+        return;
+      }
+
+      autoTickKeyboardSourceRef.current = keyboardSource;
+      scheduleAutoTickInterval(keyboardSource);
+      setAutoTickRunning(true);
+    },
+    [scheduleAutoTickInterval]
+  );
+
+  useEffect(() => {
+    if (!autoTickRunning || !autoTickKeyboardSourceRef.current || backendRef.current.kind !== 'wasm') {
+      return;
+    }
+    const nextDelayMs = autoTickIntervalMs(loadedPackageRef.current, currentRoomIdRef.current);
+    if (autoTickDelayMsRef.current == null || Math.abs(autoTickDelayMsRef.current - nextDelayMs) > 0.001) {
+      scheduleAutoTickInterval(autoTickKeyboardSourceRef.current);
+    }
+  }, [autoTickRunning, scheduleAutoTickInterval, selectedRoomId]);
 
   const loadCurrentPackage = useCallback(async (keyboardSource?: KeyboardInputSource) => {
     setError(null);

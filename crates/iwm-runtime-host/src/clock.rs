@@ -22,6 +22,10 @@ impl DeterministicClock {
         let frame_nanos = 1_000_000_000u128 / u128::from(self.tick_rate_hz);
         self.now_nanos += frame_nanos.saturating_mul(u128::from(frames));
     }
+
+    pub fn set_tick_rate_hz(&mut self, tick_rate_hz: u32) {
+        self.tick_rate_hz = tick_rate_hz;
+    }
 }
 
 impl Default for DeterministicClock {

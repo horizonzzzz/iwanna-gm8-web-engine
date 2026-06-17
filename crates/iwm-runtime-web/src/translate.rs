@@ -15,6 +15,7 @@ pub fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
         tick: snapshot.tick,
         room_id: snapshot.room_id,
         room_name: snapshot.room_name,
+        room_speed: snapshot.room_speed,
         instance_count: snapshot.instance_count,
         player: snapshot.player.map(bridge_player_snapshot),
         input_trace: bridge_input_trace_snapshot(snapshot.input_trace),

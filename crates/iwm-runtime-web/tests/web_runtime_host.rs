@@ -56,6 +56,7 @@ fn web_runtime_host_boots_and_ticks_headless_runtime() {
 
     let boot = host.boot(sample_package()).unwrap();
     assert_eq!(boot.room_id, Some(0));
+    assert_eq!(serde_json::to_value(&boot).unwrap()["roomSpeed"], 60);
     assert_eq!(boot.status, "ready");
     assert_eq!(host.host_frame_count(), 1);
 
@@ -95,11 +96,13 @@ fn web_runtime_host_can_select_room_and_reset() {
 
     let selected = host.select_room(1).unwrap();
     assert_eq!(selected.room_id, Some(1));
+    assert_eq!(serde_json::to_value(&selected).unwrap()["roomSpeed"], 30);
     assert_eq!(selected.room_name.as_deref(), Some("room1"));
 
     let reset = host.reset().unwrap();
     assert_eq!(reset.tick, 0);
     assert_eq!(reset.room_id, Some(0));
+    assert_eq!(serde_json::to_value(&reset).unwrap()["roomSpeed"], 60);
     assert_eq!(reset.room_name.as_deref(), Some("room0"));
 }
 

@@ -20,6 +20,9 @@ function formatPhaseMs(value: number): string {
 export function buildDebugReport(input: BuildDebugReportInput): string {
   const { snapshot, performance } = input;
   const player = snapshot.player;
+  const tickBudgetMs = snapshot.roomSpeed != null && snapshot.roomSpeed > 0
+    ? 1000 / snapshot.roomSpeed
+    : 1000 / 60;
   const playerLines = player
     ? [
         `- x=${player.x} y=${player.y}`,
@@ -32,7 +35,7 @@ export function buildDebugReport(input: BuildDebugReportInput): string {
 
   const performanceLines = performance
     ? [
-        `- total=${formatMs(performance.totalMs)}ms budget=${performance.totalMs <= 16.7 ? 'ok' : 'slow'} skipped=${performance.skippedIntervals} commands=${performance.commandCount}`,
+        `- total=${formatMs(performance.totalMs)}ms budget=${performance.totalMs <= tickBudgetMs ? 'ok' : 'slow'} skipped=${performance.skippedIntervals} commands=${performance.commandCount}`,
         `- input=${formatMs(performance.inputMs)} tick=${formatMs(performance.tickMs)} snapshot=${formatMs(performance.snapshotMs)} frame=${formatMs(performance.frameMs)} render=${formatMs(performance.renderMs)} runtime=${formatMs(performance.runtimeMs)}`,
       ]
     : ['- unavailable'];
@@ -53,6 +56,7 @@ export function buildDebugReport(input: BuildDebugReportInput): string {
   return [
     `Status: ${input.status}`,
     `Room: ${input.roomLabel}`,
+    `Room Speed: ${snapshot.roomSpeed != null ? `${snapshot.roomSpeed} Hz` : 'unknown'}`,
     `Tick: ${snapshot.tick}`,
     '',
     'Player:',

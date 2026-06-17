@@ -6,6 +6,7 @@ const snapshot: WasmRuntimeBridgeSnapshot = {
   tick: 240,
   roomId: 143,
   roomName: 'sampleroom01',
+  roomSpeed: 30,
   diagnostics: ['info runtime-instance-created object=bullet tick=3'],
   inputTrace: {
     jumpButtonKey: 0x10,
@@ -59,7 +60,7 @@ describe('buildDebugReport', () => {
         frameMs: 2.2,
         runtimeMs: 12.0,
         renderMs: 2.8,
-        totalMs: 14.8,
+        totalMs: 25.0,
         commandCount: 128,
         skippedIntervals: 0,
       },
@@ -67,9 +68,11 @@ describe('buildDebugReport', () => {
 
     expect(report).toContain('Status: WASM runtime active');
     expect(report).toContain('Room: 143 sampleroom01');
+    expect(report).toContain('Room Speed: 30 Hz');
     expect(report).toContain('Tick: 240');
     expect(report).toContain('Player:');
     expect(report).toContain('Performance:');
+    expect(report).toContain('total=25.0ms budget=ok');
     expect(report).toContain('Tick Phases:');
     expect(report).toContain('Diagnostics:');
   });

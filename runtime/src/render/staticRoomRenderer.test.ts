@@ -346,7 +346,13 @@ describe('renderStaticRoom', () => {
       [
         0,
         {
-          imagePath: '/pkg/resources/sprites/0-0.png',
+          frames: [
+            {
+              imagePath: '/pkg/resources/sprites/0-0.png',
+              originX: 5,
+              originY: 6
+            }
+          ],
           originX: 5,
           originY: 6
         }

@@ -18,6 +18,7 @@ export type WasmRuntimeBridgeSnapshot = {
   tick: number;
   roomId: number | null;
   roomName?: string | null;
+  roomSpeed?: number | null;
   instanceCount?: number;
   player?: {
     runtimeId?: number;

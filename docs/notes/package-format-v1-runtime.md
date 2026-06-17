@@ -154,7 +154,7 @@ The current `iwm-runtime-web` bridge can now:
 - follow parser-provided `manifest.room_order` for package boot and `room_goto_next()`
 - return formatted diagnostics
 - clear host edge bits after each tick so one-shot keyboard input does not repeat across bridge frames
-- expose enough frame and snapshot data for the browser shell to report input, tick, snapshot, frame, canvas render, total frame, draw command count, skipped 60 Hz auto-tick interval telemetry, and runtime-core tick phase timings
+- expose enough frame and snapshot data for the browser shell to report input, tick, active room speed, snapshot, frame, canvas render, total frame, draw command count, skipped room-speed auto-tick interval telemetry, and runtime-core tick phase timings
 - consume a narrow `env.iwm_host_now_nanos` WASM import for diagnostic wall-clock sampling in browser builds; deterministic game time still comes from the runtime host clock
 - forward the current sound subset through browser host imports for `sound_play()`, `sound_loop()`, `sound_stop()`, `sound_stop_all()`, and `sound_isplaying()`
 
@@ -163,7 +163,7 @@ It does **not** yet provide:
 - full GM8 audio parity, including autoplay/user-gesture policy handling, volume/pan/mixing controls, channel/priority semantics, and broader sound APIs
 - DLL/external support
 - gameplay-fidelity parity with OpenGMK runner semantics
-- a fully catch-up-capable real-time gameplay loop in the shell; if a tick/render cycle takes longer than the 60 Hz interval, the shell reports skipped intervals but does not yet run accumulator catch-up ticks
+- a fully catch-up-capable real-time gameplay loop in the shell; if a tick/render cycle takes longer than the active room-speed interval, the shell reports skipped intervals but does not yet run accumulator catch-up ticks
 
 ### Current Browser Host Status
 
