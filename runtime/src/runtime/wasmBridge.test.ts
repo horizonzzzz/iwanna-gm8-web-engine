@@ -3,8 +3,10 @@ import {
   describeWasmBridgeAvailability,
   isWasmRuntimeBridge,
   makeWasmRuntimeBridge,
+  makeWasmRuntimeHostImports,
   loadWasmRuntimeBridge,
   type WasmRuntimeBridge,
+  type WasmFileHost,
 } from './wasmBridge';
 
 function makeBridge(): WasmRuntimeBridge {
@@ -360,5 +362,37 @@ describe('wasm bridge loader', () => {
     expect(result?.snapshot.tick).toBe(1);
     expect(result?.frame.tick).toBe(1);
     expect(result?.frame.commands[0]?.kind).toBe('present');
+  });
+});
+
+describe('wasm bridge file imports', () => {
+  it('reads, writes, and removes package save bytes through the configured file host', () => {
+    const files = new Map<string, Uint8Array>();
+    const fileHost: WasmFileHost = {
+      readFile: (path) => files.get(path),
+      writeFile: (path, bytes) => {
+        files.set(path, new Uint8Array(bytes));
+      },
+      removeFile: (path) => files.delete(path),
+    };
+    const imports = makeWasmRuntimeHostImports({ fileHost });
+    const env = imports.env as Record<string, (...args: number[]) => number | void>;
+    const memory = new WebAssembly.Memory({ initial: 1 });
+    (env.__iwm_bind_memory as unknown as (memory: WebAssembly.Memory) => void)(memory);
+
+    const bytes = new Uint8Array(memory.buffer);
+    const encoder = new TextEncoder();
+    const path = encoder.encode('save1');
+    const payload = Uint8Array.of(7, 8, 9);
+    bytes.set(path, 16);
+    bytes.set(payload, 64);
+
+    expect(env.iwm_host_write_file(16, path.byteLength, 64, payload.byteLength)).toBe(1);
+    expect([...files.get('save1')!]).toEqual([7, 8, 9]);
+    expect(env.iwm_host_read_file(16, path.byteLength, 0, 0)).toBe(3);
+    expect(env.iwm_host_read_file(16, path.byteLength, 96, 3)).toBe(3);
+    expect([...bytes.slice(96, 99)]).toEqual([7, 8, 9]);
+    expect(env.iwm_host_remove_file(16, path.byteLength)).toBe(1);
+    expect(env.iwm_host_read_file(16, path.byteLength, 96, 3)).toBe(-1);
   });
 });

@@ -226,6 +226,7 @@ impl RuntimeCore {
                     origin_y: sprite.map(|sprite| sprite.origin_y).unwrap_or(0),
                     xscale: runtime_instance_xscale(instance),
                     yscale: runtime_instance_yscale(instance),
+                    alpha: runtime_instance_alpha(instance),
                     angle_degrees: 0.0,
                 });
             }
@@ -315,6 +316,16 @@ fn runtime_instance_yscale(instance: &RuntimeInstance) -> f64 {
         .get("image_yscale")
         .and_then(as_number)
         .unwrap_or(1.0)
+}
+
+fn runtime_instance_alpha(instance: &RuntimeInstance) -> f64 {
+    instance
+        .vars
+        .get("image_alpha")
+        .and_then(as_number)
+        .filter(|value| value.is_finite())
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0)
 }
 
 fn rect_intersects_view(

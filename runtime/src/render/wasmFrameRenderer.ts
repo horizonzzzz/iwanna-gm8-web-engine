@@ -177,6 +177,7 @@ export async function renderWasmFrame(
         }
         const image = cache.getCachedImage(frame.imagePath);
         context.save();
+        context.globalAlpha = Math.max(0, Math.min(1, command.alpha ?? 1));
         context.translate(command.x, command.y);
         if (command.angleDegrees !== 0) {
           context.rotate((command.angleDegrees * Math.PI) / 180);

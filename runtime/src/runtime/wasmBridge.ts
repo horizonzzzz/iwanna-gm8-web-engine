@@ -1,6 +1,13 @@
 import type { RuntimePackage } from '../types';
 import { createWebAudioHost, type WasmAudioHost, type WasmSoundMode } from './wasmAudioHost';
 
+export type WasmFileHost = {
+  readFile: (path: string) => Uint8Array | null | undefined;
+  writeFile: (path: string, bytes: Uint8Array) => void;
+  removeFile: (path: string) => boolean | void;
+  configurePackage?: (pkg: RuntimePackage, basePath: string) => void;
+};
+
 export type WasmRuntimeTickPhases = {
   inputDiagNanos: number;
   stepEventsNanos: number;
@@ -71,7 +78,7 @@ export type WasmRuntimeFrame = {
     | { kind: 'clear'; colour: [number, number, number, number] }
     | { kind: 'drawBackground'; backgroundId: number; x: number; y: number; stretch: boolean; tileHorz: boolean; tileVert: boolean; isForeground: boolean }
     | { kind: 'drawTile'; backgroundId: number; x: number; y: number; tileX: number; tileY: number; width: number; height: number; xscale: number; yscale: number }
-    | { kind: 'drawSprite'; spriteId: number; frameIndex: number; x: number; y: number; originX: number; originY: number; xscale: number; yscale: number; angleDegrees: number }
+    | { kind: 'drawSprite'; spriteId: number; frameIndex: number; x: number; y: number; originX: number; originY: number; xscale: number; yscale: number; alpha?: number; angleDegrees: number }
     | { kind: 'fillRect'; x: number; y: number; width: number; height: number; colour: [number, number, number, number] }
     | { kind: 'drawText'; text: string; x: number; y: number; size: number; colour: [number, number, number, number]; align: CanvasTextAlign }
     | { kind: 'present' }
@@ -99,6 +106,74 @@ export type WasmRuntimeBridge = {
 export type WasmRuntimeBridgeModule = {
   initRuntimeHost: () => Promise<WasmRuntimeBridge> | WasmRuntimeBridge;
 };
+
+class LocalStorageWasmFileHost implements WasmFileHost {
+  private packageKey = 'unconfigured';
+  private readonly memoryFallback = new Map<string, string>();
+
+  constructor(private readonly namespace = 'iwm-runtime-save') {}
+
+  configurePackage(pkg: RuntimePackage, basePath: string): void {
+    const hash = pkg.manifest.source_hash || pkg.manifest.source_name || 'package';
+    this.packageKey = `${basePath || 'default'}:${hash}`;
+  }
+
+  readFile(path: string): Uint8Array | null {
+    const encoded = this.storageGet(this.key(path));
+    if (!encoded) {
+      return null;
+    }
+    return Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0));
+  }
+
+  writeFile(path: string, bytes: Uint8Array): void {
+    let binary = '';
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    this.storageSet(this.key(path), btoa(binary));
+  }
+
+  removeFile(path: string): boolean {
+    const key = this.key(path);
+    const existed = this.storageGet(key) != null;
+    this.storageRemove(key);
+    return existed;
+  }
+
+  private key(path: string): string {
+    return `${this.namespace}:${this.packageKey}:${path}`;
+  }
+
+  private storageGet(key: string): string | null {
+    try {
+      return globalThis.localStorage?.getItem(key) ?? this.memoryFallback.get(key) ?? null;
+    } catch {
+      return this.memoryFallback.get(key) ?? null;
+    }
+  }
+
+  private storageSet(key: string, value: string): void {
+    try {
+      globalThis.localStorage?.setItem(key, value);
+      return;
+    } catch {
+      this.memoryFallback.set(key, value);
+    }
+  }
+
+  private storageRemove(key: string): void {
+    try {
+      globalThis.localStorage?.removeItem(key);
+    } catch {
+      this.memoryFallback.delete(key);
+    }
+  }
+}
+
+export function createLocalStorageWasmFileHost(namespace?: string): WasmFileHost {
+  return new LocalStorageWasmFileHost(namespace);
+}
 
 type WasmRuntimeExports = {
   memory: { buffer: ArrayBufferLike };
@@ -259,10 +334,16 @@ export async function instantiateWasmRuntimeBridge(
   }
 
   const bytes = await response.arrayBuffer();
-  const instantiated = await WebAssembly.instantiate(bytes, mergeWasmRuntimeImports(imports, options));
+  const mergedImports = mergeWasmRuntimeImports(imports, options);
+  const instantiated = await WebAssembly.instantiate(bytes, mergedImports);
   const exported = instantiated.instance.exports;
   if (!isWasmRuntimeExports(exported)) {
     throw new Error('WASM module does not expose the expected iwm runtime bridge exports');
+  }
+  const bindMemory = (mergedImports.env as { __iwm_bind_memory?: (memory: WebAssembly.Memory) => void } | undefined)
+    ?.__iwm_bind_memory;
+  if (bindMemory && exported.memory instanceof WebAssembly.Memory) {
+    bindMemory(exported.memory);
   }
 
   return makeWasmRuntimeBridge(exported);
@@ -271,6 +352,7 @@ export async function instantiateWasmRuntimeBridge(
 export type WasmRuntimeHostImportOptions = {
   now?: () => number;
   audioHost?: Pick<WasmAudioHost, 'playSound' | 'stopSound' | 'stopAllSounds' | 'isSoundPlaying'>;
+  fileHost?: WasmFileHost;
 };
 
 export function makeWasmRuntimeHostImports(
@@ -280,8 +362,22 @@ export function makeWasmRuntimeHostImports(
     ? options
     : options.now ?? (() => globalThis.performance?.now() ?? Date.now());
   const audioHost = typeof options === 'function' ? undefined : options.audioHost;
+  const fileHost = typeof options === 'function' ? undefined : options.fileHost ?? createLocalStorageWasmFileHost();
+  let memory: WebAssembly.Memory | undefined;
+  const readBytes = (pointer: number, byteLength: number): Uint8Array => {
+    if (!memory) {
+      return new Uint8Array();
+    }
+    return new Uint8Array(memory.buffer, pointer, byteLength);
+  };
+  const readHostPath = (pointer: number, byteLength: number): string => {
+    return new TextDecoder().decode(readBytes(pointer, byteLength));
+  };
   return {
     env: {
+      __iwm_bind_memory: (boundMemory: WebAssembly.Memory) => {
+        memory = boundMemory;
+      },
       iwm_host_now_nanos: () => Math.max(0, now() * 1_000_000),
       iwm_host_play_sound: (soundId: number, mode: number) => {
         const result = audioHost?.playSound(soundId, wasmSoundMode(mode));
@@ -297,6 +393,25 @@ export function makeWasmRuntimeHostImports(
       },
       iwm_host_is_sound_playing: (soundId: number) => {
         return audioHost?.isSoundPlaying(soundId) ? 1 : 0;
+      },
+      iwm_host_read_file: (pathPtr: number, pathLen: number, outPtr: number, outLen: number) => {
+        const bytes = fileHost?.readFile(readHostPath(pathPtr, pathLen));
+        if (!bytes) {
+          return -1;
+        }
+        if (!outPtr || outLen === 0) {
+          return bytes.byteLength;
+        }
+        const copyLen = Math.min(outLen, bytes.byteLength);
+        readBytes(outPtr, copyLen).set(bytes.subarray(0, copyLen));
+        return copyLen;
+      },
+      iwm_host_write_file: (pathPtr: number, pathLen: number, bytesPtr: number, bytesLen: number) => {
+        fileHost?.writeFile(readHostPath(pathPtr, pathLen), new Uint8Array(readBytes(bytesPtr, bytesLen)));
+        return 1;
+      },
+      iwm_host_remove_file: (pathPtr: number, pathLen: number) => {
+        return fileHost?.removeFile(readHostPath(pathPtr, pathLen)) ? 1 : 0;
       }
     }
   };
@@ -323,15 +438,17 @@ function mergeWasmRuntimeImports(
 
 export async function loadDefaultWasmRuntimeBridge(): Promise<WasmRuntimeBridge> {
   const audioHost = createWebAudioHost();
+  const fileHost = createLocalStorageWasmFileHost();
   const bridge = await instantiateWasmRuntimeBridge(
     '/wasm/iwm_runtime_web.wasm',
     {},
-    { audioHost }
+    { audioHost, fileHost }
   );
   return {
     ...bridge,
     boot: async (pkg, options) => {
       audioHost.configurePackage(pkg, options?.basePath ?? '');
+      fileHost.configurePackage?.(pkg, options?.basePath ?? '');
       return bridge.boot(pkg);
     }
   };

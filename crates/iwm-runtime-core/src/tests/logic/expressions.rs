@@ -898,6 +898,16 @@ fn core_evaluates_random_and_choose_calls_in_lowered_expressions() {
                     ],
                 },
             },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("range_value".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "random_range".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralNumber(3.0),
+                        LoweredLogicExpr::LiteralNumber(6.0),
+                    ],
+                },
+            },
         ],
     );
 
@@ -920,10 +930,13 @@ fn core_evaluates_random_and_choose_calls_in_lowered_expressions() {
         player.vars.get("choose_value"),
         Some(RuntimeValue::Number(2.0 | 4.0 | 6.0))
     ));
-    assert!(!core
-        .diagnostics()
-        .iter()
-        .any(|diagnostic| diagnostic.code == "runtime-unsupported-expression"));
+    let Some(RuntimeValue::Number(range_value)) = player.vars.get("range_value") else {
+        panic!("range_value should be assigned");
+    };
+    assert!((3.0..6.0).contains(range_value));
+    assert!(!core.diagnostics().iter().any(|diagnostic| diagnostic.code
+        == "runtime-unsupported-expression"
+        || diagnostic.code == "runtime-unsupported-function"));
 }
 
 #[test]
@@ -953,6 +966,17 @@ fn core_evaluates_string_calls_in_lowered_expressions() {
                     args: vec![LoweredLogicExpr::LiteralBool(true)],
                 },
             },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("path_text".into()),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "+".into(),
+                    left: Box::new(LoweredLogicExpr::LiteralText("save".into())),
+                    right: Box::new(LoweredLogicExpr::Call {
+                        name: "string".into(),
+                        args: vec![LoweredLogicExpr::LiteralNumber(1.0)],
+                    }),
+                },
+            },
         ],
     );
 
@@ -978,6 +1002,10 @@ fn core_evaluates_string_calls_in_lowered_expressions() {
     assert_eq!(
         player.vars.get("bool_text"),
         Some(&RuntimeValue::Text("true".into()))
+    );
+    assert_eq!(
+        player.vars.get("path_text"),
+        Some(&RuntimeValue::Text("save1".into()))
     );
 }
 

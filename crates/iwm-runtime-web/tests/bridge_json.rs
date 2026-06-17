@@ -46,6 +46,7 @@ fn bridge_frame_json_preserves_draw_command_wire_shape() {
                 origin_y: 24,
                 xscale: 1.0,
                 yscale: 1.0,
+                alpha: 0.5,
                 angle_degrees: 0.0,
             },
             BridgeDrawCommand::FillRect {
@@ -114,6 +115,7 @@ fn bridge_frame_json_preserves_draw_command_wire_shape() {
     assert_eq!(commands[3].get("frameIndex"), Some(&json!(0)));
     assert_eq!(commands[3].get("originX"), Some(&json!(16)));
     assert_eq!(commands[3].get("originY"), Some(&json!(24)));
+    assert_eq!(commands[3].get("alpha"), Some(&json!(0.5)));
     assert_eq!(commands[3].get("angleDegrees"), Some(&json!(0.0)));
     assert!(commands[3].get("sprite_id").is_none());
     assert!(commands[3].get("frame_index").is_none());

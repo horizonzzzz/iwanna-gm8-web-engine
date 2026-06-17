@@ -166,6 +166,69 @@ describe('renderWasmFrame', () => {
     expect(restore).toHaveBeenCalledTimes(2);
   });
 
+  it('applies sprite alpha only while drawing the sprite', async () => {
+    const alphaDuringDraw: number[] = [];
+    const alphaStack: number[] = [];
+    const context = {
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      drawImage: vi.fn(() => {
+        alphaDuringDraw.push(context.globalAlpha);
+      }),
+      fillText: vi.fn(),
+      save: vi.fn(() => {
+        alphaStack.push(context.globalAlpha);
+      }),
+      restore: vi.fn(() => {
+        context.globalAlpha = alphaStack.pop() ?? 1;
+      }),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      scale: vi.fn(),
+      globalAlpha: 1,
+      fillStyle: '',
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+    };
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const cache = {
+      getImage: vi.fn(async () => ({ width: 30, height: 40 }) as unknown as HTMLImageElement),
+      getCachedImage: vi.fn(() => ({ width: 30, height: 40 }) as unknown as HTMLImageElement),
+    };
+    const frame: WasmRuntimeFrame = {
+      tick: 1,
+      roomId: 0,
+      width: 320,
+      height: 240,
+      commands: [
+        {
+          kind: 'drawSprite',
+          spriteId: 0,
+          frameIndex: 0,
+          x: 10,
+          y: 20,
+          originX: 5,
+          originY: 6,
+          xscale: 1,
+          yscale: 1,
+          alpha: 0.7,
+          angleDegrees: 0,
+        },
+        { kind: 'present' },
+      ],
+    };
+
+    await renderWasmFrame(canvas, frame, sampleResources, '/packages/sample', cache as never);
+
+    expect(alphaDuringDraw).toEqual([0.7]);
+    expect(context.globalAlpha).toBe(1);
+  });
+
   it('does not reset canvas dimensions when the frame size is unchanged', async () => {
     const clearRect = vi.fn();
     const fillRect = vi.fn();

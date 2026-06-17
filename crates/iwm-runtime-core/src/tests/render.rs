@@ -153,6 +153,38 @@ fn runtime_core_uses_instance_sprite_and_image_index_when_rendering_sprites() {
 }
 
 #[test]
+fn runtime_core_uses_instance_image_alpha_when_rendering_sprites() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut host = host();
+    let marker = core
+        .current_room
+        .as_mut()
+        .unwrap()
+        .instances
+        .iter_mut()
+        .find(|instance| instance.object_id == 1)
+        .unwrap();
+    marker
+        .vars
+        .insert("sprite_index".into(), crate::RuntimeValue::Number(1.0));
+    marker
+        .vars
+        .insert("image_alpha".into(), crate::RuntimeValue::Number(0.7));
+
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawSprite {
+            sprite_id: 1,
+            alpha,
+            ..
+        } if (*alpha - 0.7).abs() < f64::EPSILON
+    )));
+}
+
+#[test]
 fn runtime_core_uses_floored_image_index_when_rendering_sprites() {
     let mut package = sample_package();
     package.resources.sprites[1].frame_paths = vec![

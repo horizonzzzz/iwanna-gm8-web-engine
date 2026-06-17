@@ -79,6 +79,7 @@ pub enum RuntimeDrawCommand {
         origin_y: i32,
         xscale: f64,
         yscale: f64,
+        alpha: f64,
         angle_degrees: f64,
     },
     FillRect {

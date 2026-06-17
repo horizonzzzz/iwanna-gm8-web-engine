@@ -1138,6 +1138,7 @@ fn is_supported_eval_function(name: &str) -> bool {
             | "abs"
             | "floor"
             | "random"
+            | "random_range"
             | "choose"
             | "string"
             | "file_bin_open"

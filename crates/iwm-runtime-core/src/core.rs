@@ -384,7 +384,11 @@ impl RuntimeCore {
         }
         tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
-        self.advance_instance_sprite_animations();
+        let animation_end_indices = self.advance_instance_sprite_animations();
+        self.dispatch_animation_end_events(host, animation_end_indices)?;
+        if self.pending_room_reset || self.pending_room_transition.is_some() {
+            self.apply_pending_room_change(host)?;
+        }
 
         self.render(host)?;
         tick_phases.render_submit_nanos += mark_phase_elapsed(host, &mut phase_start);
@@ -457,12 +461,18 @@ impl RuntimeCore {
         }
     }
 
-    fn advance_instance_sprite_animations(&mut self) {
+    fn advance_instance_sprite_animations(&mut self) -> Vec<usize> {
         let Some(room) = self.current_room.as_mut() else {
-            return;
+            return Vec::new();
         };
 
-        for instance in room.instances.iter_mut().filter(|instance| instance.alive) {
+        let mut animation_end_indices = Vec::new();
+        for (instance_index, instance) in room
+            .instances
+            .iter_mut()
+            .enumerate()
+            .filter(|(_, instance)| instance.alive)
+        {
             let sprite_id = instance
                 .vars
                 .get("sprite_index")
@@ -503,11 +513,57 @@ impl RuntimeCore {
                 .get("image_index")
                 .and_then(as_number)
                 .unwrap_or(0.0);
-            let next_index = (image_index + image_speed).rem_euclid(frame_count as f64);
+            let advanced_index = image_index + image_speed;
+            let next_index = advanced_index.rem_euclid(frame_count as f64);
             instance
                 .vars
                 .insert("image_index".into(), RuntimeValue::Number(next_index));
+            if (image_speed > 0.0 && advanced_index >= frame_count as f64)
+                || (image_speed < 0.0 && advanced_index < 0.0)
+            {
+                animation_end_indices.push(instance_index);
+            }
         }
+
+        animation_end_indices
+    }
+
+    fn dispatch_animation_end_events<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+        instance_indices: Vec<usize>,
+    ) -> Result<(), RuntimeCoreError> {
+        for instance_idx in instance_indices {
+            let Some(instance) = self
+                .current_room
+                .as_ref()
+                .and_then(|room| room.instances.get(instance_idx))
+                .filter(|instance| instance.alive)
+            else {
+                continue;
+            };
+            let block_ids = object_event_block_ids(
+                &self.package,
+                instance.object_id,
+                RuntimeEventSelector::OtherAnimationEnd,
+            );
+            if block_ids.is_empty() {
+                continue;
+            }
+            self.apply_event_blocks_to_instance(
+                host,
+                instance_idx,
+                &block_ids,
+                None,
+                selector_event_tag(&RuntimeEventSelector::OtherAnimationEnd),
+                None,
+            );
+            if self.pending_room_reset || self.pending_room_transition.is_some() {
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     fn bound_button_state<H: RuntimeHost>(
@@ -938,6 +994,7 @@ fn selector_event_tag(selector: &RuntimeEventSelector) -> String {
         RuntimeEventSelector::KeyboardReleased(key) => {
             format!("keyrelease:{}", format_selector_key_name(*key))
         }
+        RuntimeEventSelector::OtherAnimationEnd => "other:animation-end".into(),
         RuntimeEventSelector::Collision { .. } => "collision".into(),
     }
 }

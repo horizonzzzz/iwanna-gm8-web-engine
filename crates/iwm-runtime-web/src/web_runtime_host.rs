@@ -305,6 +305,9 @@ impl RuntimeAudioHost for WebRuntimeHostBoundary {
 
 impl RuntimeFileHost for WebRuntimeHostBoundary {
     fn read(&self, path: &Path) -> Result<Vec<u8>, RuntimeHostError> {
+        if let Some(bytes) = crate::file_host::read_file(path)? {
+            return Ok(bytes);
+        }
         self.headless.read(path)
     }
 
@@ -313,11 +316,18 @@ impl RuntimeFileHost for WebRuntimeHostBoundary {
         relative_path: &Path,
         bytes: &[u8],
     ) -> Result<PathBuf, RuntimeHostError> {
-        self.headless.write_temp(relative_path, bytes)
+        let written = self.headless.write_temp(relative_path, bytes)?;
+        crate::file_host::write_file(relative_path, bytes)?;
+        Ok(written)
     }
 
     fn remove_temp(&mut self, relative_path: &Path) -> Result<(), RuntimeHostError> {
-        self.headless.remove_temp(relative_path)
+        let removed_from_browser = crate::file_host::remove_file(relative_path)?;
+        match self.headless.remove_temp(relative_path) {
+            Ok(()) => Ok(()),
+            Err(error) if removed_from_browser => Ok(()),
+            Err(error) => Err(error),
+        }
     }
 }
 

@@ -12,6 +12,7 @@ pub(crate) enum RuntimeEventSelector {
     KeyboardHeld(u16),
     KeyboardPressed(u16),
     KeyboardReleased(u16),
+    OtherAnimationEnd,
     #[cfg_attr(not(test), allow(dead_code))]
     Collision {
         target_object_id: usize,
@@ -41,6 +42,9 @@ pub(crate) fn object_event_block_ids(
             key as u32,
             format!("keyrelease:{}", format_key_name(key)),
         ),
+        RuntimeEventSelector::OtherAnimationEnd => {
+            (7usize, 7u32, "other:animation-end".to_string())
+        }
         RuntimeEventSelector::Collision { target_object_id } => {
             (4usize, target_object_id as u32, "collision".to_string())
         }

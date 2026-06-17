@@ -146,6 +146,9 @@ pub(super) fn evaluate_expr(
                 .and_then(|value| as_number(&value))
                 .map(|value| RuntimeValue::Number(value.floor())),
             "random" => evaluate_random_call(args, instance, globals, scope, eval_context),
+            "random_range" => {
+                evaluate_random_range_call(args, instance, globals, scope, eval_context)
+            }
             "choose" => evaluate_choose_call(args, instance, globals, scope, eval_context),
             "string" => args
                 .first()
@@ -253,7 +256,16 @@ pub(super) fn evaluate_expr(
 
 fn eval_binary_expr(op: &str, left: &RuntimeValue, right: &RuntimeValue) -> Option<RuntimeValue> {
     match op {
-        "+" => Some(RuntimeValue::Number(as_number(left)? + as_number(right)?)),
+        "+" => match (left, right) {
+            (RuntimeValue::Text(_), _) | (_, RuntimeValue::Text(_)) => {
+                Some(RuntimeValue::Text(format!(
+                    "{}{}",
+                    runtime_value_to_string_text(left.clone()),
+                    runtime_value_to_string_text(right.clone())
+                )))
+            }
+            _ => Some(RuntimeValue::Number(as_number(left)? + as_number(right)?)),
+        },
         "-" => Some(RuntimeValue::Number(as_number(left)? - as_number(right)?)),
         "*" => Some(RuntimeValue::Number(as_number(left)? * as_number(right)?)),
         "/" => Some(RuntimeValue::Number(as_number(left)? / as_number(right)?)),
@@ -318,6 +330,28 @@ fn evaluate_random_call(
     }
     let unit = deterministic_random_unit(instance, scope, max.to_bits());
     Some(RuntimeValue::Number(unit * max))
+}
+
+fn evaluate_random_range_call(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let min = args
+        .first()
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?;
+    let max = args
+        .get(1)
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?;
+    if min == max {
+        return Some(RuntimeValue::Number(min));
+    }
+    let unit = deterministic_random_unit(instance, scope, min.to_bits() ^ max.to_bits());
+    Some(RuntimeValue::Number(min + unit * (max - min)))
 }
 
 fn evaluate_choose_call(

@@ -1,6 +1,102 @@
 use super::*;
 
 #[test]
+fn real_sample_s_key_savepoint_writes_save_file_and_spawns_feedback() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    for _ in 0..120 {
+        core.tick(&mut host).unwrap();
+        if core.snapshot().input_trace.jump_button_key == 0x10 {
+            break;
+        }
+        host.input.clear_transitions();
+    }
+    assert_eq!(core.snapshot().input_trace.jump_button_key, 0x10);
+
+    core.globals
+        .insert("global.difficulty".into(), RuntimeValue::Number(0.0));
+    core.reload_room(143).unwrap();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let savepoint = room
+            .instances
+            .iter()
+            .find(|instance| {
+                instance.object_name.eq_ignore_ascii_case("savePoint") && instance.alive
+            })
+            .cloned()
+            .expect("sampleroom01 should include savePoint");
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .expect("sampleroom01 should include a live player");
+        player.x = savepoint.x - savepoint.origin_x as f64
+            + savepoint.bbox_left as f64
+            + player.origin_x as f64
+            - player.bbox_left as f64;
+        player.y = savepoint.y - savepoint.origin_y as f64
+            + savepoint.bbox_top as f64
+            + player.origin_y as f64
+            - player.bbox_top as f64;
+        player.previous_x = player.x;
+        player.previous_y = player.y;
+        assert!(
+            crate::helpers::collides_with_instance_at(
+                player,
+                player.x,
+                player.y,
+                &savepoint,
+                None,
+                |_| true
+            ),
+            "test setup should overlap player and savePoint"
+        );
+    }
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x53),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let save_bytes = host
+        .files
+        .read(Path::new("save1"))
+        .expect("S savepoint should write save1");
+    assert!(
+        save_bytes.len() >= 10,
+        "save1 should contain room/player/difficulty bytes, got {save_bytes:?}"
+    );
+
+    let room = core.current_room().unwrap();
+    for expected in ["object808", "object809", "object819"] {
+        assert!(
+            room.instances
+                .iter()
+                .any(|instance| instance.object_name.eq_ignore_ascii_case(expected)),
+            "save feedback should create {expected}"
+        );
+    }
+    assert!(
+        core.diagnostics().iter().all(|diagnostic| {
+            diagnostic.code != "runtime-unsupported-function"
+                && diagnostic.code != "runtime-unsupported-expression"
+        }),
+        "savepoint path should not emit unsupported runtime diagnostics: {:?}",
+        core.diagnostics()
+    );
+}
+
+#[test]
 fn real_sample_death_feedback_waits_for_reset_before_room_reload() {
     let Some(package) = real_sample_package() else {
         return;
