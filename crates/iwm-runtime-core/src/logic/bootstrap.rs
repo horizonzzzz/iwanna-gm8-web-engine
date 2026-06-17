@@ -279,16 +279,8 @@ impl RuntimeCore {
             })
             .and_then(|value| as_number(&value))
             .unwrap_or(0.0);
-        let object_name = args.get(2).and_then(|arg| match arg {
-            LoweredLogicExpr::Identifier(name) => Some(name.as_str()),
-            _ => None,
-        });
-        let Some(object_id) = object_name.and_then(|name| {
-            self.package
-                .objects
-                .iter()
-                .find(|object| object.name.eq_ignore_ascii_case(name))
-                .map(|object| object.id)
+        let Some(object_id) = args.get(2).and_then(|arg| {
+            self.create_instance_object_id(arg, source_instance, Some(&eval_context))
         }) else {
             return;
         };
@@ -319,6 +311,29 @@ impl RuntimeCore {
                 }
             }
         }
+    }
+
+    fn create_instance_object_id(
+        &self,
+        expr: &LoweredLogicExpr,
+        source_instance: Option<&RuntimeInstance>,
+        eval_context: Option<&RuntimeEvalContext<'_>>,
+    ) -> Option<usize> {
+        if let LoweredLogicExpr::Identifier(name) = expr {
+            if let Some(object_id) = self
+                .package
+                .objects
+                .iter()
+                .find(|object| object.name.eq_ignore_ascii_case(name))
+                .map(|object| object.id)
+            {
+                return Some(object_id);
+            }
+        }
+
+        evaluate_expr(expr, source_instance, &self.globals, None, eval_context)
+            .and_then(|value| as_number(&value))
+            .and_then(non_negative_integer_usize)
     }
 }
 
@@ -361,6 +376,14 @@ pub(crate) fn apply_view_globals_to_room(
         if value > 0.0 {
             view.source_h = value.round() as u32;
         }
+    }
+}
+
+fn non_negative_integer_usize(value: f64) -> Option<usize> {
+    if value.is_finite() && value >= 0.0 && value.fract() == 0.0 {
+        Some(value as usize)
+    } else {
+        None
     }
 }
 

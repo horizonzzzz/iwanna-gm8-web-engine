@@ -74,10 +74,32 @@ fn lower_action_source(action: &RawCodeAction) -> Vec<LoweredLogicStatement> {
         return lower_source(primary);
     }
 
+    if let Some(source) = lower_function_action_source(action) {
+        return lower_source(&source);
+    }
+
     action
         .args
         .iter()
         .filter(|arg| looks_like_gml_source(arg))
         .flat_map(|arg| lower_source(arg))
         .collect()
+}
+
+fn lower_function_action_source(action: &RawCodeAction) -> Option<String> {
+    match action.fn_name.as_str() {
+        "action_set_alarm" => {
+            let time = action.args.first()?;
+            let alarm = action.args.get(1)?;
+            Some(format!("alarm[{alarm}] = {time};"))
+        }
+        "action_create_object" => {
+            let object_id = action.args.first()?;
+            let x = action.args.get(1)?;
+            let y = action.args.get(2)?;
+            Some(format!("instance_create({x}, {y}, {object_id});"))
+        }
+        "action_kill_object" => Some("instance_destroy();".into()),
+        _ => None,
+    }
 }

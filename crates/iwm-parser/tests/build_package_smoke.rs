@@ -583,6 +583,88 @@ fn lowered_logic_file_recognizes_common_loop_blocks() {
 }
 
 #[test]
+fn lowered_logic_file_translates_common_function_actions() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawCodeAction, RawLogicEventBinding, RawLogicFile};
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 819,
+            object_name: "obj_respawn_helper".to_string(),
+            event_type: 2,
+            sub_event: 0,
+            event_tag: "alarm:0".to_string(),
+            collision_object_id: None,
+            block_id: "object:819:event:2:0".to_string(),
+            actions: vec![
+                RawCodeAction {
+                    action_id: 301,
+                    lib_id: 1,
+                    action_kind: 0,
+                    execution_type: 1,
+                    fn_name: "action_set_alarm".to_string(),
+                    fn_code: String::new(),
+                    args: vec!["80".to_string(), "0".to_string()],
+                },
+                RawCodeAction {
+                    action_id: 201,
+                    lib_id: 1,
+                    action_kind: 0,
+                    execution_type: 1,
+                    fn_name: "action_create_object".to_string(),
+                    fn_code: String::new(),
+                    args: vec!["5".to_string(), "x".to_string(), "y".to_string()],
+                },
+                RawCodeAction {
+                    action_id: 203,
+                    lib_id: 1,
+                    action_kind: 0,
+                    execution_type: 1,
+                    fn_name: "action_kill_object".to_string(),
+                    fn_code: String::new(),
+                    args: vec![],
+                },
+            ],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+    assert_eq!(statements.len(), 3);
+    assert!(matches!(
+        statements[0],
+        LoweredLogicStatement::Assignment { ref target, ref value }
+            if matches!(
+                target,
+                LoweredLogicExpr::IndexAccess { target, index }
+                    if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "alarm")
+                    && matches!(index.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 0.0).abs() < f64::EPSILON)
+            )
+            && matches!(value, LoweredLogicExpr::LiteralNumber(number) if (*number - 80.0).abs() < f64::EPSILON)
+    ));
+    assert!(matches!(
+        statements[1],
+        LoweredLogicStatement::FunctionCall { ref name, ref args }
+            if name == "instance_create"
+            && matches!(args[0], LoweredLogicExpr::Identifier(ref ident) if ident == "x")
+            && matches!(args[1], LoweredLogicExpr::Identifier(ref ident) if ident == "y")
+            && matches!(args[2], LoweredLogicExpr::LiteralNumber(number) if (number - 5.0).abs() < f64::EPSILON)
+    ));
+    assert!(matches!(
+        statements[2],
+        LoweredLogicStatement::FunctionCall { ref name, ref args }
+            if name == "instance_destroy" && args.is_empty()
+    ));
+}
+
+#[test]
 fn lowered_logic_file_preserves_nested_function_call_arguments() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
     use iwm_parser::models::{RawLogicFile, RawLogicScript};

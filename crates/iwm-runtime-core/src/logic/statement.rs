@@ -1287,14 +1287,9 @@ fn runtime_instance_create_request(
         .and_then(|arg| evaluate_expr(arg, Some(instance), globals, Some(scope), eval_context))
         .and_then(|value| as_number(&value))
         .unwrap_or(0.0);
-    let object_name = args.get(2).and_then(|arg| match arg {
-        LoweredLogicExpr::Identifier(name) => Some(name.as_str()),
-        _ => None,
+    let object_id = args.get(2).and_then(|arg| {
+        runtime_instance_create_object_id(arg, instance, globals, scope, context)
     })?;
-    let object_id = context
-        .place_target_ids_by_name
-        .get(&object_name.to_ascii_lowercase())
-        .and_then(|ids| ids.first().copied())?;
     let runtime_id = context
         .room_instances
         .len()
@@ -1308,6 +1303,36 @@ fn runtime_instance_create_request(
         y,
         post_create_vars: HashMap::new(),
     })
+}
+
+fn runtime_instance_create_object_id(
+    expr: &LoweredLogicExpr,
+    instance: &RuntimeInstance,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: &RuntimeExecutionScope,
+    context: &RuntimeEvalContext<'_>,
+) -> Option<usize> {
+    if let LoweredLogicExpr::Identifier(name) = expr {
+        if let Some(object_id) = context
+            .place_target_ids_by_name
+            .get(&name.to_ascii_lowercase())
+            .and_then(|ids| ids.first().copied())
+        {
+            return Some(object_id);
+        }
+    }
+
+    evaluate_expr(expr, Some(instance), globals, Some(scope), Some(context))
+        .and_then(|value| as_number(&value))
+        .and_then(non_negative_integer_usize)
+}
+
+fn non_negative_integer_usize(value: f64) -> Option<usize> {
+    if value.is_finite() && value >= 0.0 && value.fract() == 0.0 {
+        Some(value as usize)
+    } else {
+        None
+    }
 }
 
 fn assign_runtime_value(

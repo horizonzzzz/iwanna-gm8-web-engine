@@ -684,6 +684,40 @@ fn repeat_instance_create_expression_assigns_members_to_created_instances_before
 }
 
 #[test]
+fn instance_create_accepts_numeric_object_id_argument() {
+    let mut package = sample_package();
+    package.objects[1].name = "obj_spawned_by_id".into();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "instance_create".into(),
+            args: vec![
+                LoweredLogicExpr::Identifier("x".into()),
+                LoweredLogicExpr::Identifier("y".into()),
+                LoweredLogicExpr::LiteralNumber(1.0),
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let original_instance_count = core.current_room().unwrap().instances.len();
+
+    core.tick(&mut host).unwrap();
+
+    assert!(core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .any(|instance| {
+            instance.object_id == 1
+                && instance.object_name == "obj_spawned_by_id"
+                && instance.runtime_id >= original_instance_count
+        }));
+}
+
+#[test]
 fn collision_instance_destroy_dispatches_destroy_and_marks_owner_dead() {
     let mut package = sample_package();
     package.objects[0].name = "player".into();

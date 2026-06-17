@@ -17,9 +17,9 @@ fn real_sample_s_key_savepoint_writes_save_file_and_spawns_feedback() {
     }
     assert_eq!(core.snapshot().input_trace.jump_button_key, 0x10);
 
+    core.reload_room(143).unwrap();
     core.globals
         .insert("global.difficulty".into(), RuntimeValue::Number(0.0));
-    core.reload_room(143).unwrap();
     {
         let room = core.current_room.as_mut().unwrap();
         let savepoint = room
@@ -86,6 +86,47 @@ fn real_sample_s_key_savepoint_writes_save_file_and_spawns_feedback() {
             "save feedback should create {expected}"
         );
     }
+    assert!(
+        !room
+            .instances
+            .iter()
+            .any(
+                |instance| instance.object_name.eq_ignore_ascii_case("savePoint") && instance.alive
+            ),
+        "activated savePoint should be hidden until its respawn helper fires"
+    );
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x53),
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: true,
+        },
+    );
+    for _ in 0..81 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+    }
+
+    let room = core.current_room().unwrap();
+    assert!(
+        room.instances
+            .iter()
+            .any(
+                |instance| instance.object_name.eq_ignore_ascii_case("savePoint") && instance.alive
+            ),
+        "savePoint should reappear after package-owned alarm helper recreates object id 5"
+    );
+    assert!(
+        !room
+            .instances
+            .iter()
+            .any(
+                |instance| instance.object_name.eq_ignore_ascii_case("object819") && instance.alive
+            ),
+        "respawn helper should destroy itself after recreating savePoint"
+    );
     assert!(
         core.diagnostics().iter().all(|diagnostic| {
             diagnostic.code != "runtime-unsupported-function"
