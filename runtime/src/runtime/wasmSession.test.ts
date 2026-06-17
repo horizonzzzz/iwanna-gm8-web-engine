@@ -16,6 +16,7 @@ function makeBridge(): WasmRuntimeBridge {
     snapshot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
     frame: vi.fn(async () => ({ tick: 1, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] })),
     setInput: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
+    setGlobals: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
     step: vi.fn(async () => ({
       snapshot: { tick: 1, roomId: 0, diagnostics: [], inputTrace },
       frame: { tick: 1, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] }

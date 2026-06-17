@@ -52,6 +52,34 @@ fn core_applies_lowered_create_assignments_to_player_vars_and_movement() {
 }
 
 #[test]
+fn core_honors_instance_destroy_during_room_create_events() {
+    let mut package = sample_package();
+    package.lowered_logic = Some(crate::LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![crate::LoweredLogicEntry {
+            block_id: "object:0:event:0:0".into(),
+            statements: vec![LoweredLogicStatement::FunctionCall {
+                name: "instance_destroy".into(),
+                args: vec![],
+            }],
+        }],
+    });
+
+    let core = RuntimeCore::load(package).unwrap();
+    let room = core.current_room().unwrap();
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "obj_player")
+        .expect("sample package should include obj_player");
+
+    assert!(
+        !player.alive,
+        "Create-time instance_destroy should remove room-placed instances from live runtime participation"
+    );
+}
+
+#[test]
 fn core_applies_lowered_room_creation_assignments_to_globals() {
     let mut package = sample_package();
     add_room_create_block(

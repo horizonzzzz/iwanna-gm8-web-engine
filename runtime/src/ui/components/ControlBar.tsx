@@ -9,7 +9,9 @@ type ControlBarProps = {
   onLoad: () => void;
   roomOptions: RoomOption[];
   selectedRoomId: number | null;
+  selectedDifficulty: number;
   onRoomChange: (roomId: number) => void;
+  onDifficultyChange: (difficulty: number) => void;
   autoTickRunning: boolean;
   runtimeReady: boolean;
   onPauseToggle: () => void;
@@ -31,7 +33,7 @@ export function ControlBar(props: ControlBarProps): JSX.Element {
             Manual testing cockpit for the browser-hosted runtime path.
           </p>
         </div>
-        <div className="grid gap-3 md:grid-cols-[minmax(20rem,1fr)_14rem_auto_auto_auto]">
+        <div className="grid gap-3 md:grid-cols-[minmax(20rem,1fr)_14rem_8rem_auto_auto_auto]">
           <label className="text-sm text-slate-300">
             <span className="mb-1 block">Package</span>
             <input
@@ -61,6 +63,21 @@ export function ControlBar(props: ControlBarProps): JSX.Element {
                   </option>
                 ))
               )}
+            </select>
+          </label>
+          <label className="text-sm text-slate-300">
+            <span className="mb-1 block">Difficulty</span>
+            <select
+              aria-label="Difficulty"
+              name="difficultySelect"
+              value={props.selectedDifficulty}
+              onChange={(event) => props.onDifficultyChange(Number(event.target.value))}
+              className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+            >
+              <option value={0}>Easy</option>
+              <option value={1}>Medium</option>
+              <option value={2}>Hard</option>
+              <option value={3}>Very Hard</option>
             </select>
           </label>
           <button

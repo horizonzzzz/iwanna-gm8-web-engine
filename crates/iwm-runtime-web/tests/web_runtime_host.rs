@@ -2,6 +2,7 @@ mod support;
 
 use std::path::Path;
 
+use iwm_runtime_core::RuntimeValue;
 use iwm_runtime_host::{RuntimeAudioHost, RuntimeSoundMode};
 use iwm_runtime_web::{BridgeDrawCommand, WebAudioHost, WebInputState, WebRuntimeHost};
 use serde_json::json;
@@ -104,6 +105,33 @@ fn web_runtime_host_can_select_room_and_reset() {
     assert_eq!(reset.room_id, Some(0));
     assert_eq!(serde_json::to_value(&reset).unwrap()["roomSpeed"], 60);
     assert_eq!(reset.room_name.as_deref(), Some("room0"));
+}
+
+#[test]
+fn web_runtime_host_applies_global_overrides_before_selecting_room() {
+    let Some(package) = load_real_sample_package() else {
+        return;
+    };
+    let mut host = WebRuntimeHost::new();
+    host.boot(package).unwrap();
+    host.set_global("global.difficulty", RuntimeValue::Number(0.0))
+        .unwrap();
+
+    let selected = host.select_room(147).unwrap();
+
+    assert_eq!(selected.room_id, Some(147));
+    assert!(
+        selected.instance_count > 0,
+        "room selection should succeed with explicit global overrides"
+    );
+    assert!(
+        selected
+            .diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.contains("runtime-unsupported")),
+        "global override should not introduce runtime diagnostics: {:?}",
+        selected.diagnostics
+    );
 }
 
 #[test]

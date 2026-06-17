@@ -155,8 +155,8 @@ impl RuntimeCore {
         core.cached_collision_target_ids = core.collision_target_ids_by_object_id();
         core.cached_collision_matching_object_ids = core.collision_matching_object_ids_by_target();
         core.place_target_ids_by_name = core.compute_place_target_ids_by_name();
-        core.package_bootstrap_globals = core.collect_package_bootstrap_globals();
         core.boot_default_room()?;
+        core.package_bootstrap_globals = core.globals.clone();
         Ok(core)
     }
 
@@ -238,6 +238,10 @@ impl RuntimeCore {
 
     pub fn request_room_transition(&mut self, room_id: usize) {
         self.pending_room_transition = Some(room_id);
+    }
+
+    pub fn set_global(&mut self, key: impl Into<String>, value: RuntimeValue) {
+        self.globals.insert(key.into(), value);
     }
 
     pub fn render<H: RuntimeHost>(&mut self, host: &mut H) -> Result<(), RuntimeCoreError> {
@@ -363,7 +367,10 @@ impl RuntimeCore {
             }
         }
 
-        if restart.just_pressed {
+        if restart.just_pressed
+            && !self.pending_room_reset
+            && self.pending_room_transition.is_none()
+        {
             let current_room_id = self
                 .current_room
                 .as_ref()
@@ -593,7 +600,7 @@ impl RuntimeCore {
     }
 
     pub fn reload_room(&mut self, room_id: usize) -> Result<(), RuntimeCoreError> {
-        self.hydrate_missing_package_bootstrap_globals();
+        self.hydrate_missing_package_bootstrap_globals(room_id);
         self.current_room = Some(self.build_room(room_id)?);
         self.room_needs_first_render_settle = true;
         self.death_waiting_for_restart = false;

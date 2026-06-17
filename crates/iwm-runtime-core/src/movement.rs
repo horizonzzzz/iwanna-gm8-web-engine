@@ -264,7 +264,11 @@ pub(crate) fn apply_gm_motion_vars(instance: &mut crate::RuntimeInstance) {
 
     if let Some(friction) = instance.vars.get("friction").and_then(as_number) {
         if friction != 0.0 {
-            let speed = instance.vars.get("speed").and_then(as_number).unwrap_or(0.0);
+            let speed = instance
+                .vars
+                .get("speed")
+                .and_then(as_number)
+                .unwrap_or(0.0);
             if speed > 0.0 {
                 if friction > speed {
                     instance.set_speed(0.0);

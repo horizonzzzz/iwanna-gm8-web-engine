@@ -1,4 +1,4 @@
-use iwm_runtime_core::{RuntimeCore, RuntimePackage};
+use iwm_runtime_core::{RuntimeCore, RuntimePackage, RuntimeValue};
 use iwm_runtime_host::{
     ButtonState, ExternalSignature, ExternalValue, HeadlessHost, RuntimeAudioHost, RuntimeButton,
     RuntimeDiagnostic, RuntimeDiagnosticsHost, RuntimeExternalHost, RuntimeFileHost,
@@ -198,6 +198,19 @@ impl WebRuntimeHost {
         core.reload_room(room_id).map_err(format_core_error)?;
         sync_host_tick_rate_from_core(&mut self.host, core);
         core.render(&mut self.host).map_err(format_core_error)?;
+        Ok(bridge_snapshot(core.snapshot()))
+    }
+
+    pub fn set_global(
+        &mut self,
+        key: impl Into<String>,
+        value: RuntimeValue,
+    ) -> Result<BridgeSnapshot, String> {
+        let Some(core) = self.core.as_mut() else {
+            return Err("runtime core is not booted".into());
+        };
+
+        core.set_global(key, value);
         Ok(bridge_snapshot(core.snapshot()))
     }
 

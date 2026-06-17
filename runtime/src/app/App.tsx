@@ -94,7 +94,9 @@ export function App(): JSX.Element {
         onLoad={() => void shell.loadCurrentPackage(keyboardRef)}
         roomOptions={shell.roomOptions}
         selectedRoomId={shell.selectedRoomId}
+        selectedDifficulty={shell.selectedDifficulty}
         onRoomChange={shell.setSelectedRoomId}
+        onDifficultyChange={shell.setSelectedDifficulty}
         autoTickRunning={shell.autoTickRunning}
         runtimeReady={shell.runtimeReady}
         onPauseToggle={() => shell.togglePause(keyboardRef)}

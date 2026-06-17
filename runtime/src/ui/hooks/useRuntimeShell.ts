@@ -100,6 +100,7 @@ export function useRuntimeShell() {
     'Execution path: static room viewer until a WASM bridge is configured.'
   );
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
+  const [selectedDifficulty, setSelectedDifficulty] = useState(0);
   const [autoTickRunning, setAutoTickRunning] = useState(false);
   const [snapshot, setSnapshot] = useState<WasmRuntimeBridgeSnapshot | null>(null);
   const [performanceStats, setPerformanceStats] = useState<RuntimePerformanceStats | null>(null);
@@ -412,7 +413,13 @@ export function useRuntimeShell() {
           if (backendRef.current.kind !== 'wasm') {
             return;
           }
+          await backendRef.current.bridge.setGlobals({
+            'global.difficulty': selectedDifficulty,
+          });
           await backendRef.current.bridge.selectRoom(roomId);
+          await backendRef.current.bridge.setGlobals({
+            'global.difficulty': selectedDifficulty,
+          });
           await draw(loadedPackage, backendRef.current, packagePath);
         });
         return;
@@ -425,7 +432,7 @@ export function useRuntimeShell() {
       backendRef.current = nextBackend;
       await draw(loadedPackage, nextBackend, packagePath);
     },
-    [draw, loadedPackage, packagePath, runExclusiveWithAutoTick]
+    [draw, loadedPackage, packagePath, runExclusiveWithAutoTick, selectedDifficulty]
   );
 
   const togglePause = useCallback(
@@ -468,7 +475,9 @@ export function useRuntimeShell() {
     loadedPackage,
     backendStatus,
     selectedRoomId,
+    selectedDifficulty,
     setSelectedRoomId: selectRoom,
+    setSelectedDifficulty,
     autoTickRunning,
     snapshot,
     performance: performanceStats,

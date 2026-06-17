@@ -1,5 +1,168 @@
 use super::*;
 
+fn move_real_sample_player_onto_savepoint(core: &mut RuntimeCore) {
+    let room = core.current_room.as_mut().unwrap();
+    let savepoint = room
+        .instances
+        .iter()
+        .find(|instance| instance.object_name.eq_ignore_ascii_case("savePoint") && instance.alive)
+        .cloned()
+        .expect("sampleroom01 should include a live savePoint");
+    let player = room
+        .instances
+        .iter_mut()
+        .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+        .expect("sampleroom01 should include a live player");
+    player.x = savepoint.x - savepoint.origin_x as f64
+        + savepoint.bbox_left as f64
+        + player.origin_x as f64
+        - player.bbox_left as f64;
+    player.y = savepoint.y - savepoint.origin_y as f64
+        + savepoint.bbox_top as f64
+        + player.origin_y as f64
+        - player.bbox_top as f64;
+    player.previous_x = player.x;
+    player.previous_y = player.y;
+    assert!(
+        crate::helpers::collides_with_instance_at(
+            player,
+            player.x,
+            player.y,
+            &savepoint,
+            None,
+            |_| true
+        ),
+        "test setup should overlap player and savePoint"
+    );
+}
+
+fn move_real_sample_player_onto_savepoint_at(core: &mut RuntimeCore, x: f64, y: f64) -> usize {
+    let room = core.current_room.as_mut().unwrap();
+    let savepoint = room
+        .instances
+        .iter()
+        .find(|instance| {
+            instance.object_name.eq_ignore_ascii_case("savePoint")
+                && instance.alive
+                && instance.x == x
+                && instance.y == y
+        })
+        .cloned()
+        .expect("room should include a live savePoint at the requested coordinates");
+    let player = room
+        .instances
+        .iter_mut()
+        .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+        .expect("room should include a live player");
+    player.x = savepoint.x - savepoint.origin_x as f64
+        + savepoint.bbox_left as f64
+        + player.origin_x as f64
+        - player.bbox_left as f64;
+    player.y = savepoint.y - savepoint.origin_y as f64
+        + savepoint.bbox_top as f64
+        + player.origin_y as f64
+        - player.bbox_top as f64;
+    player.previous_x = player.x;
+    player.previous_y = player.y;
+    assert!(
+        crate::helpers::collides_with_instance_at(
+            player,
+            player.x,
+            player.y,
+            &savepoint,
+            None,
+            |_| true
+        ),
+        "test setup should overlap player and savePoint at ({x}, {y})"
+    );
+    savepoint.runtime_id
+}
+
+fn release_real_sample_key(host: &mut HeadlessHost, key: u16) {
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(key),
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: true,
+        },
+    );
+}
+
+fn press_real_sample_key(host: &mut HeadlessHost, key: u16) {
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(key),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+}
+
+#[test]
+fn real_sample_room147_s_key_savepoint_respawns_at_activated_position() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.set_global("global.difficulty", RuntimeValue::Number(0.0));
+    core.reload_room(147).unwrap();
+    core.set_global("global.difficulty", RuntimeValue::Number(0.0));
+    let activated_runtime_id = move_real_sample_player_onto_savepoint_at(&mut core, 864.0, 1120.0);
+
+    press_real_sample_key(&mut host, 0x53);
+    core.tick(&mut host).unwrap();
+
+    let room = core.current_room().unwrap();
+    assert!(
+        !room.instances.iter().any(|instance| {
+            instance.runtime_id == activated_runtime_id
+                && instance.object_name.eq_ignore_ascii_case("savePoint")
+                && instance.alive
+        }),
+        "activated savePoint should be destroyed while its feedback/helper animation runs"
+    );
+    assert!(
+        room.instances.iter().any(|instance| instance
+            .object_name
+            .eq_ignore_ascii_case("object819")
+            && instance.alive
+            && instance.x == 864.0
+            && instance.y == 1120.0),
+        "respawn helper should be created at the activated savePoint position"
+    );
+
+    release_real_sample_key(&mut host, 0x53);
+    for _ in 0..81 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+    }
+
+    let room = core.current_room().unwrap();
+    assert!(
+        room.instances.iter().any(|instance| {
+            instance.runtime_id != activated_runtime_id
+                && instance.object_name.eq_ignore_ascii_case("savePoint")
+                && instance.alive
+                && instance.x == 864.0
+                && instance.y == 1120.0
+        }),
+        "a new live savePoint should reappear at the activated position; difficulty={:?}, matching instances={:?}, recent diagnostics={:?}",
+        core.globals.get("global.difficulty"),
+        room.instances
+            .iter()
+            .filter(|instance| instance.object_name.eq_ignore_ascii_case("savePoint")
+                && instance.x == 864.0
+                && instance.y == 1120.0)
+            .map(|instance| (instance.runtime_id, instance.alive, instance.vars.get("saveTimer")))
+            .collect::<Vec<_>>(),
+        core.diagnostics().iter().rev().take(20).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn real_sample_s_key_savepoint_writes_save_file_and_spawns_feedback() {
     let Some(package) = real_sample_package() else {
@@ -17,55 +180,14 @@ fn real_sample_s_key_savepoint_writes_save_file_and_spawns_feedback() {
     }
     assert_eq!(core.snapshot().input_trace.jump_button_key, 0x10);
 
+    core.globals
+        .insert("global.difficulty".into(), RuntimeValue::Number(0.0));
     core.reload_room(143).unwrap();
     core.globals
         .insert("global.difficulty".into(), RuntimeValue::Number(0.0));
-    {
-        let room = core.current_room.as_mut().unwrap();
-        let savepoint = room
-            .instances
-            .iter()
-            .find(|instance| {
-                instance.object_name.eq_ignore_ascii_case("savePoint") && instance.alive
-            })
-            .cloned()
-            .expect("sampleroom01 should include savePoint");
-        let player = room
-            .instances
-            .iter_mut()
-            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
-            .expect("sampleroom01 should include a live player");
-        player.x = savepoint.x - savepoint.origin_x as f64
-            + savepoint.bbox_left as f64
-            + player.origin_x as f64
-            - player.bbox_left as f64;
-        player.y = savepoint.y - savepoint.origin_y as f64
-            + savepoint.bbox_top as f64
-            + player.origin_y as f64
-            - player.bbox_top as f64;
-        player.previous_x = player.x;
-        player.previous_y = player.y;
-        assert!(
-            crate::helpers::collides_with_instance_at(
-                player,
-                player.x,
-                player.y,
-                &savepoint,
-                None,
-                |_| true
-            ),
-            "test setup should overlap player and savePoint"
-        );
-    }
+    move_real_sample_player_onto_savepoint(&mut core);
 
-    host.input.set_button_state(
-        RuntimeButton::Keyboard(0x53),
-        ButtonState {
-            pressed: true,
-            just_pressed: true,
-            just_released: false,
-        },
-    );
+    press_real_sample_key(&mut host, 0x53);
     core.tick(&mut host).unwrap();
 
     let save_bytes = host
@@ -96,14 +218,7 @@ fn real_sample_s_key_savepoint_writes_save_file_and_spawns_feedback() {
         "activated savePoint should be hidden until its respawn helper fires"
     );
 
-    host.input.set_button_state(
-        RuntimeButton::Keyboard(0x53),
-        ButtonState {
-            pressed: false,
-            just_pressed: false,
-            just_released: true,
-        },
-    );
+    release_real_sample_key(&mut host, 0x53);
     for _ in 0..81 {
         core.tick(&mut host).unwrap();
         host.input.clear_transitions();
@@ -134,6 +249,54 @@ fn real_sample_s_key_savepoint_writes_save_file_and_spawns_feedback() {
         }),
         "savepoint path should not emit unsupported runtime diagnostics: {:?}",
         core.diagnostics()
+    );
+}
+
+#[test]
+fn real_sample_player_survives_r_restart_after_s_save() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.globals
+        .insert("global.difficulty".into(), RuntimeValue::Number(0.0));
+    core.reload_room(143).unwrap();
+    core.globals
+        .insert("global.difficulty".into(), RuntimeValue::Number(0.0));
+    move_real_sample_player_onto_savepoint(&mut core);
+
+    press_real_sample_key(&mut host, 0x53);
+    core.tick(&mut host).unwrap();
+    release_real_sample_key(&mut host, 0x53);
+    host.input.clear_transitions();
+    assert_eq!(
+        core.globals.get("global.grav"),
+        Some(&RuntimeValue::Number(0.0)),
+        "S save should not mutate global.grav before restart; save1={:?}",
+        host.files.read(Path::new("save1"))
+    );
+
+    press_real_sample_key(&mut host, 0x52);
+    core.tick(&mut host).unwrap();
+    release_real_sample_key(&mut host, 0x52);
+
+    assert!(
+        core.snapshot().player.is_some(),
+        "snapshot player should remain available after R restart; room={:?}, difficulty={:?}, grav={:?}, save1={:?}, live players={:?}, recent diagnostics={:?}",
+        core.snapshot().room_id,
+        core.globals.get("global.difficulty"),
+        core.globals.get("global.grav"),
+        host.files.read(Path::new("save1")),
+        core.current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .filter(|instance| crate::helpers::is_player_instance(instance))
+            .map(|instance| (instance.object_name.clone(), instance.runtime_id, instance.alive, instance.x, instance.y))
+            .collect::<Vec<_>>(),
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
     );
 }
 

@@ -67,7 +67,10 @@ impl RuntimeCore {
             apply_statement_to_globals_map(statement, &script_entries, &mut self.globals);
         }
     }
-    pub(crate) fn collect_package_bootstrap_globals(&self) -> HashMap<String, RuntimeValue> {
+    fn collect_package_bootstrap_globals_until_room(
+        &self,
+        target_room_id: usize,
+    ) -> HashMap<String, RuntimeValue> {
         let script_entries = self.lowered_script_entries();
         let mut globals = HashMap::new();
 
@@ -86,12 +89,19 @@ impl RuntimeCore {
                     apply_statement_to_globals_map(statement, &script_entries, &mut globals);
                 }
             }
+            if room.id == target_room_id {
+                break;
+            }
         }
 
         globals
     }
-    pub(crate) fn hydrate_missing_package_bootstrap_globals(&mut self) {
+
+    pub(crate) fn hydrate_missing_package_bootstrap_globals(&mut self, target_room_id: usize) {
         for (key, value) in self.package_bootstrap_globals.clone() {
+            self.globals.entry(key).or_insert(value);
+        }
+        for (key, value) in self.collect_package_bootstrap_globals_until_room(target_room_id) {
             self.globals.entry(key).or_insert(value);
         }
     }
@@ -178,6 +188,11 @@ impl RuntimeCore {
                 }
             }
             LoweredLogicStatement::FunctionCall { name, args } => match name.as_str() {
+                "instance_destroy" => {
+                    if let Some(instance) = room_state.instances.get_mut(instance_index) {
+                        instance.alive = false;
+                    }
+                }
                 "instance_create" => {
                     self.apply_create_instance_create(args, room_state, Some(&instance_snapshot));
                 }
@@ -214,6 +229,16 @@ impl RuntimeCore {
         let mut index = 0usize;
 
         while index < initial_instance_count {
+            if !room_state
+                .instances
+                .get(index)
+                .map(|instance| instance.alive)
+                .unwrap_or(false)
+            {
+                index += 1;
+                continue;
+            }
+
             let object_id = room_state.instances[index].object_id;
             if let Some(block_ids) = room_start_event_blocks.get(&object_id).cloned() {
                 for block_id in block_ids {

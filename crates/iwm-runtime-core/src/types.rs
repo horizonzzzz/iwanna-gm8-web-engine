@@ -233,8 +233,10 @@ impl RuntimeInstance {
             .to_degrees()
             .rem_euclid(360.0);
         let speed = (self.hspeed * self.hspeed + self.vspeed * self.vspeed).sqrt();
-        self.vars
-            .insert("direction".into(), RuntimeValue::Number(gm_round(direction)));
+        self.vars.insert(
+            "direction".into(),
+            RuntimeValue::Number(gm_round(direction)),
+        );
         self.vars
             .insert("speed".into(), RuntimeValue::Number(speed));
     }

@@ -753,6 +753,89 @@ fn core_executes_file_bin_write_and_read_byte_calls_against_host_files() {
 }
 
 #[test]
+fn core_evaluates_file_bin_read_byte_inside_binary_expressions() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::VariableDeclaration {
+                names: vec!["f".into(), "roomTo".into()],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("f".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "file_bin_open".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralText("save1".into()),
+                        LoweredLogicExpr::LiteralNumber(0.0),
+                    ],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("roomTo".into()),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "*".into(),
+                    left: Box::new(LoweredLogicExpr::Call {
+                        name: "file_bin_read_byte".into(),
+                        args: vec![LoweredLogicExpr::Identifier("f".into())],
+                    }),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(10000.0)),
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("roomTo".into()),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "+".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("roomTo".into())),
+                    right: Box::new(LoweredLogicExpr::BinaryExpr {
+                        op: "*".into(),
+                        left: Box::new(LoweredLogicExpr::Call {
+                            name: "file_bin_read_byte".into(),
+                            args: vec![LoweredLogicExpr::Identifier("f".into())],
+                        }),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(100.0)),
+                    }),
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("loaded_room".into()),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "+".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("roomTo".into())),
+                    right: Box::new(LoweredLogicExpr::Call {
+                        name: "file_bin_read_byte".into(),
+                        args: vec![LoweredLogicExpr::Identifier("f".into())],
+                    }),
+                },
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "file_bin_close".into(),
+                args: vec![LoweredLogicExpr::Identifier("f".into())],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.files
+        .write_temp(std::path::Path::new("save1"), &[0, 1, 43])
+        .unwrap();
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("loaded_room"),
+        Some(&RuntimeValue::Number(143.0))
+    );
+}
+
+#[test]
 fn core_evaluates_instance_number_against_live_object_instances() {
     let mut package = sample_package();
     package.objects.push(ObjectDefinition {

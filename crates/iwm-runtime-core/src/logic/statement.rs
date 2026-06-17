@@ -121,6 +121,11 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         )
                     })
                     .and_then(|value| runtime_value_to_room_id(&value))
+                    .filter(|room_id| {
+                        eval_context
+                            .map(|context| context.room_order.contains(room_id))
+                            .unwrap_or(true)
+                    })
                 {
                     *env.pending_room_transition = Some(room_id);
                 } else {
@@ -958,6 +963,22 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
     env: &mut RuntimeStatementEnvironment<'_, H>,
     trace_instance: &RuntimeInstance,
 ) -> Option<RuntimeValue> {
+    if let LoweredLogicExpr::UnaryExpr { op, child } = expr {
+        let value =
+            evaluate_runtime_expr(child, instance, scope, eval_context, env, trace_instance)?;
+        return match op.as_str() {
+            "-" => Some(RuntimeValue::Number(-as_number(&value)?)),
+            "+" => Some(RuntimeValue::Number(as_number(&value)?)),
+            "!" => Some(RuntimeValue::Bool(!is_truthy(Some(value)))),
+            _ => None,
+        };
+    }
+    if let LoweredLogicExpr::BinaryExpr { op, left, right } = expr {
+        let left = evaluate_runtime_expr(left, instance, scope, eval_context, env, trace_instance)?;
+        let right =
+            evaluate_runtime_expr(right, instance, scope, eval_context, env, trace_instance)?;
+        return eval_runtime_binary_expr(op, &left, &right);
+    }
     if let LoweredLogicExpr::Call { name, args } = expr {
         if name == "instance_create" {
             let instance = instance?;
@@ -1038,6 +1059,57 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
     }
 
     evaluate_expr(expr, instance, env.globals, scope, eval_context)
+}
+
+fn eval_runtime_binary_expr(
+    op: &str,
+    left: &RuntimeValue,
+    right: &RuntimeValue,
+) -> Option<RuntimeValue> {
+    match op {
+        "+" => match (left, right) {
+            (RuntimeValue::Text(_), _) | (_, RuntimeValue::Text(_)) => {
+                Some(RuntimeValue::Text(format!(
+                    "{}{}",
+                    runtime_value_to_string_text(left),
+                    runtime_value_to_string_text(right)
+                )))
+            }
+            _ => Some(RuntimeValue::Number(as_number(left)? + as_number(right)?)),
+        },
+        "-" => Some(RuntimeValue::Number(as_number(left)? - as_number(right)?)),
+        "*" => Some(RuntimeValue::Number(as_number(left)? * as_number(right)?)),
+        "/" => Some(RuntimeValue::Number(as_number(left)? / as_number(right)?)),
+        "==" | "=" => Some(RuntimeValue::Bool(runtime_values_equal(left, right))),
+        "!=" => Some(RuntimeValue::Bool(!runtime_values_equal(left, right))),
+        ">=" => Some(RuntimeValue::Bool(as_number(left)? >= as_number(right)?)),
+        "<=" => Some(RuntimeValue::Bool(as_number(left)? <= as_number(right)?)),
+        ">" => Some(RuntimeValue::Bool(as_number(left)? > as_number(right)?)),
+        "<" => Some(RuntimeValue::Bool(as_number(left)? < as_number(right)?)),
+        "&&" => Some(RuntimeValue::Bool(
+            is_truthy(Some(left.clone())) && is_truthy(Some(right.clone())),
+        )),
+        "||" => Some(RuntimeValue::Bool(
+            is_truthy(Some(left.clone())) || is_truthy(Some(right.clone())),
+        )),
+        _ => None,
+    }
+}
+
+fn runtime_value_to_string_text(value: &RuntimeValue) -> String {
+    match value {
+        RuntimeValue::Number(number) if number.fract() == 0.0 => format!("{}", *number as i64),
+        RuntimeValue::Number(number) => number.to_string(),
+        RuntimeValue::Bool(flag) => flag.to_string(),
+        RuntimeValue::Text(text) => text.clone(),
+    }
+}
+
+fn runtime_values_equal(left: &RuntimeValue, right: &RuntimeValue) -> bool {
+    match (as_number(left), as_number(right)) {
+        (Some(left), Some(right)) => left == right,
+        _ => left == right,
+    }
 }
 
 fn evaluate_file_bin_handle<H: RuntimeHost>(

@@ -137,6 +137,7 @@ function makeBridge(): WasmRuntimeBridge {
     snapshot: vi.fn(async () => makeSnapshot(tick)),
     frame: vi.fn(async () => makeFrame(tick)),
     setInput: vi.fn(async () => makeSnapshot(tick)),
+    setGlobals: vi.fn(async () => makeSnapshot(tick)),
     tick: vi.fn(async (frames = 1) => {
       tick += frames;
       return makeSnapshot(tick);
@@ -173,6 +174,7 @@ function arrangeWasmPackage(pkg: RuntimePackage = makeRuntimePackage()): WasmRun
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
@@ -182,7 +184,7 @@ describe('useRuntimeShell', () => {
     const { result } = renderHook(() => useRuntimeShell());
 
     await act(async () => {
-      await result.current.loadCurrentPackage();
+      await result.current.loadCurrentPackage(makeKeyboard());
     });
     await waitFor(() => expect(result.current.loadedPackage).not.toBeNull());
 
@@ -206,9 +208,10 @@ describe('useRuntimeShell', () => {
   });
 
   it('schedules automatic ticks from the selected room speed', async () => {
-    vi.useFakeTimers();
     arrangeWasmPackage(makeRuntimePackage(30));
-    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const setIntervalSpy = vi.fn(() => 1);
+    vi.stubGlobal('setInterval', setIntervalSpy);
+    vi.stubGlobal('clearInterval', vi.fn());
     const { result } = renderHook(() => useRuntimeShell());
 
     await act(async () => {
@@ -216,5 +219,30 @@ describe('useRuntimeShell', () => {
     });
 
     expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 1000 / 30);
+  });
+
+  it('applies selected difficulty before selecting a wasm room directly', async () => {
+    const bridge = arrangeWasmPackage();
+    const { result } = renderHook(() => useRuntimeShell());
+
+    await act(async () => {
+      await result.current.loadCurrentPackage();
+    });
+
+    await act(async () => {
+      result.current.setSelectedDifficulty(2);
+    });
+    await act(async () => {
+      await result.current.setSelectedRoomId(1);
+    });
+
+    expect(bridge.setGlobals).toHaveBeenCalledTimes(2);
+    expect(bridge.setGlobals).toHaveBeenNthCalledWith(1, { 'global.difficulty': 2 });
+    expect(bridge.setGlobals).toHaveBeenNthCalledWith(2, { 'global.difficulty': 2 });
+    expect(bridge.selectRoom).toHaveBeenCalledWith(1);
+    const globalCalls = vi.mocked(bridge.setGlobals).mock.invocationCallOrder;
+    const selectCall = vi.mocked(bridge.selectRoom).mock.invocationCallOrder[0];
+    expect(globalCalls[0]).toBeLessThan(selectCall);
+    expect(selectCall).toBeLessThan(globalCalls[1]);
   });
 });

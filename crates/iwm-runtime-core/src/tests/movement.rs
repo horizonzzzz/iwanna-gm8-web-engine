@@ -856,7 +856,9 @@ fn set_speed_syncs_hvspeed() {
 #[test]
 fn set_direction_syncs_hvspeed() {
     let mut instance = make_test_instance();
-    instance.vars.insert("speed".into(), crate::RuntimeValue::Number(3.0));
+    instance
+        .vars
+        .insert("speed".into(), crate::RuntimeValue::Number(3.0));
     instance.set_direction(90.0);
     assert!((instance.hspeed - 0.0).abs() < 1e-9);
     assert!((instance.vspeed - (-3.0)).abs() < 1e-9);
@@ -885,7 +887,9 @@ fn friction_pulls_speed_toward_zero() {
     let mut instance = make_test_instance();
     instance.set_speed(5.0);
     instance.set_direction(0.0);
-    instance.vars.insert("friction".into(), crate::RuntimeValue::Number(1.0));
+    instance
+        .vars
+        .insert("friction".into(), crate::RuntimeValue::Number(1.0));
     crate::movement::apply_gm_motion_vars(&mut instance);
     let speed = instance.vars.get("speed").and_then(as_number).unwrap();
     assert!((speed - 4.0).abs() < 1e-9);
@@ -896,7 +900,9 @@ fn friction_does_not_overshoot_zero() {
     let mut instance = make_test_instance();
     instance.set_speed(0.5);
     instance.set_direction(0.0);
-    instance.vars.insert("friction".into(), crate::RuntimeValue::Number(1.0));
+    instance
+        .vars
+        .insert("friction".into(), crate::RuntimeValue::Number(1.0));
     crate::movement::apply_gm_motion_vars(&mut instance);
     let speed = instance.vars.get("speed").and_then(as_number).unwrap();
     assert!((speed - 0.0).abs() < 1e-9);
@@ -907,9 +913,16 @@ fn gravity_applied_after_friction() {
     let mut instance = make_test_instance();
     instance.set_speed(4.0);
     instance.set_direction(0.0);
-    instance.vars.insert("friction".into(), crate::RuntimeValue::Number(1.0));
-    instance.vars.insert("gravity".into(), crate::RuntimeValue::Number(0.5));
-    instance.vars.insert("gravity_direction".into(), crate::RuntimeValue::Number(270.0));
+    instance
+        .vars
+        .insert("friction".into(), crate::RuntimeValue::Number(1.0));
+    instance
+        .vars
+        .insert("gravity".into(), crate::RuntimeValue::Number(0.5));
+    instance.vars.insert(
+        "gravity_direction".into(),
+        crate::RuntimeValue::Number(270.0),
+    );
     crate::movement::apply_gm_motion_vars(&mut instance);
     assert!((instance.hspeed - 3.0).abs() < 1e-9);
     assert!((instance.vspeed - 0.5).abs() < 1e-9);
@@ -922,8 +935,18 @@ fn blood2_direction_speed_assignment_syncs_immediately() {
     instance.set_speed(6.0);
     let expected_h = 45f64.to_radians().cos() * 6.0;
     let expected_v = -45f64.to_radians().sin() * 6.0;
-    assert!((instance.hspeed - expected_h).abs() < 1e-9, "hspeed={}, expected={}", instance.hspeed, expected_h);
-    assert!((instance.vspeed - expected_v).abs() < 1e-9, "vspeed={}, expected={}", instance.vspeed, expected_v);
+    assert!(
+        (instance.hspeed - expected_h).abs() < 1e-9,
+        "hspeed={}, expected={}",
+        instance.hspeed,
+        expected_h
+    );
+    assert!(
+        (instance.vspeed - expected_v).abs() < 1e-9,
+        "vspeed={}, expected={}",
+        instance.vspeed,
+        expected_v
+    );
 }
 
 #[test]
@@ -978,7 +1001,10 @@ fn zero_hvspeed_assignment_clears_speed_direction() {
     assert_eq!(instance.hspeed, 0.0);
     assert_eq!(instance.vspeed, 0.0);
     assert_eq!(instance.vars.get("speed").and_then(as_number), Some(0.0));
-    assert_eq!(instance.vars.get("direction").and_then(as_number), Some(0.0));
+    assert_eq!(
+        instance.vars.get("direction").and_then(as_number),
+        Some(0.0)
+    );
 }
 
 fn make_test_instance() -> crate::RuntimeInstance {

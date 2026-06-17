@@ -271,7 +271,8 @@ impl RuntimeCore {
             ) else {
                 continue;
             };
-            let Some(room_instances) = self.current_room.as_ref().map(|room| &room.instances) else {
+            let Some(room_instances) = self.current_room.as_ref().map(|room| &room.instances)
+            else {
                 return;
             };
             let create_index = room_instances.len();
