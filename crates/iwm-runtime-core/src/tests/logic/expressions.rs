@@ -1,59 +1,87 @@
 use super::*;
 
-#[test]
-fn core_evaluates_unary_negative_in_assignments() {
-    let mut package = sample_package();
-    add_step_block(
-        &mut package,
-        vec![LoweredLogicStatement::Assignment {
-            target: LoweredLogicExpr::Identifier("score".into()),
-            value: LoweredLogicExpr::UnaryExpr {
-                op: "-".into(),
-                child: Box::new(LoweredLogicExpr::Identifier("y".into())),
-            },
-        }],
-    );
-
+fn tick_package(package: crate::RuntimePackage) -> RuntimeCore {
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();
     core.tick(&mut host).unwrap();
+    core
+}
 
-    assert_eq!(
-        player_var(&core, "score"),
-        Some(&RuntimeValue::Number(-24.0))
+fn run_step(statements: Vec<LoweredLogicStatement>) -> RuntimeCore {
+    let mut package = sample_package();
+    add_step_block(&mut package, statements);
+    tick_package(package)
+}
+
+fn assign_var(name: &str, value: LoweredLogicExpr) -> LoweredLogicStatement {
+    LoweredLogicStatement::Assignment {
+        target: LoweredLogicExpr::Identifier(name.into()),
+        value,
+    }
+}
+
+#[test]
+fn core_evaluates_unary_negative_in_assignments() {
+    let cases = [(
+        "score",
+        LoweredLogicExpr::UnaryExpr {
+            op: "-".into(),
+            child: Box::new(LoweredLogicExpr::Identifier("y".into())),
+        },
+        RuntimeValue::Number(-24.0),
+    )];
+
+    let core = run_step(
+        cases
+            .iter()
+            .map(|(target, value, _)| assign_var(target, value.clone()))
+            .collect(),
     );
+
+    for (target, _, expected) in cases {
+        assert_eq!(player_var(&core, target), Some(&expected));
+    }
 }
 
 #[test]
 fn core_evaluates_unary_not_in_conditionals() {
+    let cases = [(
+        "flag",
+        "armed",
+        LoweredLogicExpr::UnaryExpr {
+            op: "!".into(),
+            child: Box::new(LoweredLogicExpr::Identifier("flag".into())),
+        },
+        RuntimeValue::Bool(true),
+    )];
+
     let mut package = sample_package();
     add_create_block(
         &mut package,
-        vec![LoweredLogicStatement::Assignment {
-            target: LoweredLogicExpr::Identifier("flag".into()),
-            value: LoweredLogicExpr::LiteralBool(false),
-        }],
+        cases
+            .iter()
+            .map(|(source, _, _, _)| assign_var(source, LoweredLogicExpr::LiteralBool(false)))
+            .collect(),
     );
     add_step_block(
         &mut package,
-        vec![LoweredLogicStatement::Conditional {
-            condition: LoweredLogicExpr::UnaryExpr {
-                op: "!".into(),
-                child: Box::new(LoweredLogicExpr::Identifier("flag".into())),
-            },
-            then_branch: vec![LoweredLogicStatement::Assignment {
-                target: LoweredLogicExpr::Identifier("armed".into()),
-                value: LoweredLogicExpr::LiteralBool(true),
-            }],
-            else_branch: vec![],
-        }],
+        cases
+            .iter()
+            .map(
+                |(_, target, condition, _)| LoweredLogicStatement::Conditional {
+                    condition: condition.clone(),
+                    then_branch: vec![assign_var(target, LoweredLogicExpr::LiteralBool(true))],
+                    else_branch: vec![],
+                },
+            )
+            .collect(),
     );
 
-    let mut core = RuntimeCore::load(package).unwrap();
-    let mut host = host();
-    core.tick(&mut host).unwrap();
+    let core = tick_package(package);
 
-    assert_eq!(player_var(&core, "armed"), Some(&RuntimeValue::Bool(true)));
+    for (_, target, _, expected) in cases {
+        assert_eq!(player_var(&core, target), Some(&expected));
+    }
 }
 
 #[test]
@@ -854,98 +882,73 @@ fn core_evaluates_instance_number_against_live_object_instances() {
 
 #[test]
 fn core_evaluates_abs_calls_in_lowered_expressions() {
-    let mut package = sample_package();
-    add_step_block(
-        &mut package,
-        vec![
-            LoweredLogicStatement::Assignment {
-                target: LoweredLogicExpr::Identifier("positive".into()),
-                value: LoweredLogicExpr::Call {
-                    name: "abs".into(),
-                    args: vec![LoweredLogicExpr::LiteralNumber(-12.5)],
-                },
-            },
-            LoweredLogicStatement::Assignment {
-                target: LoweredLogicExpr::Identifier("already_positive".into()),
-                value: LoweredLogicExpr::Call {
-                    name: "abs".into(),
-                    args: vec![LoweredLogicExpr::LiteralNumber(3.0)],
-                },
-            },
-        ],
+    let cases = [
+        ("positive", -12.5, RuntimeValue::Number(12.5)),
+        ("already_positive", 3.0, RuntimeValue::Number(3.0)),
+    ];
+
+    let core = run_step(
+        cases
+            .iter()
+            .map(|(target, input, _)| {
+                assign_var(
+                    target,
+                    LoweredLogicExpr::Call {
+                        name: "abs".into(),
+                        args: vec![LoweredLogicExpr::LiteralNumber(*input)],
+                    },
+                )
+            })
+            .collect(),
     );
 
-    let mut core = RuntimeCore::load(package).unwrap();
-    let mut host = host();
-    core.tick(&mut host).unwrap();
-
-    assert_eq!(
-        player_var(&core, "positive"),
-        Some(&RuntimeValue::Number(12.5))
-    );
-    assert_eq!(
-        player_var(&core, "already_positive"),
-        Some(&RuntimeValue::Number(3.0))
-    );
+    for (target, _, expected) in cases {
+        assert_eq!(player_var(&core, target), Some(&expected));
+    }
 }
 
 #[test]
 fn core_evaluates_random_and_choose_calls_in_lowered_expressions() {
-    let mut package = sample_package();
-    add_step_block(
-        &mut package,
-        vec![
-            LoweredLogicStatement::Assignment {
-                target: LoweredLogicExpr::Identifier("random_value".into()),
-                value: LoweredLogicExpr::Call {
-                    name: "random".into(),
-                    args: vec![LoweredLogicExpr::LiteralNumber(5.0)],
-                },
+    let core = run_step(vec![
+        assign_var(
+            "random_value",
+            LoweredLogicExpr::Call {
+                name: "random".into(),
+                args: vec![LoweredLogicExpr::LiteralNumber(5.0)],
             },
-            LoweredLogicStatement::Assignment {
-                target: LoweredLogicExpr::Identifier("choose_value".into()),
-                value: LoweredLogicExpr::Call {
-                    name: "choose".into(),
-                    args: vec![
-                        LoweredLogicExpr::LiteralNumber(2.0),
-                        LoweredLogicExpr::LiteralNumber(4.0),
-                        LoweredLogicExpr::LiteralNumber(6.0),
-                    ],
-                },
+        ),
+        assign_var(
+            "choose_value",
+            LoweredLogicExpr::Call {
+                name: "choose".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(2.0),
+                    LoweredLogicExpr::LiteralNumber(4.0),
+                    LoweredLogicExpr::LiteralNumber(6.0),
+                ],
             },
-            LoweredLogicStatement::Assignment {
-                target: LoweredLogicExpr::Identifier("range_value".into()),
-                value: LoweredLogicExpr::Call {
-                    name: "random_range".into(),
-                    args: vec![
-                        LoweredLogicExpr::LiteralNumber(3.0),
-                        LoweredLogicExpr::LiteralNumber(6.0),
-                    ],
-                },
+        ),
+        assign_var(
+            "range_value",
+            LoweredLogicExpr::Call {
+                name: "random_range".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(3.0),
+                    LoweredLogicExpr::LiteralNumber(6.0),
+                ],
             },
-        ],
-    );
+        ),
+    ]);
 
-    let mut core = RuntimeCore::load(package).unwrap();
-    let mut host = host();
-    core.tick(&mut host).unwrap();
-
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    let Some(RuntimeValue::Number(random_value)) = player.vars.get("random_value") else {
+    let Some(RuntimeValue::Number(random_value)) = player_var(&core, "random_value") else {
         panic!("random_value should be assigned");
     };
     assert!((0.0..5.0).contains(random_value));
     assert!(matches!(
-        player.vars.get("choose_value"),
+        player_var(&core, "choose_value"),
         Some(RuntimeValue::Number(2.0 | 4.0 | 6.0))
     ));
-    let Some(RuntimeValue::Number(range_value)) = player.vars.get("range_value") else {
+    let Some(RuntimeValue::Number(range_value)) = player_var(&core, "range_value") else {
         panic!("range_value should be assigned");
     };
     assert!((3.0..6.0).contains(range_value));
@@ -954,72 +957,55 @@ fn core_evaluates_random_and_choose_calls_in_lowered_expressions() {
 
 #[test]
 fn core_evaluates_string_calls_in_lowered_expressions() {
-    let mut package = sample_package();
-    add_step_block(
-        &mut package,
-        vec![
-            LoweredLogicStatement::Assignment {
-                target: LoweredLogicExpr::Identifier("integer_text".into()),
-                value: LoweredLogicExpr::Call {
+    let cases = [
+        (
+            "integer_text",
+            LoweredLogicExpr::Call {
+                name: "string".into(),
+                args: vec![LoweredLogicExpr::LiteralNumber(12.0)],
+            },
+            RuntimeValue::Text("12".into()),
+        ),
+        (
+            "fraction_text",
+            LoweredLogicExpr::Call {
+                name: "string".into(),
+                args: vec![LoweredLogicExpr::LiteralNumber(-3.25)],
+            },
+            RuntimeValue::Text("-3.25".into()),
+        ),
+        (
+            "bool_text",
+            LoweredLogicExpr::Call {
+                name: "string".into(),
+                args: vec![LoweredLogicExpr::LiteralBool(true)],
+            },
+            RuntimeValue::Text("true".into()),
+        ),
+        (
+            "path_text",
+            LoweredLogicExpr::BinaryExpr {
+                op: "+".into(),
+                left: Box::new(LoweredLogicExpr::LiteralText("save".into())),
+                right: Box::new(LoweredLogicExpr::Call {
                     name: "string".into(),
-                    args: vec![LoweredLogicExpr::LiteralNumber(12.0)],
-                },
+                    args: vec![LoweredLogicExpr::LiteralNumber(1.0)],
+                }),
             },
-            LoweredLogicStatement::Assignment {
-                target: LoweredLogicExpr::Identifier("fraction_text".into()),
-                value: LoweredLogicExpr::Call {
-                    name: "string".into(),
-                    args: vec![LoweredLogicExpr::LiteralNumber(-3.25)],
-                },
-            },
-            LoweredLogicStatement::Assignment {
-                target: LoweredLogicExpr::Identifier("bool_text".into()),
-                value: LoweredLogicExpr::Call {
-                    name: "string".into(),
-                    args: vec![LoweredLogicExpr::LiteralBool(true)],
-                },
-            },
-            LoweredLogicStatement::Assignment {
-                target: LoweredLogicExpr::Identifier("path_text".into()),
-                value: LoweredLogicExpr::BinaryExpr {
-                    op: "+".into(),
-                    left: Box::new(LoweredLogicExpr::LiteralText("save".into())),
-                    right: Box::new(LoweredLogicExpr::Call {
-                        name: "string".into(),
-                        args: vec![LoweredLogicExpr::LiteralNumber(1.0)],
-                    }),
-                },
-            },
-        ],
+            RuntimeValue::Text("save1".into()),
+        ),
+    ];
+
+    let core = run_step(
+        cases
+            .iter()
+            .map(|(target, value, _)| assign_var(target, value.clone()))
+            .collect(),
     );
 
-    let mut core = RuntimeCore::load(package).unwrap();
-    let mut host = host();
-    core.tick(&mut host).unwrap();
-
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    assert_eq!(
-        player.vars.get("integer_text"),
-        Some(&RuntimeValue::Text("12".into()))
-    );
-    assert_eq!(
-        player.vars.get("fraction_text"),
-        Some(&RuntimeValue::Text("-3.25".into()))
-    );
-    assert_eq!(
-        player.vars.get("bool_text"),
-        Some(&RuntimeValue::Text("true".into()))
-    );
-    assert_eq!(
-        player.vars.get("path_text"),
-        Some(&RuntimeValue::Text("save1".into()))
-    );
+    for (target, _, expected) in cases {
+        assert_eq!(player_var(&core, target), Some(&expected));
+    }
 }
 
 #[test]
