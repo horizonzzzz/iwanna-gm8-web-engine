@@ -4,7 +4,7 @@ use iwm_runtime_model::{RoomInstancePlacement, SpriteCollisionMask};
 use crate::helpers::{collides_at, collision_candidate_indices_near, collision_candidates_near};
 use crate::RuntimeCore;
 
-use super::support::{add_room_create_block, capture_jump_trace, host, sample_package};
+use super::support::{add_room_create_block, capture_jump_trace, host, player, sample_package};
 use crate::{LoweredLogicExpr, LoweredLogicStatement};
 
 #[test]
@@ -21,13 +21,7 @@ fn core_moves_player_with_left_and_right_input() {
         },
     );
     core.tick(&mut host).unwrap();
-    let after_right = core.current_room().unwrap();
-    let player = after_right
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    let right_x = player.x;
+    let right_x = player(&core).x;
     assert!(right_x > 12.0);
 
     host.input.replace_button_states([(
@@ -39,13 +33,7 @@ fn core_moves_player_with_left_and_right_input() {
         },
     )]);
     core.tick(&mut host).unwrap();
-    let after_left = core.current_room().unwrap();
-    let player = after_left
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    assert!(player.x <= right_x);
+    assert!(player(&core).x <= right_x);
 }
 
 #[test]
@@ -63,13 +51,7 @@ fn core_jumps_when_on_spawn_and_jump_is_pressed() {
     );
     core.tick(&mut host).unwrap();
 
-    let room = core.current_room().unwrap();
-    let player = room
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    assert!(player.y <= 24.0);
+    assert!(player(&core).y <= 24.0);
 }
 
 #[test]
@@ -104,16 +86,10 @@ fn core_preserves_fractional_vertical_jump_motion() {
     );
     core.tick(&mut host).unwrap();
 
-    let room = core.current_room().unwrap();
-    let player = room
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
     assert!(
-        (player.y - 15.9).abs() < 1e-9,
+        (player(&core).y - 15.9).abs() < 1e-9,
         "expected y=15.9 after jump/gravity, got {}",
-        player.y
+        player(&core).y
     );
 }
 
@@ -143,13 +119,7 @@ fn core_uses_runtime_bound_jump_key_instead_of_hardcoded_space() {
     );
     core.tick(&mut host).unwrap();
 
-    let room = core.current_room().unwrap();
-    let player = room
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    assert!(player.y <= 24.0);
+    assert!(player(&core).y <= 24.0);
 }
 
 #[test]
@@ -179,13 +149,7 @@ fn core_uses_same_tick_step_updated_jump_binding_for_builtin_movement() {
 
     core.tick(&mut host).unwrap();
 
-    let room = core.current_room().unwrap();
-    let player = room
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    assert!(player.y < 24.0);
+    assert!(player(&core).y < 24.0);
 }
 
 #[test]
@@ -221,13 +185,7 @@ fn core_stops_player_when_moving_into_a_solid() {
 
     core.tick(&mut host).unwrap();
 
-    let room = core.current_room().unwrap();
-    let player = room
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    assert_eq!(player.x, 12.0);
+    assert_eq!(player(&core).x, 12.0);
 }
 
 #[test]

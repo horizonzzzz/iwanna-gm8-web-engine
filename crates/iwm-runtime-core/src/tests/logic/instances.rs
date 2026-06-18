@@ -16,14 +16,7 @@ fn instance_destroy_in_step_marks_current_instance_not_alive() {
 
     core.execute_lowered_step_events(&mut host).unwrap();
 
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.runtime_id == 0)
-        .unwrap();
-    assert!(!player.alive);
+    assert!(!player(&core).alive);
 }
 
 #[test]
@@ -124,15 +117,8 @@ fn with_destroyed_target_is_not_visible_to_later_instance_exists_in_same_event()
 
     core.execute_lowered_step_events(&mut host).unwrap();
 
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
     assert_eq!(
-        player.vars.get("block_still_exists"),
+        player_var(&core, "block_still_exists"),
         Some(&RuntimeValue::Bool(false))
     );
 }

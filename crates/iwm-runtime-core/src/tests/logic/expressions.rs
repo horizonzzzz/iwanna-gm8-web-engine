@@ -18,14 +18,10 @@ fn core_evaluates_unary_negative_in_assignments() {
     let mut host = host();
     core.tick(&mut host).unwrap();
 
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    assert_eq!(player.vars.get("score"), Some(&RuntimeValue::Number(-24.0)));
+    assert_eq!(
+        player_var(&core, "score"),
+        Some(&RuntimeValue::Number(-24.0))
+    );
 }
 
 #[test]
@@ -57,14 +53,7 @@ fn core_evaluates_unary_not_in_conditionals() {
     let mut host = host();
     core.tick(&mut host).unwrap();
 
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    assert_eq!(player.vars.get("armed"), Some(&RuntimeValue::Bool(true)));
+    assert_eq!(player_var(&core, "armed"), Some(&RuntimeValue::Bool(true)));
 }
 
 #[test]
@@ -93,26 +82,11 @@ fn core_executes_zero_arg_script_calls_from_lowered_step_events() {
 
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();
-    {
-        let room = core.current_room.as_mut().unwrap();
-        let player = room
-            .instances
-            .iter_mut()
-            .find(|instance| instance.player_candidate)
-            .unwrap();
-        player.vspeed = -8.0;
-    }
+    player_mut(&mut core).vspeed = -8.0;
 
     core.tick(&mut host).unwrap();
 
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    assert_eq!(player.vspeed, -4.0);
+    assert_eq!(player(&core).vspeed, -4.0);
 }
 
 #[test]
@@ -131,14 +105,7 @@ fn core_preserves_script_applied_vspeed_without_step_player_overwrite() {
 
     core.tick(&mut host).unwrap();
 
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    assert_eq!(player.vspeed, -4.0);
+    assert_eq!(player(&core).vspeed, -4.0);
 }
 
 #[test]
@@ -198,15 +165,11 @@ fn core_evaluates_keyboard_query_calls_against_host_button_state() {
 
     core.tick(&mut host).unwrap();
 
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
-    assert_eq!(player.vars.get("pressed"), Some(&RuntimeValue::Bool(true)));
-    assert_eq!(player.vars.get("held"), Some(&RuntimeValue::Bool(true)));
+    assert_eq!(
+        player_var(&core, "pressed"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert_eq!(player_var(&core, "held"), Some(&RuntimeValue::Bool(true)));
 
     host.input.set_button_state(
         RuntimeButton::Keyboard(0x20),
@@ -735,21 +698,11 @@ fn core_executes_file_bin_write_and_read_byte_calls_against_host_files() {
         host.files.read(std::path::Path::new("DeathTime")).unwrap(),
         vec![65]
     );
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
     assert_eq!(
-        player.vars.get("first_byte"),
+        player_var(&core, "first_byte"),
         Some(&RuntimeValue::Number(65.0))
     );
-    assert!(!core
-        .diagnostics()
-        .iter()
-        .any(|diagnostic| diagnostic.code == "runtime-unsupported-function"));
+    assert_no_runtime_blockers(&core);
 }
 
 #[test]
@@ -822,15 +775,8 @@ fn core_evaluates_file_bin_read_byte_inside_binary_expressions() {
         .unwrap();
     core.tick(&mut host).unwrap();
 
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
     assert_eq!(
-        player.vars.get("loaded_room"),
+        player_var(&core, "loaded_room"),
         Some(&RuntimeValue::Number(143.0))
     );
 }
@@ -900,15 +846,8 @@ fn core_evaluates_instance_number_against_live_object_instances() {
     let mut host = host();
     core.tick(&mut host).unwrap();
 
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
     assert_eq!(
-        player.vars.get("bullet_count"),
+        player_var(&core, "bullet_count"),
         Some(&RuntimeValue::Number(2.0))
     );
 }
@@ -940,19 +879,12 @@ fn core_evaluates_abs_calls_in_lowered_expressions() {
     let mut host = host();
     core.tick(&mut host).unwrap();
 
-    let player = core
-        .current_room()
-        .unwrap()
-        .instances
-        .iter()
-        .find(|instance| instance.player_candidate)
-        .unwrap();
     assert_eq!(
-        player.vars.get("positive"),
+        player_var(&core, "positive"),
         Some(&RuntimeValue::Number(12.5))
     );
     assert_eq!(
-        player.vars.get("already_positive"),
+        player_var(&core, "already_positive"),
         Some(&RuntimeValue::Number(3.0))
     );
 }
@@ -1017,9 +949,7 @@ fn core_evaluates_random_and_choose_calls_in_lowered_expressions() {
         panic!("range_value should be assigned");
     };
     assert!((3.0..6.0).contains(range_value));
-    assert!(!core.diagnostics().iter().any(|diagnostic| diagnostic.code
-        == "runtime-unsupported-expression"
-        || diagnostic.code == "runtime-unsupported-function"));
+    assert_no_runtime_blockers(&core);
 }
 
 #[test]

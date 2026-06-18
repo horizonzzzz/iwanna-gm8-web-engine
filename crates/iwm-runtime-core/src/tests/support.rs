@@ -8,7 +8,8 @@ use std::path::Path;
 
 use crate::helpers::collides_at;
 use crate::{
-    LoweredLogicEntry, LoweredLogicFile, LoweredLogicStatement, RuntimeCore, RuntimePackage,
+    LoweredLogicEntry, LoweredLogicFile, LoweredLogicStatement, RuntimeCore, RuntimeInstance,
+    RuntimePackage, RuntimeValue,
 };
 
 const PLAYER_OBJECT_INDEX: usize = 0;
@@ -31,253 +32,14 @@ pub(super) struct JumpTraceFrame {
 
 pub(super) fn sample_package() -> RuntimePackage {
     RuntimePackage {
-        manifest: RuntimeManifest {
-            format_version: 1,
-            package_kind: "runtime-v1".into(),
-            source_name: "sample.exe".into(),
-            source_hash: "abc123".into(),
-            engine_family: "gm8".into(),
-            compatibility: CompatibilityLevel::Partial,
-            default_room_id: Some(7),
-            room_order: vec![7, 9],
-            room_count: 2,
-            object_count: 5,
-            script_block_count: 1,
-            sprite_count: 2,
-            background_count: 1,
-            sound_count: 0,
-            resource_index_path: "resources/index.json".into(),
-            warnings: vec![],
-            display_source: None,
-            display_width: None,
-            display_height: None,
-        },
-        rooms: vec![
-            RoomDefinition {
-                id: 7,
-                name: "room7".into(),
-                width: 320,
-                height: 240,
-                speed: 60,
-                persistent: false,
-                backgrounds: vec![RoomBackgroundLayer {
-                    visible_on_start: true,
-                    is_foreground: false,
-                    source_bg: 0,
-                    xoffset: 0,
-                    yoffset: 0,
-                    tile_horz: false,
-                    tile_vert: false,
-                    hspeed: 0,
-                    vspeed: 0,
-                    stretch: false,
-                }],
-                views_enabled: false,
-                views: vec![RoomView {
-                    visible: true,
-                    source_x: 0,
-                    source_y: 0,
-                    source_w: 320,
-                    source_h: 240,
-                    port_x: 0,
-                    port_y: 0,
-                    port_w: 320,
-                    port_h: 240,
-                    target: -1,
-                    hborder: 32,
-                    vborder: 32,
-                    hspeed: -1,
-                    vspeed: -1,
-                }],
-                tiles: vec![RoomTilePlacement {
-                    tile_id: 21,
-                    source_bg: 0,
-                    x: 64,
-                    y: 80,
-                    tile_x: 0,
-                    tile_y: 0,
-                    width: 32,
-                    height: 32,
-                    depth: 100,
-                    xscale: 1.0,
-                    yscale: 1.0,
-                    blend: 0x00ff_ffff,
-                }],
-                instances: vec![
-                    RoomInstancePlacement {
-                        instance_id: 11,
-                        object_id: 0,
-                        x: 12,
-                        y: 24,
-                        xscale: 1.0,
-                        yscale: 1.0,
-                        angle: 0.0,
-                        blend: 0x00ff_ffff,
-                        creation_block_id: None,
-                        is_solid: false,
-                        is_hazard: false,
-                        is_checkpoint: false,
-                    },
-                    RoomInstancePlacement {
-                        instance_id: 12,
-                        object_id: 1,
-                        x: 48,
-                        y: 64,
-                        xscale: 1.0,
-                        yscale: 1.0,
-                        angle: 0.0,
-                        blend: 0x00ff_ffff,
-                        creation_block_id: None,
-                        is_solid: false,
-                        is_hazard: false,
-                        is_checkpoint: false,
-                    },
-                    RoomInstancePlacement {
-                        instance_id: 13,
-                        object_id: 2,
-                        x: 12,
-                        y: 40,
-                        xscale: 1.0,
-                        yscale: 1.0,
-                        angle: 0.0,
-                        blend: 0x00ff_ffff,
-                        creation_block_id: None,
-                        is_solid: true,
-                        is_hazard: false,
-                        is_checkpoint: false,
-                    },
-                    RoomInstancePlacement {
-                        instance_id: 14,
-                        object_id: 3,
-                        x: 12,
-                        y: 24,
-                        xscale: 1.0,
-                        yscale: 1.0,
-                        angle: 0.0,
-                        blend: 0x00ff_ffff,
-                        creation_block_id: None,
-                        is_solid: false,
-                        is_hazard: false,
-                        is_checkpoint: true,
-                    },
-                    RoomInstancePlacement {
-                        instance_id: 15,
-                        object_id: 705,
-                        x: 96,
-                        y: 96,
-                        xscale: 1.0,
-                        yscale: 1.0,
-                        angle: 0.0,
-                        blend: 0x00ff_ffff,
-                        creation_block_id: None,
-                        is_solid: false,
-                        is_hazard: false,
-                        is_checkpoint: false,
-                    },
-                ],
-                creation_block_id: None,
-                playable: true,
-                transition_targets: vec![9],
-            },
-            RoomDefinition {
-                id: 9,
-                name: "room9".into(),
-                width: 160,
-                height: 120,
-                speed: 60,
-                persistent: false,
-                backgrounds: vec![],
-                views_enabled: false,
-                views: vec![],
-                tiles: vec![],
-                instances: vec![],
-                creation_block_id: None,
-                playable: true,
-                transition_targets: vec![],
-            },
-        ],
+        manifest: runtime_manifest(),
+        rooms: vec![primary_room(), secondary_room()],
         objects: vec![
-            ObjectDefinition {
-                id: 0,
-                name: "obj_player".into(),
-                sprite_index: 0,
-                parent_index: -1,
-                depth: 0,
-                persistent: false,
-                visible: true,
-                solid: false,
-                mask_index: -1,
-                is_hazard: Some(false),
-                is_checkpoint: Some(false),
-                is_player: true,
-                events: vec![ObjectEventEntry {
-                    event_type: 0,
-                    sub_event: 0,
-                    event_tag: "create".into(),
-                    block_id: "object:0:event:0:0".into(),
-                    action_count: 0,
-                }],
-            },
-            ObjectDefinition {
-                id: 1,
-                name: "obj_marker".into(),
-                sprite_index: -1,
-                parent_index: -1,
-                depth: 0,
-                persistent: false,
-                visible: true,
-                solid: false,
-                mask_index: -1,
-                is_hazard: Some(false),
-                is_checkpoint: Some(false),
-                is_player: false,
-                events: vec![],
-            },
-            ObjectDefinition {
-                id: 2,
-                name: "obj_block".into(),
-                sprite_index: -1,
-                parent_index: -1,
-                depth: 0,
-                persistent: false,
-                visible: false,
-                solid: true,
-                mask_index: -1,
-                is_hazard: Some(false),
-                is_checkpoint: Some(true),
-                is_player: false,
-                events: vec![],
-            },
-            ObjectDefinition {
-                id: 3,
-                name: "obj_checkpoint".into(),
-                sprite_index: -1,
-                parent_index: -1,
-                depth: 0,
-                persistent: false,
-                visible: false,
-                solid: false,
-                mask_index: -1,
-                is_hazard: Some(false),
-                is_checkpoint: Some(true),
-                is_player: false,
-                events: vec![],
-            },
-            ObjectDefinition {
-                id: 705,
-                name: "obj_sparse_sprite".into(),
-                sprite_index: 1,
-                parent_index: -1,
-                depth: 0,
-                persistent: false,
-                visible: true,
-                solid: false,
-                mask_index: -1,
-                is_hazard: Some(false),
-                is_checkpoint: Some(false),
-                is_player: false,
-                events: vec![],
-            },
+            player_object(),
+            marker_object(),
+            block_object(),
+            checkpoint_object(),
+            sparse_sprite_object(),
         ],
         scripts: ScriptIrFile {
             format: "iwm-script-ir-v1".into(),
@@ -293,54 +55,7 @@ pub(super) fn sample_package() -> RuntimePackage {
             }],
         },
         lowered_logic: None,
-        resources: ResourceIndex {
-            sprites: vec![
-                SpriteResource {
-                    id: 0,
-                    name: "spr_player".into(),
-                    origin_x: 0,
-                    origin_y: 0,
-                    frame_paths: vec![],
-                    width: 16,
-                    height: 16,
-                    bbox_left: 0,
-                    bbox_right: 15,
-                    bbox_top: 0,
-                    bbox_bottom: 15,
-                    collision_masks: vec![],
-                    per_frame_collision_masks: false,
-                },
-                SpriteResource {
-                    id: 1,
-                    name: "spr_sparse".into(),
-                    origin_x: 0,
-                    origin_y: 0,
-                    frame_paths: vec![],
-                    width: 16,
-                    height: 16,
-                    bbox_left: 0,
-                    bbox_right: 15,
-                    bbox_top: 0,
-                    bbox_bottom: 15,
-                    collision_masks: vec![],
-                    per_frame_collision_masks: false,
-                },
-            ],
-            backgrounds: vec![BackgroundResource {
-                id: 0,
-                name: "bg_room".into(),
-                width: 320,
-                height: 240,
-                image_path: "resources/backgrounds/0.png".into(),
-            }],
-            sounds: vec![SoundResource {
-                id: 0,
-                name: "snd_beep".into(),
-                file_path: "resources/audio/0.wav".into(),
-                extension: "wav".into(),
-                preload: false,
-            }],
-        },
+        resources: sample_resources(),
         analysis: AnalysisReport {
             dlls: vec![],
             included_files: vec![],
@@ -350,8 +65,325 @@ pub(super) fn sample_package() -> RuntimePackage {
     }
 }
 
+fn runtime_manifest() -> RuntimeManifest {
+    RuntimeManifest {
+        format_version: 1,
+        package_kind: "runtime-v1".into(),
+        source_name: "sample.exe".into(),
+        source_hash: "abc123".into(),
+        engine_family: "gm8".into(),
+        compatibility: CompatibilityLevel::Partial,
+        default_room_id: Some(DEFAULT_ROOM_ID),
+        room_order: vec![DEFAULT_ROOM_ID, 9],
+        room_count: 2,
+        object_count: 5,
+        script_block_count: 1,
+        sprite_count: 2,
+        background_count: 1,
+        sound_count: 0,
+        resource_index_path: "resources/index.json".into(),
+        warnings: vec![],
+        display_source: None,
+        display_width: None,
+        display_height: None,
+    }
+}
+
+fn primary_room() -> RoomDefinition {
+    RoomDefinition {
+        id: DEFAULT_ROOM_ID,
+        name: "room7".into(),
+        width: 320,
+        height: 240,
+        speed: 60,
+        persistent: false,
+        backgrounds: vec![RoomBackgroundLayer {
+            visible_on_start: true,
+            is_foreground: false,
+            source_bg: 0,
+            xoffset: 0,
+            yoffset: 0,
+            tile_horz: false,
+            tile_vert: false,
+            hspeed: 0,
+            vspeed: 0,
+            stretch: false,
+        }],
+        views_enabled: false,
+        views: vec![RoomView {
+            visible: true,
+            source_x: 0,
+            source_y: 0,
+            source_w: 320,
+            source_h: 240,
+            port_x: 0,
+            port_y: 0,
+            port_w: 320,
+            port_h: 240,
+            target: -1,
+            hborder: 32,
+            vborder: 32,
+            hspeed: -1,
+            vspeed: -1,
+        }],
+        tiles: vec![RoomTilePlacement {
+            tile_id: 21,
+            source_bg: 0,
+            x: 64,
+            y: 80,
+            tile_x: 0,
+            tile_y: 0,
+            width: 32,
+            height: 32,
+            depth: 100,
+            xscale: 1.0,
+            yscale: 1.0,
+            blend: 0x00ff_ffff,
+        }],
+        instances: vec![
+            room_instance(11, PLAYER_OBJECT_ID, 12, 24, false, false, false),
+            room_instance(12, 1, 48, 64, false, false, false),
+            room_instance(13, 2, 12, 40, true, false, false),
+            room_instance(14, 3, 12, 24, false, false, true),
+            room_instance(15, 705, 96, 96, false, false, false),
+        ],
+        creation_block_id: None,
+        playable: true,
+        transition_targets: vec![9],
+    }
+}
+
+fn secondary_room() -> RoomDefinition {
+    RoomDefinition {
+        id: 9,
+        name: "room9".into(),
+        width: 160,
+        height: 120,
+        speed: 60,
+        persistent: false,
+        backgrounds: vec![],
+        views_enabled: false,
+        views: vec![],
+        tiles: vec![],
+        instances: vec![],
+        creation_block_id: None,
+        playable: true,
+        transition_targets: vec![],
+    }
+}
+
+fn room_instance(
+    instance_id: i32,
+    object_id: usize,
+    x: i32,
+    y: i32,
+    is_solid: bool,
+    is_hazard: bool,
+    is_checkpoint: bool,
+) -> RoomInstancePlacement {
+    RoomInstancePlacement {
+        instance_id,
+        object_id: object_id as i32,
+        x,
+        y,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid,
+        is_hazard,
+        is_checkpoint,
+    }
+}
+
+fn player_object() -> ObjectDefinition {
+    ObjectDefinition {
+        id: PLAYER_OBJECT_ID,
+        name: "obj_player".into(),
+        sprite_index: 0,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: true,
+        events: vec![ObjectEventEntry {
+            event_type: 0,
+            sub_event: 0,
+            event_tag: "create".into(),
+            block_id: "object:0:event:0:0".into(),
+            action_count: 0,
+        }],
+    }
+}
+
+fn marker_object() -> ObjectDefinition {
+    ObjectDefinition {
+        id: 1,
+        name: "obj_marker".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![],
+    }
+}
+
+fn block_object() -> ObjectDefinition {
+    ObjectDefinition {
+        id: 2,
+        name: "obj_block".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: false,
+        solid: true,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(true),
+        is_player: false,
+        events: vec![],
+    }
+}
+
+fn checkpoint_object() -> ObjectDefinition {
+    ObjectDefinition {
+        id: 3,
+        name: "obj_checkpoint".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: false,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(true),
+        is_player: false,
+        events: vec![],
+    }
+}
+
+fn sparse_sprite_object() -> ObjectDefinition {
+    ObjectDefinition {
+        id: 705,
+        name: "obj_sparse_sprite".into(),
+        sprite_index: 1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![],
+    }
+}
+
+fn sample_resources() -> ResourceIndex {
+    ResourceIndex {
+        sprites: vec![
+            SpriteResource {
+                id: 0,
+                name: "spr_player".into(),
+                origin_x: 0,
+                origin_y: 0,
+                frame_paths: vec![],
+                width: 16,
+                height: 16,
+                bbox_left: 0,
+                bbox_right: 15,
+                bbox_top: 0,
+                bbox_bottom: 15,
+                collision_masks: vec![],
+                per_frame_collision_masks: false,
+            },
+            SpriteResource {
+                id: 1,
+                name: "spr_sparse".into(),
+                origin_x: 0,
+                origin_y: 0,
+                frame_paths: vec![],
+                width: 16,
+                height: 16,
+                bbox_left: 0,
+                bbox_right: 15,
+                bbox_top: 0,
+                bbox_bottom: 15,
+                collision_masks: vec![],
+                per_frame_collision_masks: false,
+            },
+        ],
+        backgrounds: vec![BackgroundResource {
+            id: 0,
+            name: "bg_room".into(),
+            width: 320,
+            height: 240,
+            image_path: "resources/backgrounds/0.png".into(),
+        }],
+        sounds: vec![SoundResource {
+            id: 0,
+            name: "snd_beep".into(),
+            file_path: "resources/audio/0.wav".into(),
+            extension: "wav".into(),
+            preload: false,
+        }],
+    }
+}
+
 pub(super) fn host() -> HeadlessHost {
     HeadlessHost::new("sandbox")
+}
+
+pub(super) fn player(core: &RuntimeCore) -> &RuntimeInstance {
+    core.current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap()
+}
+
+pub(super) fn player_mut(core: &mut RuntimeCore) -> &mut RuntimeInstance {
+    core.current_room
+        .as_mut()
+        .unwrap()
+        .instances
+        .iter_mut()
+        .find(|instance| instance.player_candidate)
+        .unwrap()
+}
+
+pub(super) fn player_var<'a>(core: &'a RuntimeCore, name: &str) -> Option<&'a RuntimeValue> {
+    player(core).vars.get(name)
+}
+
+pub(super) fn assert_no_runtime_blockers(core: &RuntimeCore) {
+    assert!(
+        core.diagnostics().iter().all(|diagnostic| {
+            !matches!(
+                diagnostic.code.as_str(),
+                "runtime-unsupported-expression"
+                    | "runtime-unsupported-function"
+                    | "runtime-unsupported-statement"
+            )
+        }),
+        "expected no unsupported runtime diagnostics: {:?}",
+        core.diagnostics()
+    );
 }
 
 pub(super) fn real_sample_package() -> Option<RuntimePackage> {
