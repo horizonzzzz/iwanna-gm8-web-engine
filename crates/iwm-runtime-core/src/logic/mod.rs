@@ -1,3 +1,5 @@
+//! Lowered-logic orchestration for runtime events and GM helper execution.
+
 mod assignment;
 mod bootstrap;
 mod calls;

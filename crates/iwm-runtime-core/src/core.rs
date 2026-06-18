@@ -1,3 +1,5 @@
+//! RuntimeCore state, package loading, tick orchestration, and snapshots.
+
 use std::collections::HashMap;
 
 use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
