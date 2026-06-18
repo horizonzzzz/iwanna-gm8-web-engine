@@ -335,6 +335,131 @@ fn real_sample_r_load_after_s_save_restores_saved_player_position() {
 }
 
 #[test]
+fn real_sample_r_load_after_s_save_keeps_shift_jump_bound() {
+    let Some(mut package) = real_sample_package() else {
+        return;
+    };
+    let room143 = package
+        .rooms
+        .iter_mut()
+        .find(|room| room.id == 143)
+        .expect("sample package should include room 143");
+    room143
+        .instances
+        .push(iwm_runtime_model::RoomInstancePlacement {
+            instance_id: 990_143,
+            object_id: 4,
+            x: 64,
+            y: 64,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: false,
+            is_hazard: false,
+            is_checkpoint: false,
+        });
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.globals
+        .insert("global.difficulty".into(), RuntimeValue::Number(0.0));
+    core.reload_room(143).unwrap();
+    core.globals
+        .insert("global.difficulty".into(), RuntimeValue::Number(0.0));
+    move_real_sample_player_onto_savepoint(&mut core);
+
+    press_real_sample_key(&mut host, 0x53);
+    core.tick(&mut host).unwrap();
+    release_real_sample_key(&mut host, 0x53);
+    host.input.clear_transitions();
+
+    press_real_sample_key(&mut host, 0x52);
+    core.tick(&mut host).unwrap();
+    release_real_sample_key(&mut host, 0x52);
+    core.tick(&mut host).unwrap();
+    host.input.clear_transitions();
+
+    for _ in 0..180 {
+        core.tick(&mut host).unwrap();
+        if core
+            .snapshot()
+            .player
+            .as_ref()
+            .map(|player| player.jump.grounded)
+            .unwrap_or(false)
+        {
+            break;
+        }
+    }
+    assert!(
+        core.snapshot()
+            .player
+            .as_ref()
+            .map(|player| player.jump.grounded)
+            .unwrap_or(false),
+        "R load should leave the player able to land before testing jump; room={:?}; players={:?}",
+        core.snapshot().room_id,
+        core.current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .filter(|instance| crate::helpers::is_player_instance(instance))
+            .map(|instance| (
+                instance.runtime_id,
+                instance.instance_id,
+                instance.alive,
+                instance.x,
+                instance.y,
+                instance.vspeed,
+                instance.vars.clone()
+            ))
+            .collect::<Vec<_>>()
+    );
+
+    press_real_sample_key(&mut host, 0x10);
+    core.tick(&mut host).unwrap();
+
+    let snapshot = core.snapshot();
+    let player = snapshot
+        .player
+        .as_ref()
+        .expect("R load should leave a live player");
+    assert_eq!(
+        snapshot.input_trace.jump_button_key, 0x10,
+        "R load should preserve the sample's Shift jump binding; globals={:?}",
+        core.globals
+    );
+    assert!(
+        snapshot.input_trace.jump_just_pressed,
+        "Shift should be observed as the jump edge after R load; trace={:?}",
+        snapshot.input_trace
+    );
+    assert!(
+        player.vspeed < 0.0,
+        "Shift after R load should produce upward vspeed, got {}; player={:?}; players={:?}",
+        player.vspeed,
+        player,
+        core.current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .filter(|instance| crate::helpers::is_player_instance(instance))
+            .map(|instance| (
+                instance.runtime_id,
+                instance.instance_id,
+                instance.alive,
+                instance.x,
+                instance.y,
+                instance.vspeed,
+                instance.vars.clone()
+            ))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn real_sample_death_feedback_waits_for_reset_before_room_reload() {
     let Some(package) = real_sample_package() else {
         return;

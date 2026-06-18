@@ -129,6 +129,13 @@ impl RuntimeCore {
 
 fn add_persistent_instances(room: &mut RuntimeRoomState, instances: Vec<RuntimeInstance>) {
     for mut instance in instances {
+        if let Some(candidate) = room
+            .instances
+            .iter()
+            .find(|candidate| persistent_instance_replaces_room_instance(&instance, candidate))
+        {
+            merge_missing_player_vars(&mut instance, candidate);
+        }
         room.instances
             .retain(|candidate| !persistent_instance_replaces_room_instance(&instance, candidate));
         renumber_runtime_ids(room);
@@ -145,6 +152,22 @@ fn persistent_instance_replaces_room_instance(
         || (is_player_instance(incoming)
             && is_player_instance(candidate)
             && incoming.object_id == candidate.object_id)
+}
+
+fn merge_missing_player_vars(incoming: &mut RuntimeInstance, candidate: &RuntimeInstance) {
+    if !is_player_instance(incoming)
+        || !is_player_instance(candidate)
+        || incoming.object_id != candidate.object_id
+    {
+        return;
+    }
+
+    for (key, value) in &candidate.vars {
+        incoming
+            .vars
+            .entry(key.clone())
+            .or_insert_with(|| value.clone());
+    }
 }
 
 fn renumber_runtime_ids(room: &mut RuntimeRoomState) {
