@@ -1,29 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 import { WasmRuntimeSession } from './wasmSession';
 import type { WasmRuntimeBridge } from './wasmBridge';
+import { makeWasmFrame, makeWasmSnapshot } from '../test/packageFixtures';
 
 function makeBridge(): WasmRuntimeBridge {
-  const inputTrace = {
-    jumpButtonKey: 0x20,
-    jumpPressed: false,
-    jumpJustPressed: false,
-    jumpJustReleased: false,
-    activeKeys: []
-  };
   return {
     backend: 'opengmk-wasm',
-    boot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
-    snapshot: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
-    frame: vi.fn(async () => ({ tick: 1, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] })),
-    setInput: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
-    setGlobals: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
+    boot: vi.fn(async () => makeWasmSnapshot({ roomId: 0 })),
+    snapshot: vi.fn(async () => makeWasmSnapshot({ roomId: 0 })),
+    frame: vi.fn(async () => makeWasmFrame({ tick: 1, roomId: 0 })),
+    setInput: vi.fn(async () => makeWasmSnapshot({ roomId: 0 })),
+    setGlobals: vi.fn(async () => makeWasmSnapshot({ roomId: 0 })),
     step: vi.fn(async () => ({
-      snapshot: { tick: 1, roomId: 0, diagnostics: [], inputTrace },
-      frame: { tick: 1, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] }
+      snapshot: makeWasmSnapshot({ tick: 1, roomId: 0 }),
+      frame: makeWasmFrame({ tick: 1, roomId: 0 })
     })),
-    tick: vi.fn(async () => ({ tick: 1, roomId: 0, diagnostics: [], inputTrace })),
-    reset: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
-    selectRoom: vi.fn(async () => ({ tick: 0, roomId: 0, diagnostics: [], inputTrace })),
+    tick: vi.fn(async () => makeWasmSnapshot({ tick: 1, roomId: 0 })),
+    reset: vi.fn(async () => makeWasmSnapshot({ roomId: 0 })),
+    selectRoom: vi.fn(async () => makeWasmSnapshot({ roomId: 0 })),
     diagnostics: vi.fn(async () => []),
   };
 }

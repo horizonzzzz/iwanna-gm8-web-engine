@@ -1,4 +1,5 @@
-import type { RuntimePackage } from '../types';
+import type { WasmRuntimeBridgeSnapshot, WasmRuntimeFrame } from '../runtime/wasmBridge';
+import type { ResourceIndex, RoomDefinition, RuntimePackage } from '../types';
 
 type RuntimePackageFixtureOptions = {
   roomId?: number;
@@ -8,6 +9,11 @@ type RuntimePackageFixtureOptions = {
   height?: number;
   sourceName?: string;
   sourceHash?: string;
+  resources?: ResourceIndex;
+};
+
+type WasmRuntimeBridgeSnapshotFixtureOptions = Omit<Partial<WasmRuntimeBridgeSnapshot>, 'inputTrace'> & {
+  inputTrace?: Partial<WasmRuntimeBridgeSnapshot['inputTrace']>;
 };
 
 export function makeRuntimePackage({
@@ -18,6 +24,7 @@ export function makeRuntimePackage({
   height = 540,
   sourceName = 'sample.exe',
   sourceHash = 'hash',
+  resources = makeResourceIndex(),
 }: RuntimePackageFixtureOptions = {}): RuntimePackage {
   return {
     manifest: {
@@ -73,16 +80,74 @@ export function makeRuntimePackage({
       format: 'iwm-lowered-logic-v1',
       entries: [],
     },
-    resources: {
-      sprites: [],
-      backgrounds: [],
-      sounds: [],
-    },
+    resources,
     analysis: {
       dlls: [],
       included_files: [],
       warnings: [],
       unsupported_features: [],
     },
+  };
+}
+
+export function makeRoomDefinition(overrides: Partial<RoomDefinition> = {}): RoomDefinition {
+  return {
+    id: 1,
+    name: 'Room',
+    width: 320,
+    height: 240,
+    speed: 30,
+    persistent: false,
+    backgrounds: [],
+    views_enabled: false,
+    views: [],
+    tiles: [],
+    instances: [],
+    creation_block_id: null,
+    playable: true,
+    transition_targets: [],
+    ...overrides,
+  };
+}
+
+export function makeResourceIndex(overrides: Partial<ResourceIndex> = {}): ResourceIndex {
+  return {
+    sprites: [],
+    backgrounds: [],
+    sounds: [],
+    ...overrides,
+  };
+}
+
+export function makeWasmSnapshot({
+  inputTrace,
+  ...overrides
+}: WasmRuntimeBridgeSnapshotFixtureOptions = {}): WasmRuntimeBridgeSnapshot {
+  return {
+    tick: 0,
+    roomId: 1,
+    roomName: 'rTest',
+    diagnostics: [],
+    inputTrace: {
+      jumpButtonKey: 0x20,
+      jumpPressed: false,
+      jumpJustPressed: false,
+      jumpJustReleased: false,
+      activeKeys: [],
+      ...inputTrace,
+    },
+    player: null,
+    ...overrides,
+  };
+}
+
+export function makeWasmFrame(overrides: Partial<WasmRuntimeFrame> = {}): WasmRuntimeFrame {
+  return {
+    tick: 0,
+    roomId: 1,
+    width: 320,
+    height: 240,
+    commands: [{ kind: 'present' }],
+    ...overrides,
   };
 }

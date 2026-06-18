@@ -1,16 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderStaticRoom, resolveBackgroundDraws, resolveTileDraws } from './staticRoomRenderer';
-import type { ObjectDefinition, RoomDefinition } from '../types';
+import { makeRoomDefinition } from '../test/packageFixtures';
+import type { ObjectDefinition } from '../types';
 
 describe('resolveBackgroundDraws', () => {
   it('returns visible background layers with their draw flags', () => {
-    const room: RoomDefinition = {
-      id: 1,
-      name: 'Room',
-      width: 320,
-      height: 240,
-      speed: 30,
-      persistent: false,
+    const room = makeRoomDefinition({
       backgrounds: [
         {
           visible_on_start: false,
@@ -36,15 +31,8 @@ describe('resolveBackgroundDraws', () => {
           vspeed: 0,
           stretch: false
         }
-      ],
-      views_enabled: false,
-      views: [],
-      tiles: [],
-      instances: [],
-      creation_block_id: null,
-      playable: true,
-      transition_targets: []
-    };
+      ]
+    });
 
     const backgroundPaths = new Map([[1, '/pkg/resources/backgrounds/1.png']]);
 
@@ -64,16 +52,7 @@ describe('resolveBackgroundDraws', () => {
 
 describe('renderStaticRoom', () => {
   it('returns visible room tiles with background image paths', () => {
-    const room: RoomDefinition = {
-      id: 1,
-      name: 'Room',
-      width: 320,
-      height: 240,
-      speed: 30,
-      persistent: false,
-      backgrounds: [],
-      views_enabled: false,
-      views: [],
+    const room = makeRoomDefinition({
       tiles: [
         {
           tile_id: 4,
@@ -89,12 +68,8 @@ describe('renderStaticRoom', () => {
           yscale: 1,
           blend: 0xffffffff,
         }
-      ],
-      instances: [],
-      creation_block_id: null,
-      playable: true,
-      transition_targets: []
-    };
+      ]
+    });
 
     const backgroundPaths = new Map([[2, '/pkg/resources/backgrounds/2.png']]);
 
@@ -136,13 +111,9 @@ describe('renderStaticRoom', () => {
       getContext: vi.fn(() => context)
     } as unknown as HTMLCanvasElement;
 
-    const room: RoomDefinition = {
-      id: 1,
-      name: 'Room',
+    const room = makeRoomDefinition({
       width: 640,
       height: 480,
-      speed: 30,
-      persistent: false,
       backgrounds: [
         {
           visible_on_start: true,
@@ -168,15 +139,8 @@ describe('renderStaticRoom', () => {
           vspeed: 0,
           stretch: false
         }
-      ],
-      views_enabled: false,
-      views: [],
-      tiles: [],
-      instances: [],
-      creation_block_id: null,
-      playable: true,
-      transition_targets: []
-    };
+      ]
+    });
 
     const backgroundPaths = new Map([
       [1, '/pkg/resources/backgrounds/1.png'],
@@ -234,17 +198,7 @@ describe('renderStaticRoom', () => {
       getContext: vi.fn(() => context)
     } as unknown as HTMLCanvasElement;
 
-    const room: RoomDefinition = {
-      id: 1,
-      name: 'Room',
-      width: 320,
-      height: 240,
-      speed: 30,
-      persistent: false,
-      backgrounds: [],
-      views_enabled: false,
-      views: [],
-      tiles: [],
+    const room = makeRoomDefinition({
       instances: [
         {
           instance_id: 1,
@@ -288,11 +242,8 @@ describe('renderStaticRoom', () => {
           is_hazard: false,
           is_checkpoint: false
         }
-      ],
-      creation_block_id: null,
-      playable: true,
-      transition_targets: []
-    };
+      ]
+    });
 
     const objects: ObjectDefinition[] = [
       {
@@ -396,16 +347,7 @@ describe('renderStaticRoom', () => {
       getContext: vi.fn(() => context)
     } as unknown as HTMLCanvasElement;
 
-    const room: RoomDefinition = {
-      id: 1,
-      name: 'Room',
-      width: 320,
-      height: 240,
-      speed: 30,
-      persistent: false,
-      backgrounds: [],
-      views_enabled: false,
-      views: [],
+    const room = makeRoomDefinition({
       tiles: [
         {
           tile_id: 5,
@@ -421,12 +363,8 @@ describe('renderStaticRoom', () => {
           yscale: 1.5,
           blend: 0xffffffff,
         }
-      ],
-      instances: [],
-      creation_block_id: null,
-      playable: true,
-      transition_targets: []
-    };
+      ]
+    });
 
     const image = { id: 'tile-sheet', width: 128, height: 128 } as unknown as HTMLImageElement;
     const cache = {

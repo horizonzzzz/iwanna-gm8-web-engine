@@ -8,26 +8,19 @@ import {
   type WasmRuntimeBridge,
   type WasmFileHost,
 } from './wasmBridge';
-import { makeRuntimePackage } from '../test/packageFixtures';
+import { makeRuntimePackage, makeWasmFrame, makeWasmSnapshot } from '../test/packageFixtures';
 
 function makeBridge(): WasmRuntimeBridge {
-  const inputTrace = {
-    jumpButtonKey: 0x20,
-    jumpPressed: false,
-    jumpJustPressed: false,
-    jumpJustReleased: false,
-    activeKeys: []
-  };
   return {
     backend: 'opengmk-wasm',
-    boot: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null, inputTrace }),
-    snapshot: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null, inputTrace }),
-    frame: async () => ({ tick: 0, roomId: 0, width: 320, height: 240, commands: [{ kind: 'present' as const }] }),
-    setInput: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null, inputTrace }),
-    setGlobals: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null, inputTrace }),
-    tick: async (frames = 1) => ({ tick: frames, roomId: 0, diagnostics: [], player: null, inputTrace }),
-    reset: async () => ({ tick: 0, roomId: 0, diagnostics: [], player: null, inputTrace }),
-    selectRoom: async (roomId: number) => ({ tick: 0, roomId, diagnostics: [], player: null, inputTrace }),
+    boot: async () => makeWasmSnapshot({ roomId: 0 }),
+    snapshot: async () => makeWasmSnapshot({ roomId: 0 }),
+    frame: async () => makeWasmFrame({ roomId: 0 }),
+    setInput: async () => makeWasmSnapshot({ roomId: 0 }),
+    setGlobals: async () => makeWasmSnapshot({ roomId: 0 }),
+    tick: async (frames = 1) => makeWasmSnapshot({ tick: frames, roomId: 0 }),
+    reset: async () => makeWasmSnapshot({ roomId: 0 }),
+    selectRoom: async (roomId: number) => makeWasmSnapshot({ roomId }),
     diagnostics: async () => [],
   };
 }
@@ -59,7 +52,7 @@ describe('wasm bridge loader', () => {
 
   it('wraps a low-level wasm exports object into the runtime bridge contract', async () => {
     const encodedSnapshot = new TextEncoder().encode(
-      JSON.stringify({
+      JSON.stringify(makeWasmSnapshot({
         tick: 3,
         roomId: 1,
         diagnostics: ['runtime-idle:tick advanced'],
@@ -83,7 +76,7 @@ describe('wasm bridge loader', () => {
             cutApplied: false
           }
         }
-      })
+      }))
     );
     const encodedDiagnostics = new TextEncoder().encode(
       JSON.stringify(['runtime-idle:tick advanced'])
@@ -163,28 +156,18 @@ describe('wasm bridge loader', () => {
 
   it('wraps input submission and frame snapshot exports', async () => {
     const encodedSnapshot = new TextEncoder().encode(
-      JSON.stringify({
+      JSON.stringify(makeWasmSnapshot({
         tick: 0,
         roomId: 0,
-        diagnostics: [],
-        inputTrace: {
-          jumpButtonKey: 32,
-          jumpPressed: false,
-          jumpJustPressed: false,
-          jumpJustReleased: false,
-          activeKeys: []
-        },
         player: null
-      })
+      }))
     );
     const encodedFrame = new TextEncoder().encode(
-      JSON.stringify({
+      JSON.stringify(makeWasmFrame({
         tick: 1,
         roomId: 0,
-        width: 320,
-        height: 240,
         commands: [{ kind: 'present' }]
-      })
+      }))
     );
 
     const memory = {
@@ -264,26 +247,16 @@ describe('wasm bridge loader', () => {
   it('wraps combined step export when wasm provides it', async () => {
     const encodedStep = new TextEncoder().encode(
       JSON.stringify({
-        snapshot: {
+        snapshot: makeWasmSnapshot({
           tick: 1,
           roomId: 0,
-          diagnostics: [],
-          inputTrace: {
-            jumpButtonKey: 32,
-            jumpPressed: false,
-            jumpJustPressed: false,
-            jumpJustReleased: false,
-            activeKeys: []
-          },
           player: null
-        },
-        frame: {
+        }),
+        frame: makeWasmFrame({
           tick: 1,
           roomId: 0,
-          width: 320,
-          height: 240,
           commands: [{ kind: 'present' }]
-        }
+        })
       })
     );
 

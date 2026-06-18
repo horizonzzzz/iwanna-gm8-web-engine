@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildDebugReport } from './debugReport';
-import type { WasmRuntimeBridgeSnapshot } from '../../runtime/wasmBridge';
+import { makeWasmSnapshot } from '../../test/packageFixtures';
 
-const snapshot: WasmRuntimeBridgeSnapshot = {
+const snapshot = makeWasmSnapshot({
   tick: 240,
   roomId: 143,
   roomName: 'sampleroom01',
@@ -44,7 +44,7 @@ const snapshot: WasmRuntimeBridgeSnapshot = {
       cutApplied: false,
     },
   },
-};
+});
 
 describe('buildDebugReport', () => {
   it('formats the runtime report as stable plain text', () => {

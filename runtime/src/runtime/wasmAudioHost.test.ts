@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createWebAudioHost } from './wasmAudioHost';
-import type { RuntimePackage } from '../types';
+import { makeResourceIndex, makeRuntimePackage } from '../test/packageFixtures';
 
 class FakeBufferSource {
   buffer: unknown = null;
@@ -23,8 +23,8 @@ class FakeAudioContext {
   }
 }
 
-const packageWithSound = {
-  resources: {
+const packageWithSound = makeRuntimePackage({
+  resources: makeResourceIndex({
     sounds: [
       {
         id: 42,
@@ -34,8 +34,8 @@ const packageWithSound = {
         preload: false
       }
     ]
-  }
-} as RuntimePackage;
+  })
+});
 
 describe('wasm web audio host', () => {
   it('plays package sounds through Web Audio and stops active loops', async () => {

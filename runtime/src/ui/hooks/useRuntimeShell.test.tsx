@@ -1,8 +1,8 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../app/App';
-import type { WasmRuntimeBridge, WasmRuntimeBridgeSnapshot, WasmRuntimeFrame } from '../../runtime/wasmBridge';
-import { makeRuntimePackage } from '../../test/packageFixtures';
+import type { WasmRuntimeBridge } from '../../runtime/wasmBridge';
+import { makeRuntimePackage, makeWasmFrame, makeWasmSnapshot } from '../../test/packageFixtures';
 import type { RuntimePackage } from '../../types';
 import type { KeyboardInputState } from './useKeyboardInput';
 import { useRuntimeShell } from './useRuntimeShell';
@@ -31,25 +31,8 @@ vi.mock('../../runtime/wasmBridge', () => ({
   loadDefaultWasmRuntimeBridge: mocks.loadDefaultWasmRuntimeBridge,
 }));
 
-function makeSnapshot(tick: number): WasmRuntimeBridgeSnapshot {
-  return {
-    tick,
-    roomId: 1,
-    roomName: 'rTest',
-    diagnostics: [],
-    inputTrace: {
-      jumpButtonKey: 0x20,
-      jumpPressed: false,
-      jumpJustPressed: false,
-      jumpJustReleased: false,
-      activeKeys: [],
-    },
-    player: null,
-  };
-}
-
-function makeFrame(tick: number): WasmRuntimeFrame {
-  return {
+function makeRuntimeShellFrame(tick: number) {
+  return makeWasmFrame({
     tick,
     roomId: 1,
     width: 960,
@@ -58,27 +41,27 @@ function makeFrame(tick: number): WasmRuntimeFrame {
       { kind: 'clear', colour: [12, 17, 24, 255] },
       { kind: 'present' },
     ],
-  };
+  });
 }
 
 function makeBridge(): WasmRuntimeBridge {
   let tick = 0;
   return {
     backend: 'opengmk-wasm',
-    boot: vi.fn(async () => makeSnapshot(tick)),
-    snapshot: vi.fn(async () => makeSnapshot(tick)),
-    frame: vi.fn(async () => makeFrame(tick)),
-    setInput: vi.fn(async () => makeSnapshot(tick)),
-    setGlobals: vi.fn(async () => makeSnapshot(tick)),
+    boot: vi.fn(async () => makeWasmSnapshot({ tick })),
+    snapshot: vi.fn(async () => makeWasmSnapshot({ tick })),
+    frame: vi.fn(async () => makeRuntimeShellFrame(tick)),
+    setInput: vi.fn(async () => makeWasmSnapshot({ tick })),
+    setGlobals: vi.fn(async () => makeWasmSnapshot({ tick })),
     tick: vi.fn(async (frames = 1) => {
       tick += frames;
-      return makeSnapshot(tick);
+      return makeWasmSnapshot({ tick });
     }),
     reset: vi.fn(async () => {
       tick = 0;
-      return makeSnapshot(tick);
+      return makeWasmSnapshot({ tick });
     }),
-    selectRoom: vi.fn(async () => makeSnapshot(tick)),
+    selectRoom: vi.fn(async () => makeWasmSnapshot({ tick })),
     diagnostics: vi.fn(async () => []),
   };
 }

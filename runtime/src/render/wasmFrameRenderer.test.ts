@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderWasmFrame } from './wasmFrameRenderer';
-import type { ResourceIndex } from '../types';
-import type { WasmRuntimeFrame } from '../runtime/wasmBridge';
+import { makeResourceIndex, makeWasmFrame } from '../test/packageFixtures';
 
-const sampleResources: ResourceIndex = {
+const sampleResources = makeResourceIndex({
   sprites: [
     {
       id: 0,
@@ -29,13 +28,11 @@ const sampleResources: ResourceIndex = {
     }
   ],
   sounds: []
-};
+});
 
-const sampleFrame: WasmRuntimeFrame = {
+const sampleFrame = makeWasmFrame({
   tick: 1,
   roomId: 0,
-  width: 320,
-  height: 240,
   commands: [
     { kind: 'clear', colour: [12, 16, 22, 255] },
     {
@@ -91,7 +88,7 @@ const sampleFrame: WasmRuntimeFrame = {
     },
     { kind: 'present' },
   ],
-};
+});
 
 describe('renderWasmFrame', () => {
   it('draws bridge frame commands onto the canvas', async () => {
@@ -200,11 +197,9 @@ describe('renderWasmFrame', () => {
       getImage: vi.fn(async () => ({ width: 30, height: 40 }) as unknown as HTMLImageElement),
       getCachedImage: vi.fn(() => ({ width: 30, height: 40 }) as unknown as HTMLImageElement),
     };
-    const frame: WasmRuntimeFrame = {
+    const frame = makeWasmFrame({
       tick: 1,
       roomId: 0,
-      width: 320,
-      height: 240,
       commands: [
         {
           kind: 'drawSprite',
@@ -221,7 +216,7 @@ describe('renderWasmFrame', () => {
         },
         { kind: 'present' },
       ],
-    };
+    });
 
     await renderWasmFrame(canvas, frame, sampleResources, '/packages/sample', cache as never);
 
@@ -349,11 +344,9 @@ describe('renderWasmFrame - preloading', () => {
       }),
     };
 
-    const frameWithDuplicates: WasmRuntimeFrame = {
+    const frameWithDuplicates = makeWasmFrame({
       tick: 1,
       roomId: 0,
-      width: 320,
-      height: 240,
       commands: [
         { kind: 'clear', colour: [0, 0, 0, 255] },
         { kind: 'drawSprite', spriteId: 0, frameIndex: 0, x: 10, y: 20, originX: 5, originY: 6, xscale: 1, yscale: 1, angleDegrees: 0 },
@@ -361,7 +354,7 @@ describe('renderWasmFrame - preloading', () => {
         { kind: 'drawSprite', spriteId: 0, frameIndex: 0, x: 50, y: 60, originX: 5, originY: 6, xscale: 1, yscale: 1, angleDegrees: 0 },
         { kind: 'present' },
       ],
-    };
+    });
 
     await renderWasmFrame(canvas, frameWithDuplicates, sampleResources, '/packages/sample', cache as never);
 
@@ -405,17 +398,15 @@ describe('renderWasmFrame - preloading', () => {
 
     await renderWasmFrame(
       canvas,
-      {
+      makeWasmFrame({
         tick: 1,
         roomId: 0,
-        width: 320,
-        height: 240,
         commands: [
           { kind: 'clear', colour: [0, 0, 0, 255] },
           { kind: 'drawSprite', spriteId: 0, frameIndex: 1, x: 10, y: 20, originX: 5, originY: 6, xscale: 1, yscale: 1, angleDegrees: 0 },
           { kind: 'present' },
         ],
-      },
+      }),
       sampleResources,
       '/packages/sample',
       cache as never
