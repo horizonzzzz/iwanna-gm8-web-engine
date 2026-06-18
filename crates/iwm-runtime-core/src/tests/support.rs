@@ -11,6 +11,11 @@ use crate::{
     LoweredLogicEntry, LoweredLogicFile, LoweredLogicStatement, RuntimeCore, RuntimePackage,
 };
 
+const PLAYER_OBJECT_INDEX: usize = 0;
+const PLAYER_OBJECT_ID: usize = 0;
+const DEFAULT_ROOM_ID: usize = 7;
+const DEFAULT_ROOM_CREATE_BLOCK_ID: &str = "room:7:create";
+
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct JumpTraceFrame {
     pub tick: u64,
@@ -425,36 +430,36 @@ pub(super) fn capture_jump_trace(core: &RuntimeCore) -> JumpTraceFrame {
 }
 
 pub(super) fn add_step_block(package: &mut RuntimePackage, statements: Vec<LoweredLogicStatement>) {
-    package.objects[0].events.push(ObjectEventEntry {
-        event_type: 3,
-        sub_event: 0,
-        event_tag: "step".into(),
-        block_id: "object:0:event:3:0".into(),
-        action_count: 0,
-    });
-    append_lowered_entry(package, "object:0:event:3:0".into(), statements);
+    add_player_event_block(
+        package,
+        3,
+        0,
+        "step".into(),
+        player_block_id(3, 0),
+        statements,
+    );
 }
 
 pub(super) fn add_destroy_block(
     package: &mut RuntimePackage,
     statements: Vec<LoweredLogicStatement>,
 ) {
-    package.objects[0].events.push(ObjectEventEntry {
-        event_type: 1,
-        sub_event: 0,
-        event_tag: "destroy".into(),
-        block_id: "object:0:event:1:0".into(),
-        action_count: 0,
-    });
-    append_lowered_entry(package, "object:0:event:1:0".into(), statements);
+    add_player_event_block(
+        package,
+        1,
+        0,
+        "destroy".into(),
+        player_block_id(1, 0),
+        statements,
+    );
 }
 
 pub(super) fn add_room_create_block(
     package: &mut RuntimePackage,
     statements: Vec<LoweredLogicStatement>,
 ) {
-    package.rooms[0].creation_block_id = Some("room:7:create".into());
-    append_lowered_entry(package, "room:7:create".into(), statements);
+    package.rooms[0].creation_block_id = Some(DEFAULT_ROOM_CREATE_BLOCK_ID.into());
+    append_lowered_entry(package, DEFAULT_ROOM_CREATE_BLOCK_ID.into(), statements);
 }
 
 pub(super) fn append_lowered_entry(
@@ -500,19 +505,14 @@ pub(super) fn add_keyboard_block(
     key: u8,
     statements: Vec<LoweredLogicStatement>,
 ) {
-    let key_name = if (key as char).is_ascii_alphanumeric() {
-        (key as char).to_ascii_lowercase().to_string()
-    } else {
-        format!("0x{:02x}", key)
-    };
-    package.objects[0].events.push(ObjectEventEntry {
-        event_type: 5,
-        sub_event: key as u32,
-        event_tag: format!("keyboard:{key_name}"),
-        block_id: format!("object:0:event:5:{key}"),
-        action_count: 0,
-    });
-    append_lowered_entry(package, format!("object:0:event:5:{key}"), statements);
+    add_player_event_block(
+        package,
+        5,
+        key as u32,
+        format!("keyboard:{}", key_name(key)),
+        player_block_id(5, key as u32),
+        statements,
+    );
 }
 
 pub(super) fn add_keyboard_press_block(
@@ -520,19 +520,14 @@ pub(super) fn add_keyboard_press_block(
     key: u8,
     statements: Vec<LoweredLogicStatement>,
 ) {
-    let key_name = if (key as char).is_ascii_alphanumeric() {
-        (key as char).to_ascii_lowercase().to_string()
-    } else {
-        format!("0x{:02x}", key)
-    };
-    package.objects[0].events.push(ObjectEventEntry {
-        event_type: 9,
-        sub_event: key as u32,
-        event_tag: format!("keypress:{key_name}"),
-        block_id: format!("object:0:event:9:{key}"),
-        action_count: 0,
-    });
-    append_lowered_entry(package, format!("object:0:event:9:{key}"), statements);
+    add_player_event_block(
+        package,
+        9,
+        key as u32,
+        format!("keypress:{}", key_name(key)),
+        player_block_id(9, key as u32),
+        statements,
+    );
 }
 
 pub(super) fn add_keyboard_release_block(
@@ -540,19 +535,14 @@ pub(super) fn add_keyboard_release_block(
     key: u8,
     statements: Vec<LoweredLogicStatement>,
 ) {
-    let key_name = if (key as char).is_ascii_alphanumeric() {
-        (key as char).to_ascii_lowercase().to_string()
-    } else {
-        format!("0x{:02x}", key)
-    };
-    package.objects[0].events.push(ObjectEventEntry {
-        event_type: 10,
-        sub_event: key as u32,
-        event_tag: format!("keyrelease:{key_name}"),
-        block_id: format!("object:0:event:10:{key}"),
-        action_count: 0,
-    });
-    append_lowered_entry(package, format!("object:0:event:10:{key}"), statements);
+    add_player_event_block(
+        package,
+        10,
+        key as u32,
+        format!("keyrelease:{}", key_name(key)),
+        player_block_id(10, key as u32),
+        statements,
+    );
 }
 
 pub(super) fn add_collision_block(
@@ -560,16 +550,12 @@ pub(super) fn add_collision_block(
     target_object_id: usize,
     statements: Vec<LoweredLogicStatement>,
 ) {
-    package.objects[0].events.push(ObjectEventEntry {
-        event_type: 4,
-        sub_event: target_object_id as u32,
-        event_tag: "collision".into(),
-        block_id: format!("object:0:event:4:{target_object_id}"),
-        action_count: 0,
-    });
-    append_lowered_entry(
+    add_player_event_block(
         package,
-        format!("object:0:event:4:{target_object_id}"),
+        4,
+        target_object_id as u32,
+        "collision".into(),
+        player_block_id(4, target_object_id as u32),
         statements,
     );
 }
@@ -579,26 +565,58 @@ pub(super) fn add_alarm_block(
     slot: u32,
     statements: Vec<LoweredLogicStatement>,
 ) {
-    package.objects[0].events.push(ObjectEventEntry {
-        event_type: 2,
-        sub_event: slot,
-        event_tag: format!("alarm:{slot}"),
-        block_id: format!("object:0:event:2:{slot}"),
-        action_count: 0,
-    });
-    append_lowered_entry(package, format!("object:0:event:2:{slot}"), statements);
+    add_player_event_block(
+        package,
+        2,
+        slot,
+        format!("alarm:{slot}"),
+        player_block_id(2, slot),
+        statements,
+    );
 }
 
 pub(super) fn add_create_block(
     package: &mut RuntimePackage,
     statements: Vec<LoweredLogicStatement>,
 ) {
-    package.objects[0].events.push(ObjectEventEntry {
-        event_type: 0,
-        sub_event: 0,
-        event_tag: "create".into(),
-        block_id: "object:0:event:0:0".into(),
-        action_count: 0,
-    });
-    append_lowered_entry(package, "object:0:event:0:0".into(), statements);
+    add_player_event_block(
+        package,
+        0,
+        0,
+        "create".into(),
+        player_block_id(0, 0),
+        statements,
+    );
+}
+
+fn add_player_event_block(
+    package: &mut RuntimePackage,
+    event_type: usize,
+    sub_event: u32,
+    event_tag: String,
+    block_id: String,
+    statements: Vec<LoweredLogicStatement>,
+) {
+    package.objects[PLAYER_OBJECT_INDEX]
+        .events
+        .push(ObjectEventEntry {
+            event_type,
+            sub_event,
+            event_tag,
+            block_id: block_id.clone(),
+            action_count: 0,
+        });
+    append_lowered_entry(package, block_id, statements);
+}
+
+fn player_block_id(event_type: usize, sub_event: u32) -> String {
+    format!("object:{PLAYER_OBJECT_ID}:event:{event_type}:{sub_event}")
+}
+
+fn key_name(key: u8) -> String {
+    if (key as char).is_ascii_alphanumeric() {
+        (key as char).to_ascii_lowercase().to_string()
+    } else {
+        format!("0x{key:02x}")
+    }
 }

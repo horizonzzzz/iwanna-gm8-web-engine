@@ -8,6 +8,7 @@ import {
   type WasmRuntimeBridge,
   type WasmFileHost,
 } from './wasmBridge';
+import { makeRuntimePackage } from '../test/packageFixtures';
 
 function makeBridge(): WasmRuntimeBridge {
   const inputTrace = {
@@ -148,55 +149,7 @@ describe('wasm bridge loader', () => {
       iwm_last_result_len: () => lastResultLength,
     });
 
-    const boot = await bridge.boot({
-      manifest: {
-        format_version: 1,
-        package_kind: 'runtime-v1',
-        source_name: 'sample.exe',
-        source_hash: 'abc123',
-        engine_family: 'gm8',
-        compatibility: 'partial',
-        default_room_id: 0,
-        room_count: 1,
-        object_count: 0,
-        script_block_count: 0,
-        sprite_count: 0,
-        background_count: 0,
-        sound_count: 0,
-        resource_index_path: 'resources/index.json',
-        warnings: []
-      },
-      rooms: [],
-      objects: [],
-      scripts: {
-        format: 'iwm-script-ir-v1',
-        blocks: []
-      },
-      rawLogic: {
-        format: 'iwm-raw-logic-v1',
-        room_creation_codes: [],
-        instance_creation_codes: [],
-        object_events: [],
-        scripts: [],
-        triggers: [],
-        timelines: []
-      },
-      loweredLogic: {
-        format: 'iwm-lowered-logic-v1',
-        entries: []
-      },
-      resources: {
-        sprites: [],
-        backgrounds: [],
-        sounds: []
-      },
-      analysis: {
-        dlls: [],
-        included_files: [],
-        warnings: [],
-        unsupported_features: []
-      }
-    });
+    const boot = await bridge.boot(makeRuntimePackage({ roomId: 0, roomName: 'room0', width: 320, height: 240 }));
 
     expect(boot.tick).toBe(3);
     expect((await bridge.snapshot()).roomId).toBe(1);

@@ -53,6 +53,7 @@ See `docs/notes/runtime-wasm-gap-analysis.md` for the current checklist of what 
 See `docs/notes/runtime-vendor-reference-map.md` for the current OpenGMK-guided runtime reference map.
 See `docs/notes/opengmk-host-coupling-audit.md` for the first OpenGMK host-boundary audit.
 See `docs/notes/runtime-gold-sample.md` for the active gold-sample validation target.
+See `docs/notes/testing-strategy.md` for the current test layering and codebase cleanup rules.
 
 ## Documentation Notes
 
@@ -66,6 +67,7 @@ Current-state documents should be read as the primary project guide:
 - `docs/notes/runtime-gold-sample.md`
 - `docs/notes/runtime-vendor-reference-map.md`
 - `docs/notes/opengmk-host-coupling-audit.md`
+- `docs/notes/testing-strategy.md`
 
 Implementation plans are intentionally not kept in-repo. Use the current specs, notes, and actual repository state instead.
 
