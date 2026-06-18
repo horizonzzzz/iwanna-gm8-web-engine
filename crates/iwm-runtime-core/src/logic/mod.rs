@@ -1,6 +1,14 @@
+mod assignment;
 mod bootstrap;
+mod calls;
 mod context;
+mod control_flow;
+mod diagnostics;
 mod eval;
+mod eval_functions;
+mod eval_values;
+mod eval_variables;
+mod instances;
 mod statement;
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -377,7 +385,7 @@ impl RuntimeCore {
             }
 
             for (key, value) in create.post_create_vars {
-                statement::assign_instance_field_or_var(key, value, &mut instance);
+                assignment::assign_instance_field_or_var(key, value, &mut instance);
             }
 
             let created_object_name = instance.object_name.clone();

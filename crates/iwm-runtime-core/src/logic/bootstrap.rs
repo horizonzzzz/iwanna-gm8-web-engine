@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use iwm_runtime_model::RoomDefinition;
 
+use super::assignment::assign_instance_or_global;
 use super::context::RuntimeEvalContext;
 use super::eval::{assignable_key, evaluate_expr, is_truthy};
-use super::statement::assign_instance_or_global;
 use crate::helpers::as_number;
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeInstance,
