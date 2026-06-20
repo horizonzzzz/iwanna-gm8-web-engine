@@ -13,13 +13,13 @@ mod eval_variables;
 mod instances;
 mod statement;
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
-use iwm_runtime_host::RuntimeHost;
+use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 use iwm_runtime_model::ObjectDefinition;
 
 use crate::event_dispatch::{
-    collision_event_target_object_ids, object_event_block_ids,
+    collision_event_target_object_ids, event_owner_id_for_block_id, object_event_block_ids,
     object_ids_matching_or_inheriting_from, runtime_instance_indices_by_object_id,
     runtime_instance_indices_by_object_id_from_instances, RuntimeEventSelector,
 };
@@ -35,9 +35,8 @@ pub(crate) use context::{
     RuntimeBinaryFileState, RuntimeEvalContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay,
     StepExecutionResult,
 };
-pub(crate) use eval::sample_known_files;
 pub(crate) use statement::{
-    apply_runtime_statement, RuntimeExecutionTrace, RuntimeStatementEnvironment,
+    apply_runtime_statement, RuntimeDrawContext, RuntimeExecutionTrace, RuntimeStatementEnvironment,
 };
 
 impl RuntimeCore {
@@ -45,12 +44,26 @@ impl RuntimeCore {
         &mut self,
         host: &mut H,
     ) -> Result<StepExecutionResult, RuntimeCoreError> {
+        let button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
+        self.execute_lowered_step_events_with_button_states(host, &button_states)
+    }
+
+    pub(crate) fn execute_lowered_step_events_with_button_states<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+        button_states: &HashMap<RuntimeButton, ButtonState>,
+    ) -> Result<StepExecutionResult, RuntimeCoreError> {
         let step_event_blocks = &self.cached_step_event_blocks;
         let script_entries = &self.cached_script_entries;
+        let objects = &self.package.objects;
+        let lowered_entries = self
+            .package
+            .lowered_logic
+            .as_ref()
+            .map(|logic| logic.entries.as_slice())
+            .unwrap_or(&[]);
         let room_order = &self.cached_room_order;
         let destroy_event_entries = &self.cached_destroy_event_entries;
-        let button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
-        let known_files = sample_known_files(host);
         let (current_room_id, dispatches, room_instance_indices_by_object_id) = {
             let Some(room) = self.current_room.as_ref() else {
                 return Err(RuntimeCoreError::NoRooms);
@@ -109,6 +122,8 @@ impl RuntimeCore {
             }
 
             for entry in &entries {
+                let event_owner_id = event_owner_id_for_block_id(objects, &entry.block_id)
+                    .unwrap_or(instance.object_id);
                 crate::diagnostics::record_execution_trace(
                     host,
                     &mut self.diagnostics,
@@ -132,13 +147,12 @@ impl RuntimeCore {
                     );
                     let eval_context = RuntimeEvalContext {
                         current_room_id,
-                        button_states: &button_states,
+                        button_states,
                         room_instances: &room.instances,
                         room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
                         collision_spatial_index: None,
                         room_instance_overlay: eval_overlay,
                         room_order: room_order.as_slice(),
-                        known_files: &known_files,
                         other_instance: None,
                         other_runtime_id: None,
                         place_target_ids_by_name: &self.place_target_ids_by_name,
@@ -156,6 +170,11 @@ impl RuntimeCore {
                         diagnostics: &mut self.diagnostics,
                         room_instance_updates: &mut with_updates,
                         room_instance_creates: &mut instance_creates,
+                        objects,
+                        lowered_entries,
+                        event_selector: Some(RuntimeEventSelector::Step),
+                        event_owner_id: Some(event_owner_id),
+                        draw: None,
                         trace: RuntimeExecutionTrace {
                             room_id: current_room_id,
                             tick: self.tick,
@@ -271,6 +290,7 @@ impl RuntimeCore {
             .as_ref()
             .map(|room| runtime_instance_indices_by_object_id_from_instances(&room.instances));
         while let Some(create) = pending_creates.pop_front() {
+            let scene_change_before_create = self.pending_scene_change_state();
             let Some(current_room_id) = self.current_room.as_ref().map(|room| room.room_id) else {
                 return;
             };
@@ -303,8 +323,14 @@ impl RuntimeCore {
                 .cloned();
             if let Some(entries) = create_entries {
                 let script_entries = &self.cached_script_entries;
+                let objects = &self.package.objects;
+                let lowered_entries = self
+                    .package
+                    .lowered_logic
+                    .as_ref()
+                    .map(|logic| logic.entries.as_slice())
+                    .unwrap_or(&[]);
                 let button_states = HashMap::new();
-                let known_files = HashSet::new();
                 let room_order = &self.cached_room_order;
                 let committed_updates = HashMap::new();
                 let eval_context = RuntimeEvalContext {
@@ -320,7 +346,6 @@ impl RuntimeCore {
                         &instance,
                     ),
                     room_order,
-                    known_files: &known_files,
                     other_instance: None,
                     other_runtime_id: None,
                     place_target_ids_by_name: &self.place_target_ids_by_name,
@@ -329,6 +354,8 @@ impl RuntimeCore {
                 let destroy_event_entries = &self.cached_destroy_event_entries;
                 let mut room_instance_updates = Vec::new();
                 for entry in &entries {
+                    let event_owner_id = event_owner_id_for_block_id(objects, &entry.block_id)
+                        .unwrap_or(instance.object_id);
                     crate::diagnostics::record_execution_trace(
                         host,
                         &mut self.diagnostics,
@@ -352,6 +379,11 @@ impl RuntimeCore {
                             diagnostics: &mut self.diagnostics,
                             room_instance_updates: &mut room_instance_updates,
                             room_instance_creates: creates,
+                            objects,
+                            lowered_entries,
+                            event_selector: None,
+                            event_owner_id: Some(event_owner_id),
+                            draw: None,
                             trace: RuntimeExecutionTrace {
                                 room_id: current_room_id,
                                 tick: self.tick,
@@ -369,11 +401,11 @@ impl RuntimeCore {
                             Some(&eval_context),
                             &mut statement_env,
                         );
-                        if self.has_pending_scene_change() {
+                        if self.pending_scene_change_state() != scene_change_before_create {
                             break;
                         }
                     }
-                    if self.has_pending_scene_change() {
+                    if self.pending_scene_change_state() != scene_change_before_create {
                         break;
                     }
                 }
@@ -449,6 +481,14 @@ impl RuntimeCore {
                 }
             })
             .collect()
+    }
+
+    fn pending_scene_change_state(&self) -> (bool, bool, Option<usize>) {
+        (
+            self.pending_game_restart,
+            self.pending_room_reset,
+            self.pending_room_transition,
+        )
     }
 
     /// Precomputes, for each lowercased object name, the set of object ids that

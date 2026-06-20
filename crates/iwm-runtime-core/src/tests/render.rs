@@ -352,6 +352,95 @@ fn runtime_core_uses_exe_display_size_for_room_without_active_view() {
 }
 
 #[test]
+fn runtime_core_executes_draw_events_for_text_commands() {
+    let mut package = sample_package();
+    package.objects.push(ObjectDefinition {
+        id: 8,
+        name: "obj_label".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 8,
+            sub_event: 0,
+            event_tag: "draw".into(),
+            block_id: "object:8:event:8:0".into(),
+            action_count: 0,
+        }],
+    });
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 99,
+        object_id: 8,
+        x: 40,
+        y: 50,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:8:event:8:0".into(),
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "draw_set_color".into(),
+                args: vec![LoweredLogicExpr::Identifier("c_red".into())],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "draw_set_halign".into(),
+                args: vec![LoweredLogicExpr::Identifier("fa_center".into())],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "draw_set_font".into(),
+                args: vec![LoweredLogicExpr::Identifier("font40".into())],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "draw_text".into(),
+                args: vec![
+                    LoweredLogicExpr::Identifier("x".into()),
+                    LoweredLogicExpr::Identifier("y".into()),
+                    LoweredLogicExpr::LiteralText("Data1".into()),
+                ],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawText {
+            text,
+            x: 40,
+            y: 50,
+            size: 40,
+            colour,
+            align,
+        } if text == "Data1"
+            && colour.r == 255
+            && colour.g == 0
+            && colour.b == 0
+            && colour.a == 255
+            && align == "center"
+    )));
+}
+
+#[test]
 fn runtime_core_prefers_active_view_over_exe_display_size() {
     let mut package = sample_package();
     package.manifest.display_source = Some(RuntimeDisplaySource::ExeResolution);

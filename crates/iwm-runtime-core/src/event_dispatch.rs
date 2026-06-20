@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 
 use crate::helpers::bounds_at;
+use iwm_runtime_model::ObjectDefinition;
+
 use crate::{RuntimeInstance, RuntimePackage, RuntimeRoomState};
 
 const COLLISION_SPATIAL_CELL_SIZE: i32 = 64;
 
 #[derive(Clone)]
 pub(crate) enum RuntimeEventSelector {
+    Step,
+    Draw,
     Destroy,
     Alarm(u32),
     KeyboardHeld(u16),
@@ -24,31 +28,7 @@ pub(crate) fn object_event_block_ids(
     object_id: usize,
     selector: RuntimeEventSelector,
 ) -> Vec<String> {
-    let (event_type, sub_event, wanted) = match selector {
-        RuntimeEventSelector::Destroy => (1usize, 0u32, "destroy".to_string()),
-        RuntimeEventSelector::Alarm(slot) => (2usize, slot, format!("alarm:{slot}")),
-        RuntimeEventSelector::KeyboardHeld(key) => (
-            5usize,
-            key as u32,
-            format!("keyboard:{}", format_key_name(key)),
-        ),
-        RuntimeEventSelector::KeyboardPressed(key) => (
-            9usize,
-            key as u32,
-            format!("keypress:{}", format_key_name(key)),
-        ),
-        RuntimeEventSelector::KeyboardReleased(key) => (
-            10usize,
-            key as u32,
-            format!("keyrelease:{}", format_key_name(key)),
-        ),
-        RuntimeEventSelector::OtherAnimationEnd => {
-            (7usize, 7u32, "other:animation-end".to_string())
-        }
-        RuntimeEventSelector::Collision { target_object_id } => {
-            (4usize, target_object_id as u32, "collision".to_string())
-        }
-    };
+    let (event_type, sub_event, wanted) = event_selector_parts(&selector);
 
     let mut current_object_id = Some(object_id);
     let mut block_ids = Vec::new();
@@ -70,10 +50,82 @@ pub(crate) fn object_event_block_ids(
             break;
         }
 
-        current_object_id = object.parent_index.try_into().ok();
+        current_object_id = object_parent_id(&package.objects, id);
     }
 
     block_ids
+}
+
+pub(crate) fn event_owner_id_for_block_id(
+    objects: &[ObjectDefinition],
+    block_id: &str,
+) -> Option<usize> {
+    objects.iter().find_map(|object| {
+        object
+            .events
+            .iter()
+            .any(|event| event.block_id == block_id)
+            .then_some(object.id)
+    })
+}
+
+pub(crate) fn inherited_event_block_id(
+    objects: &[ObjectDefinition],
+    owner_object_id: usize,
+    selector: &RuntimeEventSelector,
+) -> Option<(usize, String)> {
+    let (event_type, sub_event, wanted) = event_selector_parts(selector);
+    let mut current_object_id = object_parent_id(objects, owner_object_id);
+    while let Some(id) = current_object_id {
+        let object = objects.iter().find(|object| object.id == id)?;
+        if let Some(event) = object.events.iter().find(|event| {
+            event.event_type == event_type
+                && event.sub_event == sub_event
+                && event.event_tag == wanted
+        }) {
+            return Some((object.id, event.block_id.clone()));
+        }
+        current_object_id = object_parent_id(objects, object.id);
+    }
+
+    None
+}
+
+fn event_selector_parts(selector: &RuntimeEventSelector) -> (usize, u32, String) {
+    match selector {
+        RuntimeEventSelector::Step => (3usize, 0u32, "step".to_string()),
+        RuntimeEventSelector::Draw => (8usize, 0u32, "draw".to_string()),
+        RuntimeEventSelector::Destroy => (1usize, 0u32, "destroy".to_string()),
+        RuntimeEventSelector::Alarm(slot) => (2usize, *slot, format!("alarm:{slot}")),
+        RuntimeEventSelector::KeyboardHeld(key) => (
+            5usize,
+            *key as u32,
+            format!("keyboard:{}", format_key_name(*key)),
+        ),
+        RuntimeEventSelector::KeyboardPressed(key) => (
+            9usize,
+            *key as u32,
+            format!("keypress:{}", format_key_name(*key)),
+        ),
+        RuntimeEventSelector::KeyboardReleased(key) => (
+            10usize,
+            *key as u32,
+            format!("keyrelease:{}", format_key_name(*key)),
+        ),
+        RuntimeEventSelector::OtherAnimationEnd => {
+            (7usize, 7u32, "other:animation-end".to_string())
+        }
+        RuntimeEventSelector::Collision { target_object_id } => {
+            (4usize, *target_object_id as u32, "collision".to_string())
+        }
+    }
+}
+
+fn object_parent_id(objects: &[ObjectDefinition], object_id: usize) -> Option<usize> {
+    objects
+        .iter()
+        .find(|object| object.id == object_id)
+        .and_then(|object| object.parent_index.try_into().ok())
 }
 
 pub(crate) fn runtime_instance_indices_by_object_id(

@@ -1,4 +1,4 @@
-use iwm_runtime_core::{RuntimeCore, RuntimePackage, RuntimeValue};
+use iwm_runtime_core::{RuntimeCore, RuntimePackage};
 use iwm_runtime_host::{
     ButtonState, ExternalSignature, ExternalValue, HeadlessHost, RuntimeAudioHost, RuntimeButton,
     RuntimeDiagnostic, RuntimeDiagnosticsHost, RuntimeExternalHost, RuntimeFileHost,
@@ -201,19 +201,6 @@ impl WebRuntimeHost {
         Ok(bridge_snapshot(core.snapshot()))
     }
 
-    pub fn set_global(
-        &mut self,
-        key: impl Into<String>,
-        value: RuntimeValue,
-    ) -> Result<BridgeSnapshot, String> {
-        let Some(core) = self.core.as_mut() else {
-            return Err("runtime core is not booted".into());
-        };
-
-        core.set_global(key, value);
-        Ok(bridge_snapshot(core.snapshot()))
-    }
-
     pub fn snapshot(&self) -> Option<BridgeSnapshot> {
         self.core
             .as_ref()
@@ -338,7 +325,7 @@ impl RuntimeFileHost for WebRuntimeHostBoundary {
         let removed_from_browser = crate::file_host::remove_file(relative_path)?;
         match self.headless.remove_temp(relative_path) {
             Ok(()) => Ok(()),
-            Err(error) if removed_from_browser => Ok(()),
+            Err(_) if removed_from_browser => Ok(()),
             Err(error) => Err(error),
         }
     }

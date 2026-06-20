@@ -36,6 +36,7 @@ describe('ControlBar', () => {
       target: { value: '143' },
     });
 
+    expect(screen.queryByRole('combobox', { name: 'Difficulty' })).not.toBeInTheDocument();
     expect(onPackagePathChange).toHaveBeenCalledWith('/packages/next');
     expect(onLoad).toHaveBeenCalled();
     expect(onPauseToggle).toHaveBeenCalled();

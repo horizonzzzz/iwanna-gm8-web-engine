@@ -52,7 +52,6 @@ function makeBridge(): WasmRuntimeBridge {
     snapshot: vi.fn(async () => makeWasmSnapshot({ tick })),
     frame: vi.fn(async () => makeRuntimeShellFrame(tick)),
     setInput: vi.fn(async () => makeWasmSnapshot({ tick })),
-    setGlobals: vi.fn(async () => makeWasmSnapshot({ tick })),
     tick: vi.fn(async (frames = 1) => {
       tick += frames;
       return makeWasmSnapshot({ tick });
@@ -136,7 +135,7 @@ describe('useRuntimeShell', () => {
     expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 1000 / 30);
   });
 
-  it('applies selected difficulty before selecting a wasm room directly', async () => {
+  it('selects a wasm room directly without overriding package globals', async () => {
     const bridge = arrangeWasmPackage();
     const { result } = renderHook(() => useRuntimeShell());
 
@@ -145,19 +144,9 @@ describe('useRuntimeShell', () => {
     });
 
     await act(async () => {
-      result.current.setSelectedDifficulty(2);
-    });
-    await act(async () => {
       await result.current.setSelectedRoomId(1);
     });
 
-    expect(bridge.setGlobals).toHaveBeenCalledTimes(2);
-    expect(bridge.setGlobals).toHaveBeenNthCalledWith(1, { 'global.difficulty': 2 });
-    expect(bridge.setGlobals).toHaveBeenNthCalledWith(2, { 'global.difficulty': 2 });
     expect(bridge.selectRoom).toHaveBeenCalledWith(1);
-    const globalCalls = vi.mocked(bridge.setGlobals).mock.invocationCallOrder;
-    const selectCall = vi.mocked(bridge.selectRoom).mock.invocationCallOrder[0];
-    expect(globalCalls[0]).toBeLessThan(selectCall);
-    expect(selectCall).toBeLessThan(globalCalls[1]);
   });
 });

@@ -1,13 +1,11 @@
-use std::collections::{HashMap, HashSet};
-
-use iwm_runtime_host::RuntimeHost;
+use std::collections::HashMap;
 
 use super::context::{RuntimeEvalContext, RuntimeExecutionScope};
 use super::eval_functions::{
     evaluate_choose_call, evaluate_collision_line, evaluate_distance_to_object,
-    evaluate_file_exists, evaluate_instance_exists, evaluate_instance_number,
-    evaluate_instance_place, evaluate_keyboard_query, evaluate_ord_call, evaluate_place_query,
-    evaluate_random_call, evaluate_random_range_call,
+    evaluate_instance_exists, evaluate_instance_number, evaluate_instance_place,
+    evaluate_keyboard_query, evaluate_ord_call, evaluate_place_query, evaluate_random_call,
+    evaluate_random_range_call,
 };
 pub(super) use super::eval_values::is_truthy;
 use super::eval_values::{eval_binary_expr, runtime_value_to_string_text};
@@ -64,7 +62,6 @@ pub(super) fn evaluate_expr(
                 .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
                 .map(runtime_value_to_string_text)
                 .map(RuntimeValue::Text),
-            "file_exists" => evaluate_file_exists(args, instance, globals, scope, eval_context),
             "instance_exists" => evaluate_instance_exists(args, eval_context),
             "instance_number" => evaluate_instance_number(args, eval_context),
             "instance_place" => {
@@ -121,14 +118,4 @@ pub(super) fn evaluate_expr(
         }
         LoweredLogicExpr::Raw { source } => parse_runtime_value(source),
     }
-}
-
-pub(crate) fn sample_known_files<H: RuntimeHost>(host: &H) -> HashSet<String> {
-    let mut files = HashSet::new();
-    for candidate in ["temp", "DeathTime", "save1", "save2", "save3"] {
-        if host.read(std::path::Path::new(candidate)).is_ok() {
-            files.insert(candidate.to_string());
-        }
-    }
-    files
 }

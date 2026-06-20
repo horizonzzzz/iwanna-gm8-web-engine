@@ -570,7 +570,8 @@ fn game_restart_returns_to_first_room_and_clears_runtime_globals() {
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();
     core.reload_room(9).unwrap();
-    core.set_global("global.runtime_marker", RuntimeValue::Number(1.0));
+    core.globals
+        .insert("global.runtime_marker".into(), RuntimeValue::Number(1.0));
 
     core.tick(&mut host).unwrap();
 

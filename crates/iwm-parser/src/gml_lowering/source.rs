@@ -1,7 +1,7 @@
 use iwm_runtime_model::LoweredLogicStatement;
 
 use super::statement::lower_statement;
-use super::syntax::split_top_level_statements;
+use super::syntax::{extract_braced_block, split_top_level_statements};
 
 pub(super) fn looks_like_gml_source(source: &str) -> bool {
     let trimmed = source.trim();
@@ -15,10 +15,28 @@ pub(super) fn looks_like_gml_source(source: &str) -> bool {
 
 pub(super) fn lower_source(source: &str) -> Vec<LoweredLogicStatement> {
     let source = strip_block_comments(&strip_line_comments(source));
+    if let Some(unwrapped) = unwrap_top_level_braced_block(&source) {
+        return lower_source(&unwrapped);
+    }
+
     split_top_level_statements(&source)
         .into_iter()
         .filter_map(|stmt| lower_statement(&stmt))
         .collect()
+}
+
+fn unwrap_top_level_braced_block(source: &str) -> Option<String> {
+    let trimmed = source.trim();
+    if !trimmed.starts_with('{') {
+        return None;
+    }
+
+    let (body, rest) = extract_braced_block(trimmed)?;
+    if rest.trim().is_empty() {
+        Some(body)
+    } else {
+        None
+    }
 }
 
 fn strip_line_comments(source: &str) -> String {

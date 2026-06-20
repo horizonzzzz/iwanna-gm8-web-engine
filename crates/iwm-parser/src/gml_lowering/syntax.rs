@@ -261,7 +261,7 @@ pub(super) fn split_top_level_operator(source: &str, operator: &str) -> Option<(
 
         if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
             let tail = &source[byte_index..];
-            if tail.starts_with(operator)
+            if operator_matches(tail, operator)
                 && operator_occurrence_is_valid(source, byte_index, operator)
             {
                 let left = source[..byte_index].trim();
@@ -276,6 +276,13 @@ pub(super) fn split_top_level_operator(source: &str, operator: &str) -> Option<(
     }
 
     None
+}
+
+fn operator_matches(source: &str, operator: &str) -> bool {
+    source
+        .get(..operator.len())
+        .map(|prefix| prefix.eq_ignore_ascii_case(operator))
+        .unwrap_or(false)
 }
 
 fn should_split_top_level_newline(current: &str, next: &str) -> bool {
@@ -319,6 +326,12 @@ fn should_split_top_level_newline(current: &str, next: &str) -> bool {
 }
 
 fn operator_occurrence_is_valid(source: &str, byte_index: usize, operator: &str) -> bool {
+    if operator.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        let before = source[..byte_index].chars().next_back();
+        let after = source[byte_index + operator.len()..].chars().next();
+        return !is_identifier_char(before) && !is_identifier_char(after);
+    }
+
     if operator != "=" {
         return true;
     }
@@ -337,6 +350,10 @@ fn operator_occurrence_is_valid(source: &str, byte_index: usize, operator: &str)
             | Some('*')
             | Some('/')
     ) && !matches!(after, Some('='))
+}
+
+fn is_identifier_char(ch: Option<char>) -> bool {
+    matches!(ch, Some(ch) if ch.is_ascii_alphanumeric() || ch == '_')
 }
 
 pub(super) fn split_top_level_trailing_index(source: &str) -> Option<(String, String)> {

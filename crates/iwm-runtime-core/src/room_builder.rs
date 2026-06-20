@@ -25,6 +25,14 @@ impl RuntimeCore {
         &mut self,
         room_id: usize,
     ) -> Result<RuntimeRoomState, RuntimeCoreError> {
+        self.build_room_with_create_visible_instances(room_id, &[])
+    }
+
+    pub(crate) fn build_room_with_create_visible_instances(
+        &mut self,
+        room_id: usize,
+        visible_instances: &[RuntimeInstance],
+    ) -> Result<RuntimeRoomState, RuntimeCoreError> {
         let room = self
             .room_index
             .get(&room_id)
@@ -127,8 +135,8 @@ impl RuntimeCore {
                 player.previous_y = adjusted.1 as f64;
             }
         }
-        self.apply_create_logic(&mut room_state, &room);
-        self.apply_room_start_logic(&mut room_state);
+        self.apply_create_logic_with_visible_instances(&mut room_state, &room, visible_instances);
+        self.apply_room_start_logic_with_visible_instances(&mut room_state, visible_instances);
         Ok(room_state)
     }
 

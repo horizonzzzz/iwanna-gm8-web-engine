@@ -1,7 +1,19 @@
+use std::collections::HashMap;
+
+use iwm_runtime_host::RuntimeHost;
 use iwm_runtime_host::{Rgba8, RuntimeDrawCommand, RuntimeRenderFrame};
 use iwm_runtime_model::RuntimeDisplaySource;
 
+use crate::event_dispatch::{
+    event_owner_id_for_block_id, object_event_block_ids,
+    runtime_instance_indices_by_object_id_from_instances, RuntimeEventSelector,
+};
 use crate::helpers::as_number;
+use crate::logic::{
+    apply_runtime_statement, commit_instance_updates, sync_current_instance_from_updates,
+    RuntimeDrawContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay,
+    RuntimeStatementEnvironment,
+};
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState};
 
 #[derive(Debug, Clone, Copy)]
@@ -70,7 +82,10 @@ fn active_view_for_room(room: &RuntimeRoomState) -> Option<ActiveView> {
 }
 
 impl RuntimeCore {
-    pub(crate) fn build_render_frame(&self) -> Result<RuntimeRenderFrame, RuntimeCoreError> {
+    pub(crate) fn build_render_frame(
+        &self,
+        draw_commands: Vec<RuntimeDrawCommand>,
+    ) -> Result<RuntimeRenderFrame, RuntimeCoreError> {
         let room = self
             .current_room
             .as_ref()
@@ -232,6 +247,8 @@ impl RuntimeCore {
             }
         }
 
+        commands.extend(draw_commands);
+
         commands.extend(
             source_room
                 .backgrounds
@@ -263,6 +280,154 @@ impl RuntimeCore {
             height: frame_height,
             commands,
         })
+    }
+
+    pub(crate) fn execute_draw_events<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+    ) -> Result<Vec<RuntimeDrawCommand>, RuntimeCoreError> {
+        let script_entries = &self.cached_script_entries;
+        let destroy_event_entries = &self.cached_destroy_event_entries;
+        let objects = &self.package.objects;
+        let lowered_entries = self
+            .package
+            .lowered_logic
+            .as_ref()
+            .map(|logic| logic.entries.as_slice())
+            .unwrap_or(&[]);
+        let room_order = &self.cached_room_order;
+        let button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
+        let (current_room_id, dispatches, room_instance_indices_by_object_id) = {
+            let Some(room) = self.current_room.as_ref() else {
+                return Err(RuntimeCoreError::NoRooms);
+            };
+            let dispatches = room
+                .instances
+                .iter()
+                .enumerate()
+                .filter(|(_, instance)| instance.alive)
+                .filter_map(|(index, instance)| {
+                    let entries = object_event_block_ids(
+                        &self.package,
+                        instance.object_id,
+                        RuntimeEventSelector::Draw,
+                    )
+                    .iter()
+                    .filter_map(|block_id| self.lowered_logic_entry(block_id).cloned())
+                    .collect::<Vec<_>>();
+                    (!entries.is_empty()).then_some((index, entries))
+                })
+                .collect::<Vec<_>>();
+            (
+                room.room_id,
+                dispatches,
+                runtime_instance_indices_by_object_id_from_instances(&room.instances),
+            )
+        };
+
+        let mut draw_context = RuntimeDrawContext::default();
+        let mut instance_updates: HashMap<usize, RuntimeInstance> = HashMap::new();
+        let mut instance_creates = Vec::new();
+
+        for (index, entries) in dispatches {
+            let Some(mut instance) = instance_updates.get(&index).cloned().or_else(|| {
+                self.current_room
+                    .as_ref()
+                    .and_then(|room| room.instances.get(index).cloned())
+            }) else {
+                continue;
+            };
+            if !instance.alive {
+                continue;
+            }
+
+            for entry in &entries {
+                let event_owner_id = event_owner_id_for_block_id(objects, &entry.block_id)
+                    .unwrap_or(instance.object_id);
+                let mut scope = RuntimeExecutionScope::default();
+                let mut with_updates = Vec::new();
+                for statement in &entry.statements {
+                    let Some(room) = self.current_room.as_ref() else {
+                        return Err(RuntimeCoreError::NoRooms);
+                    };
+                    let eval_overlay = RuntimeRoomInstanceOverlay::with_current(
+                        &instance_updates,
+                        &with_updates,
+                        index,
+                        &instance,
+                    );
+                    let eval_context = crate::logic::RuntimeEvalContext {
+                        current_room_id,
+                        button_states: &button_states,
+                        room_instances: &room.instances,
+                        room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                        collision_spatial_index: None,
+                        room_instance_overlay: eval_overlay,
+                        room_order: room_order.as_slice(),
+                        other_instance: None,
+                        other_runtime_id: None,
+                        place_target_ids_by_name: &self.place_target_ids_by_name,
+                        room_ids_by_name: &self.room_ids_by_name,
+                    };
+                    let mut statement_env = RuntimeStatementEnvironment {
+                        script_entries,
+                        sound_index: &self.sound_index,
+                        globals: &mut self.globals,
+                        pending_room_transition: &mut self.pending_room_transition,
+                        pending_room_reset: &mut self.pending_room_reset,
+                        pending_game_restart: &mut self.pending_game_restart,
+                        binary_files: &mut self.binary_files,
+                        host: &mut *host,
+                        diagnostics: &mut self.diagnostics,
+                        room_instance_updates: &mut with_updates,
+                        room_instance_creates: &mut instance_creates,
+                        objects,
+                        lowered_entries,
+                        event_selector: Some(RuntimeEventSelector::Draw),
+                        event_owner_id: Some(event_owner_id),
+                        draw: Some(&mut draw_context),
+                        trace: crate::logic::RuntimeExecutionTrace {
+                            room_id: current_room_id,
+                            tick: self.tick,
+                            block_id: entry.block_id.clone(),
+                            object_name: instance.object_name.clone(),
+                            event_tag: "draw".into(),
+                        },
+                    };
+                    apply_runtime_statement(
+                        statement,
+                        &mut instance,
+                        index,
+                        &mut scope,
+                        &destroy_event_entries,
+                        Some(&eval_context),
+                        &mut statement_env,
+                    );
+                    sync_current_instance_from_updates(index, &mut instance, &mut with_updates);
+                    if self.has_pending_scene_change() {
+                        break;
+                    }
+                }
+                commit_instance_updates(&mut instance_updates, with_updates);
+                if self.has_pending_scene_change() {
+                    break;
+                }
+            }
+            if self.has_pending_scene_change() {
+                break;
+            }
+        }
+
+        if let Some(room) = self.current_room.as_mut() {
+            for (index, updated_instance) in instance_updates {
+                if let Some(slot) = room.instances.get_mut(index) {
+                    *slot = updated_instance;
+                }
+            }
+        }
+        self.apply_runtime_instance_creates(host, &mut instance_creates);
+
+        Ok(draw_context.finish())
     }
 }
 

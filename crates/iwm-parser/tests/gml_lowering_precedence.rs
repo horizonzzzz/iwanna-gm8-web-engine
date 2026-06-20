@@ -567,3 +567,82 @@ fn lowering_preserves_compound_assignment_in_for_step() {
         other => panic!("expected for statement, got {other:?}"),
     }
 }
+
+#[test]
+fn lowering_unwraps_top_level_braced_draw_blocks() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 13,
+            script_name: "scr_draw".to_string(),
+            gml_source: "{\r\n  draw_set_color(c_red);\r\n  draw_text(x-16,y-16,difName);\r\n}"
+                .to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+
+    assert!(matches!(
+        statements.as_slice(),
+        [
+            LoweredLogicStatement::FunctionCall { name: first, .. },
+            LoweredLogicStatement::FunctionCall { name: second, .. },
+        ] if first == "draw_set_color" && second == "draw_text"
+    ));
+}
+
+#[test]
+fn lowering_preserves_gml_integer_division_and_modulo_words() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 14,
+            script_name: "scr_time".to_string(),
+            gml_source:
+                "global.hour[i]=global.time[i] div 3600; global.sec[i]=global.time[i] mod 60;"
+                    .to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+
+    assert!(matches!(
+        &statements[0],
+        LoweredLogicStatement::Assignment {
+            value: LoweredLogicExpr::BinaryExpr { op, left, right },
+            ..
+        } if op == "div"
+            && matches!(
+                left.as_ref(),
+                LoweredLogicExpr::IndexAccess { target, index }
+                    if matches!(
+                        target.as_ref(),
+                        LoweredLogicExpr::MemberAccess { target, member }
+                            if member == "time"
+                            && matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "global")
+                    )
+                    && matches!(index.as_ref(), LoweredLogicExpr::Identifier(name) if name == "i")
+            )
+            && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 3600.0).abs() < f64::EPSILON)
+    ));
+    assert!(matches!(
+        &statements[1],
+        LoweredLogicStatement::Assignment {
+            value: LoweredLogicExpr::BinaryExpr { op, right, .. },
+            ..
+        } if op == "mod"
+            && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 60.0).abs() < f64::EPSILON)
+    ));
+}

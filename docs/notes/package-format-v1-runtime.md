@@ -179,8 +179,8 @@ The current browser-hosted runtime flow is:
 
 - `source-only` script blocks that require GML lowering
 - Advanced GML functions not yet in the supported subset
-- Particle systems, surfaces, and advanced drawing
-- Menu systems and save/load functionality
+- Particle systems, surfaces, and advanced drawing beyond the current text-command slice
+- Broader menu systems and save/load parity beyond the current package-owned room flow and minimal file slice
 - DLL semantics and external function calls
 - Advanced physics beyond the current bbox broad-phase plus sprite-mask pixel collision path
 - high-fidelity continuous browser host timing and play-loop controls

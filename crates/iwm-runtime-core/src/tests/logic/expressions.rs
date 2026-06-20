@@ -576,7 +576,7 @@ fn core_evaluates_file_exists_conditions_against_host_files() {
                 op: "==".into(),
                 left: Box::new(LoweredLogicExpr::Call {
                     name: "file_exists".into(),
-                    args: vec![LoweredLogicExpr::LiteralText("temp".into())],
+                    args: vec![LoweredLogicExpr::LiteralText("custom_slot".into())],
                 }),
                 right: Box::new(LoweredLogicExpr::LiteralBool(true)),
             },
@@ -594,7 +594,7 @@ fn core_evaluates_file_exists_conditions_against_host_files() {
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();
     host.files
-        .write_temp(std::path::Path::new("temp"), b"checkpoint")
+        .write_temp(std::path::Path::new("custom_slot"), b"checkpoint")
         .unwrap();
 
     core.tick(&mut host).unwrap();
@@ -609,6 +609,75 @@ fn core_evaluates_file_exists_conditions_against_host_files() {
     assert_eq!(
         player.vars.get("loaded_temp"),
         Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn core_executes_file_delete_against_host_files() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "file_delete".into(),
+                args: vec![LoweredLogicExpr::LiteralText("custom_slot".into())],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("slot_exists".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "file_exists".into(),
+                    args: vec![LoweredLogicExpr::LiteralText("custom_slot".into())],
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.files
+        .write_temp(std::path::Path::new("custom_slot"), b"checkpoint")
+        .unwrap();
+
+    core.tick(&mut host).unwrap();
+
+    assert!(
+        host.files
+            .read(std::path::Path::new("custom_slot"))
+            .is_err(),
+        "file_delete should remove the evaluated path from the host"
+    );
+    assert_eq!(
+        player_var(&core, "slot_exists"),
+        Some(&RuntimeValue::Bool(false))
+    );
+    assert_no_runtime_blockers(&core);
+}
+
+#[test]
+fn core_evaluates_gml_div_and_mod_binary_expressions() {
+    let core = run_step(vec![
+        assign_var(
+            "hour",
+            LoweredLogicExpr::BinaryExpr {
+                op: "div".into(),
+                left: Box::new(LoweredLogicExpr::LiteralNumber(7261.0)),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(3600.0)),
+            },
+        ),
+        assign_var(
+            "second",
+            LoweredLogicExpr::BinaryExpr {
+                op: "mod".into(),
+                left: Box::new(LoweredLogicExpr::LiteralNumber(7261.0)),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(60.0)),
+            },
+        ),
+    ]);
+
+    assert_eq!(player_var(&core, "hour"), Some(&RuntimeValue::Number(2.0)));
+    assert_eq!(
+        player_var(&core, "second"),
+        Some(&RuntimeValue::Number(1.0))
     );
 }
 

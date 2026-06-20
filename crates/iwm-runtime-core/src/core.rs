@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 
 use crate::event_dispatch::{
-    object_event_block_ids, runtime_collision_spatial_index,
+    event_owner_id_for_block_id, object_event_block_ids, runtime_collision_spatial_index,
     runtime_instance_indices_by_object_id_from_instances, RuntimeCollisionSpatialIndex,
     RuntimeEventSelector,
 };
@@ -250,14 +250,11 @@ impl RuntimeCore {
             || self.pending_room_transition.is_some()
     }
 
-    pub fn set_global(&mut self, key: impl Into<String>, value: RuntimeValue) {
-        self.globals.insert(key.into(), value);
-    }
-
     pub fn render<H: RuntimeHost>(&mut self, host: &mut H) -> Result<(), RuntimeCoreError> {
         self.settle_current_room_before_first_render(host)?;
         self.sync_current_room_views_from_globals();
-        let frame = self.build_render_frame()?;
+        let draw_commands = self.execute_draw_events(host)?;
+        let frame = self.build_render_frame(draw_commands)?;
         host.submit_frame(frame)?;
         Ok(())
     }
@@ -427,10 +424,12 @@ impl RuntimeCore {
             return Ok(());
         }
 
-        let left = self.bound_button_state(host, "global.leftbutton", 0x25);
-        let right = self.bound_button_state(host, "global.rightbutton", 0x27);
-        let jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
-        let step_result = self.execute_lowered_step_events(host)?;
+        let button_states = button_states_without_transitions(host);
+        let left = self.bound_button_state_from_map(&button_states, "global.leftbutton", 0x25);
+        let right = self.bound_button_state_from_map(&button_states, "global.rightbutton", 0x27);
+        let jump = self.bound_button_state_from_map(&button_states, "global.jumpbutton", 0x20);
+        let step_result =
+            self.execute_lowered_step_events_with_button_states(host, &button_states)?;
         self.sync_current_room_views_from_globals();
 
         if step_result.interrupted {
@@ -569,6 +568,7 @@ impl RuntimeCore {
                 instance_idx,
                 &block_ids,
                 None,
+                RuntimeEventSelector::OtherAnimationEnd,
                 selector_event_tag(&RuntimeEventSelector::OtherAnimationEnd),
                 None,
             );
@@ -586,13 +586,31 @@ impl RuntimeCore {
         binding_key: &str,
         fallback_key_code: u16,
     ) -> ButtonState {
+        let key_code = self.bound_key_code(binding_key, fallback_key_code);
+        host.button_state(RuntimeButton::Keyboard(key_code))
+    }
+
+    fn bound_button_state_from_map(
+        &self,
+        button_states: &HashMap<RuntimeButton, ButtonState>,
+        binding_key: &str,
+        fallback_key_code: u16,
+    ) -> ButtonState {
+        let key_code = self.bound_key_code(binding_key, fallback_key_code);
+        button_states
+            .get(&RuntimeButton::Keyboard(key_code))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn bound_key_code(&self, binding_key: &str, fallback_key_code: u16) -> u16 {
         let key_code = self
             .globals
             .get(binding_key)
             .and_then(as_number)
             .map(|value| value.round() as u16)
             .unwrap_or(fallback_key_code);
-        host.button_state(RuntimeButton::Keyboard(key_code))
+        key_code
     }
 
     fn bound_restart_button_state<H: RuntimeHost>(&self, host: &H) -> ButtonState {
@@ -607,8 +625,16 @@ impl RuntimeCore {
     }
 
     pub fn reload_room(&mut self, room_id: usize) -> Result<(), RuntimeCoreError> {
+        let persistent_instances = self
+            .persistent_instances_for_room_transition()
+            .into_iter()
+            .filter(|instance| !is_player_instance(instance))
+            .collect::<Vec<_>>();
         self.hydrate_missing_package_bootstrap_globals(room_id);
-        self.current_room = Some(self.build_room(room_id)?);
+        let mut room =
+            self.build_room_with_create_visible_instances(room_id, &persistent_instances)?;
+        crate::room_transitions::add_persistent_instances(&mut room, persistent_instances);
+        self.current_room = Some(room);
         self.room_needs_first_render_settle = true;
         self.death_waiting_for_restart = false;
         self.status = RuntimeStatus::Ready;
@@ -646,6 +672,7 @@ impl RuntimeCore {
                 instance_idx,
                 &block_ids,
                 None,
+                selector.clone(),
                 selector_event_tag(&selector),
                 None,
             );
@@ -663,6 +690,7 @@ impl RuntimeCore {
         instance_idx: usize,
         block_ids: &[String],
         other_instance: Option<RuntimeInstance>,
+        event_selector: RuntimeEventSelector,
         event_tag: String,
         collision_spatial_index: Option<&RuntimeCollisionSpatialIndex>,
     ) {
@@ -674,6 +702,13 @@ impl RuntimeCore {
 
         let script_entries = &self.cached_script_entries;
         let destroy_event_entries = &self.cached_destroy_event_entries;
+        let objects = &self.package.objects;
+        let lowered_entries = self
+            .package
+            .lowered_logic
+            .as_ref()
+            .map(|logic| logic.entries.as_slice())
+            .unwrap_or(&[]);
         let button_states = host
             .active_buttons()
             .into_iter()
@@ -684,7 +719,6 @@ impl RuntimeCore {
             };
             room.room_id
         };
-        let known_files = crate::logic::sample_known_files(host);
         let room_order = &self.cached_room_order;
 
         let mut instance = {
@@ -707,6 +741,8 @@ impl RuntimeCore {
         };
 
         for entry in &entries {
+            let event_owner_id =
+                event_owner_id_for_block_id(objects, &entry.block_id).unwrap_or(instance.object_id);
             crate::diagnostics::record_execution_trace(
                 host,
                 &mut self.diagnostics,
@@ -736,7 +772,6 @@ impl RuntimeCore {
                     collision_spatial_index,
                     room_instance_overlay: eval_overlay,
                     room_order,
-                    known_files: &known_files,
                     other_instance: other_instance.as_ref(),
                     other_runtime_id: other_instance.as_ref().map(|instance| instance.runtime_id),
                     place_target_ids_by_name: &self.place_target_ids_by_name,
@@ -754,6 +789,11 @@ impl RuntimeCore {
                     diagnostics: &mut self.diagnostics,
                     room_instance_updates: &mut with_updates,
                     room_instance_creates: &mut instance_creates,
+                    objects,
+                    lowered_entries,
+                    event_selector: Some(event_selector.clone()),
+                    event_owner_id: Some(event_owner_id),
+                    draw: None,
                     trace: crate::logic::RuntimeExecutionTrace {
                         room_id: current_room_id,
                         tick: self.tick,
@@ -868,6 +908,7 @@ impl RuntimeCore {
                 instance_idx,
                 &block_ids,
                 None,
+                RuntimeEventSelector::Alarm(slot),
                 format!("alarm:{slot}"),
                 None,
             );
@@ -983,6 +1024,7 @@ impl RuntimeCore {
                 instance_idx,
                 &block_ids,
                 Some(other_instance),
+                RuntimeEventSelector::Collision { target_object_id },
                 "collision".into(),
                 Some(&spatial_index),
             );
@@ -996,8 +1038,21 @@ fn parse_alarm_slot(key: &str) -> Option<u32> {
     key.strip_prefix("alarm[")?.strip_suffix(']')?.parse().ok()
 }
 
+fn button_states_without_transitions<H: RuntimeHost>(
+    host: &H,
+) -> HashMap<RuntimeButton, ButtonState> {
+    let mut button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
+    for state in button_states.values_mut() {
+        state.just_pressed = false;
+        state.just_released = false;
+    }
+    button_states
+}
+
 fn selector_event_tag(selector: &RuntimeEventSelector) -> String {
     match selector {
+        RuntimeEventSelector::Step => "step".into(),
+        RuntimeEventSelector::Draw => "draw".into(),
         RuntimeEventSelector::Destroy => "destroy".into(),
         RuntimeEventSelector::Alarm(slot) => format!("alarm:{slot}"),
         RuntimeEventSelector::KeyboardHeld(key) => {

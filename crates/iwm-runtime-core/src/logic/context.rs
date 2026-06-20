@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 
 use iwm_runtime_host::{RuntimeButton, RuntimeHost, RuntimeHostError};
@@ -227,7 +227,6 @@ pub(crate) struct RuntimeEvalContext<'a> {
     pub collision_spatial_index: Option<&'a RuntimeCollisionSpatialIndex>,
     pub room_instance_overlay: RuntimeRoomInstanceOverlay<'a>,
     pub room_order: &'a [usize],
-    pub known_files: &'a HashSet<String>,
     pub other_instance: Option<&'a RuntimeInstance>,
     pub other_runtime_id: Option<usize>,
     pub place_target_ids_by_name: &'a HashMap<String, Vec<usize>>,
@@ -251,7 +250,6 @@ impl<'a> RuntimeEvalContext<'a> {
             collision_spatial_index: self.collision_spatial_index,
             room_instance_overlay,
             room_order: self.room_order,
-            known_files: self.known_files,
             other_instance: Some(other_instance),
             other_runtime_id: Some(other_instance.runtime_id),
             place_target_ids_by_name: self.place_target_ids_by_name,

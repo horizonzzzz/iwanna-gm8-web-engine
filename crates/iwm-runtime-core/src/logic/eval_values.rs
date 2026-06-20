@@ -38,6 +38,20 @@ pub(super) fn eval_binary_expr(
         "-" => Some(RuntimeValue::Number(as_number(left)? - as_number(right)?)),
         "*" => Some(RuntimeValue::Number(as_number(left)? * as_number(right)?)),
         "/" => Some(RuntimeValue::Number(as_number(left)? / as_number(right)?)),
+        "div" => {
+            let divisor = as_number(right)?;
+            if divisor == 0.0 {
+                return None;
+            }
+            Some(RuntimeValue::Number((as_number(left)? / divisor).trunc()))
+        }
+        "mod" => {
+            let divisor = as_number(right)?;
+            if divisor == 0.0 {
+                return None;
+            }
+            Some(RuntimeValue::Number(as_number(left)? % divisor))
+        }
         "==" => Some(RuntimeValue::Bool(runtime_values_equal(left, right))),
         "=" => Some(RuntimeValue::Bool(runtime_values_equal(left, right))),
         "!=" => Some(RuntimeValue::Bool(!runtime_values_equal(left, right))),

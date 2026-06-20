@@ -70,7 +70,8 @@ impl RuntimeCore {
         if let Some(room_id) = self.pending_room_transition.take() {
             let from_room_id = self.current_room.as_ref().map(|room| room.room_id);
             let persistent_instances = self.persistent_instances_for_room_transition();
-            let mut room = self.build_room(room_id)?;
+            let mut room =
+                self.build_room_with_create_visible_instances(room_id, &persistent_instances)?;
             add_persistent_instances(&mut room, persistent_instances);
             self.current_room = Some(room);
             self.room_needs_first_render_settle = true;
@@ -91,7 +92,7 @@ impl RuntimeCore {
         Ok(())
     }
 
-    fn persistent_instances_for_room_transition(&self) -> Vec<RuntimeInstance> {
+    pub(crate) fn persistent_instances_for_room_transition(&self) -> Vec<RuntimeInstance> {
         self.current_room
             .as_ref()
             .map(|room| {
@@ -127,7 +128,10 @@ impl RuntimeCore {
     }
 }
 
-fn add_persistent_instances(room: &mut RuntimeRoomState, instances: Vec<RuntimeInstance>) {
+pub(crate) fn add_persistent_instances(
+    room: &mut RuntimeRoomState,
+    instances: Vec<RuntimeInstance>,
+) {
     for mut instance in instances {
         if let Some(candidate) = room
             .instances

@@ -17,7 +17,6 @@ function makeBridge(): WasmRuntimeBridge {
     snapshot: async () => makeWasmSnapshot({ roomId: 0 }),
     frame: async () => makeWasmFrame({ roomId: 0 }),
     setInput: async () => makeWasmSnapshot({ roomId: 0 }),
-    setGlobals: async () => makeWasmSnapshot({ roomId: 0 }),
     tick: async (frames = 1) => makeWasmSnapshot({ tick: frames, roomId: 0 }),
     reset: async () => makeWasmSnapshot({ roomId: 0 }),
     selectRoom: async (roomId: number) => makeWasmSnapshot({ roomId }),
@@ -114,10 +113,6 @@ describe('wasm bridge loader', () => {
         writeSnapshot();
         return snapshotPointer;
       },
-      iwm_set_globals_json: () => {
-        writeSnapshot();
-        return snapshotPointer;
-      },
       iwm_tick: () => {
         writeSnapshot();
         return snapshotPointer;
@@ -148,7 +143,6 @@ describe('wasm bridge loader', () => {
     expect((await bridge.snapshot()).roomId).toBe(1);
     expect((await bridge.snapshot()).player?.jump?.holdFrames).toBe(1);
     expect((await bridge.tick(2)).roomId).toBe(1);
-    expect((await bridge.setGlobals({ 'global.difficulty': 0 })).roomId).toBe(1);
     expect((await bridge.reset()).diagnostics[0]).toContain('runtime-idle');
     expect((await bridge.selectRoom(1)).tick).toBe(3);
     expect((await bridge.diagnostics())[0]).toContain('runtime-idle');
@@ -221,10 +215,6 @@ describe('wasm bridge loader', () => {
         writeSnapshot();
         return snapshotPointer;
       },
-      iwm_set_globals_json: () => {
-        writeSnapshot();
-        return snapshotPointer;
-      },
       iwm_frame_json: () => {
         writeFrame();
         return framePointer;
@@ -277,7 +267,6 @@ describe('wasm bridge loader', () => {
       iwm_free: () => undefined,
       iwm_boot_json: () => pointer,
       iwm_set_input_json: () => pointer,
-      iwm_set_globals_json: () => pointer,
       iwm_step_json: () => {
         writeStep();
         return pointer;

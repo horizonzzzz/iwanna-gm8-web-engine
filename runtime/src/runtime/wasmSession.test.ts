@@ -10,7 +10,6 @@ function makeBridge(): WasmRuntimeBridge {
     snapshot: vi.fn(async () => makeWasmSnapshot({ roomId: 0 })),
     frame: vi.fn(async () => makeWasmFrame({ tick: 1, roomId: 0 })),
     setInput: vi.fn(async () => makeWasmSnapshot({ roomId: 0 })),
-    setGlobals: vi.fn(async () => makeWasmSnapshot({ roomId: 0 })),
     step: vi.fn(async () => ({
       snapshot: makeWasmSnapshot({ tick: 1, roomId: 0 }),
       frame: makeWasmFrame({ tick: 1, roomId: 0 })

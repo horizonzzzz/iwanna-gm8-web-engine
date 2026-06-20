@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::{borrow::Cow, collections::HashMap};
 
 use iwm_runtime_model::RoomDefinition;
 
@@ -12,10 +12,11 @@ use crate::{
 };
 
 impl RuntimeCore {
-    pub(crate) fn apply_create_logic(
+    pub(crate) fn apply_create_logic_with_visible_instances(
         &mut self,
         room_state: &mut RuntimeRoomState,
         source_room: &RoomDefinition,
+        visible_instances: &[RuntimeInstance],
     ) {
         if let Some(block_id) = source_room.creation_block_id.as_deref() {
             self.apply_lowered_block_to_globals(block_id);
@@ -37,7 +38,12 @@ impl RuntimeCore {
             if let Some(block_id) = source_instance_block.as_deref() {
                 if let Some(entry) = self.lowered_logic_entry(block_id).cloned() {
                     for statement in &entry.statements {
-                        self.apply_create_statement_to_instance(statement, room_state, index);
+                        self.apply_create_statement_to_instance(
+                            statement,
+                            room_state,
+                            index,
+                            visible_instances,
+                        );
                     }
                 }
             }
@@ -49,7 +55,12 @@ impl RuntimeCore {
                         continue;
                     };
                     for statement in &entry.statements {
-                        self.apply_create_statement_to_instance(statement, room_state, index);
+                        self.apply_create_statement_to_instance(
+                            statement,
+                            room_state,
+                            index,
+                            visible_instances,
+                        );
                     }
                 }
             }
@@ -111,6 +122,7 @@ impl RuntimeCore {
         statement: &LoweredLogicStatement,
         room_state: &mut RuntimeRoomState,
         instance_index: usize,
+        visible_instances: &[RuntimeInstance],
     ) {
         let Some(instance_snapshot) = room_state.instances.get(instance_index).cloned() else {
             return;
@@ -120,17 +132,16 @@ impl RuntimeCore {
             LoweredLogicStatement::Assignment { target, value } => {
                 if let Some(key) = assignable_key(target, Some(&instance_snapshot), None) {
                     let button_states = HashMap::new();
-                    let known_files = HashSet::new();
                     let room_instance_indices_by_object_id = HashMap::new();
+                    let room_instances = create_visible_instances(room_state, visible_instances);
                     let eval_context = RuntimeEvalContext {
                         current_room_id: room_state.room_id,
                         button_states: &button_states,
-                        room_instances: &room_state.instances,
+                        room_instances: room_instances.as_ref(),
                         room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
                         collision_spatial_index: None,
                         room_instance_overlay: super::RuntimeRoomInstanceOverlay::empty(),
                         room_order: &[],
-                        known_files: &known_files,
                         other_instance: None,
                         other_runtime_id: None,
                         place_target_ids_by_name: &self.place_target_ids_by_name,
@@ -155,17 +166,16 @@ impl RuntimeCore {
                 else_branch,
             } => {
                 let button_states = HashMap::new();
-                let known_files = HashSet::new();
                 let room_instance_indices_by_object_id = HashMap::new();
+                let room_instances = create_visible_instances(room_state, visible_instances);
                 let eval_context = RuntimeEvalContext {
                     current_room_id: room_state.room_id,
                     button_states: &button_states,
-                    room_instances: &room_state.instances,
+                    room_instances: room_instances.as_ref(),
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
                     collision_spatial_index: None,
                     room_instance_overlay: super::RuntimeRoomInstanceOverlay::empty(),
                     room_order: &[],
-                    known_files: &known_files,
                     other_instance: None,
                     other_runtime_id: None,
                     place_target_ids_by_name: &self.place_target_ids_by_name,
@@ -184,7 +194,12 @@ impl RuntimeCore {
                     else_branch
                 };
                 for nested in branch {
-                    self.apply_create_statement_to_instance(nested, room_state, instance_index);
+                    self.apply_create_statement_to_instance(
+                        nested,
+                        room_state,
+                        instance_index,
+                        visible_instances,
+                    );
                 }
             }
             LoweredLogicStatement::FunctionCall { name, args } => match name.as_str() {
@@ -194,7 +209,12 @@ impl RuntimeCore {
                     }
                 }
                 "instance_create" => {
-                    self.apply_create_instance_create(args, room_state, Some(&instance_snapshot));
+                    self.apply_create_instance_create(
+                        args,
+                        room_state,
+                        Some(&instance_snapshot),
+                        visible_instances,
+                    );
                 }
                 _ => {
                     let script_entries = self.lowered_script_entries();
@@ -204,6 +224,7 @@ impl RuntimeCore {
                                 nested,
                                 room_state,
                                 instance_index,
+                                visible_instances,
                             );
                         }
                     }
@@ -214,7 +235,12 @@ impl RuntimeCore {
             | LoweredLogicStatement::While { body, .. }
             | LoweredLogicStatement::For { body, .. } => {
                 for nested in body {
-                    self.apply_create_statement_to_instance(nested, room_state, instance_index);
+                    self.apply_create_statement_to_instance(
+                        nested,
+                        room_state,
+                        instance_index,
+                        visible_instances,
+                    );
                 }
             }
             LoweredLogicStatement::VariableDeclaration { .. }
@@ -223,7 +249,11 @@ impl RuntimeCore {
         }
     }
 
-    pub(crate) fn apply_room_start_logic(&mut self, room_state: &mut RuntimeRoomState) {
+    pub(crate) fn apply_room_start_logic_with_visible_instances(
+        &mut self,
+        room_state: &mut RuntimeRoomState,
+        visible_instances: &[RuntimeInstance],
+    ) {
         let room_start_event_blocks = self.object_event_blocks_by_tag("other:room-start");
         let initial_instance_count = room_state.instances.len();
         let mut index = 0usize;
@@ -246,7 +276,12 @@ impl RuntimeCore {
                         continue;
                     };
                     for statement in &entry.statements {
-                        self.apply_create_statement_to_instance(statement, room_state, index);
+                        self.apply_create_statement_to_instance(
+                            statement,
+                            room_state,
+                            index,
+                            visible_instances,
+                        );
                     }
                 }
             }
@@ -260,19 +295,19 @@ impl RuntimeCore {
         args: &[LoweredLogicExpr],
         room_state: &mut RuntimeRoomState,
         source_instance: Option<&RuntimeInstance>,
+        visible_instances: &[RuntimeInstance],
     ) {
         let button_states = HashMap::new();
-        let known_files = HashSet::new();
         let room_instance_indices_by_object_id = HashMap::new();
+        let room_instances = create_visible_instances(room_state, visible_instances);
         let eval_context = RuntimeEvalContext {
             current_room_id: room_state.room_id,
             button_states: &button_states,
-            room_instances: &room_state.instances,
+            room_instances: room_instances.as_ref(),
             room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
             collision_spatial_index: None,
             room_instance_overlay: super::RuntimeRoomInstanceOverlay::empty(),
             room_order: &[],
-            known_files: &known_files,
             other_instance: None,
             other_runtime_id: None,
             place_target_ids_by_name: &self.place_target_ids_by_name,
@@ -332,7 +367,12 @@ impl RuntimeCore {
                     continue;
                 };
                 for nested in &entry.statements {
-                    self.apply_create_statement_to_instance(nested, room_state, runtime_id);
+                    self.apply_create_statement_to_instance(
+                        nested,
+                        room_state,
+                        runtime_id,
+                        visible_instances,
+                    );
                 }
             }
         }
@@ -360,6 +400,19 @@ impl RuntimeCore {
             .and_then(|value| as_number(&value))
             .and_then(non_negative_integer_usize)
     }
+}
+
+fn create_visible_instances<'a>(
+    room_state: &'a RuntimeRoomState,
+    visible_instances: &'a [RuntimeInstance],
+) -> Cow<'a, [RuntimeInstance]> {
+    if visible_instances.is_empty() {
+        return Cow::Borrowed(&room_state.instances);
+    }
+
+    let mut instances = room_state.instances.clone();
+    instances.extend_from_slice(visible_instances);
+    Cow::Owned(instances)
 }
 
 pub(crate) fn apply_view_globals_to_room(

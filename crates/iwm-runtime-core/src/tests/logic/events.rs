@@ -260,3 +260,94 @@ fn core_executes_conditional_branch_before_room_transition() {
 
     assert_eq!(core.snapshot().room_id, Some(9));
 }
+
+#[test]
+fn core_executes_event_inherited_for_parent_collision_event() {
+    let mut package = sample_package();
+    package.objects.push(ObjectDefinition {
+        id: 20,
+        name: "parent_room_changer".into(),
+        sprite_index: 0,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 4,
+            sub_event: 1,
+            event_tag: "collision".into(),
+            block_id: "object:20:event:4:1".into(),
+            action_count: 0,
+        }],
+    });
+    package.objects.push(ObjectDefinition {
+        id: 21,
+        name: "child_room_changer".into(),
+        sprite_index: 0,
+        parent_index: 20,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 4,
+            sub_event: 1,
+            event_tag: "collision".into(),
+            block_id: "object:21:event:4:1".into(),
+            action_count: 0,
+        }],
+    });
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 90,
+        object_id: 21,
+        x: 48,
+        y: 64,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:20:event:4:1".into(),
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "room_goto".into(),
+            args: vec![LoweredLogicExpr::LiteralNumber(9.0)],
+        }],
+    );
+    append_lowered_entry(
+        &mut package,
+        "object:21:event:4:1".into(),
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("child_collision_ran".into()),
+                value: LoweredLogicExpr::LiteralBool(true),
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "event_inherited".into(),
+                args: vec![],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(core.snapshot().room_id, Some(9));
+    assert_no_runtime_blockers(&core);
+}

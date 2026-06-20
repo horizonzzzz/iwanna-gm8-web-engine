@@ -1,6 +1,10 @@
 use std::collections::HashMap;
+use std::path::Path;
 
-use iwm_runtime_host::{RuntimeHost, RuntimeSoundMode};
+use iwm_runtime_host::{
+    Rgba8, RuntimeDrawCommand, RuntimeHost, RuntimeHostErrorKind, RuntimeSoundMode,
+};
+use iwm_runtime_model::ObjectDefinition;
 
 use super::assignment::{assign_runtime_value, next_room_id, runtime_value_to_room_id};
 use super::calls::{
@@ -23,6 +27,7 @@ use super::instances::{
     assign_runtime_member_reference, pending_create_member_value,
     pending_create_member_value_by_object_target, runtime_instance_create_request,
 };
+use crate::event_dispatch::{inherited_event_block_id, RuntimeEventSelector};
 use crate::helpers::{as_number, record_host_diagnostic};
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeInstance, RuntimeValue,
@@ -49,7 +54,42 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) diagnostics: &'a mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
     pub(crate) room_instance_updates: &'a mut Vec<(usize, RuntimeInstance)>,
     pub(crate) room_instance_creates: &'a mut Vec<RuntimeInstanceCreateRequest>,
+    pub(crate) objects: &'a [ObjectDefinition],
+    pub(crate) lowered_entries: &'a [LoweredLogicEntry],
+    pub(crate) event_selector: Option<RuntimeEventSelector>,
+    pub(crate) event_owner_id: Option<usize>,
+    pub(crate) draw: Option<&'a mut RuntimeDrawContext>,
     pub(crate) trace: RuntimeExecutionTrace,
+}
+
+#[derive(Debug)]
+pub(crate) struct RuntimeDrawContext {
+    colour: Rgba8,
+    align: String,
+    size: u32,
+    commands: Vec<RuntimeDrawCommand>,
+}
+
+impl RuntimeDrawContext {
+    pub(crate) fn finish(self) -> Vec<RuntimeDrawCommand> {
+        self.commands
+    }
+}
+
+impl Default for RuntimeDrawContext {
+    fn default() -> Self {
+        Self {
+            colour: Rgba8 {
+                r: 255,
+                g: 255,
+                b: 255,
+                a: 255,
+            },
+            align: "left".into(),
+            size: 16,
+            commands: Vec::new(),
+        }
+    }
 }
 
 pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
@@ -183,6 +223,43 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 *env.pending_room_reset = false;
                 *env.pending_game_restart = true;
             }
+            "draw_set_color" => {
+                let Some(colour) = args.first().and_then(draw_colour_arg) else {
+                    return;
+                };
+                if let Some(draw) = env.draw.as_deref_mut() {
+                    draw.colour = colour;
+                }
+            }
+            "draw_set_halign" => {
+                let Some(align) = args.first().and_then(draw_align_arg) else {
+                    return;
+                };
+                if let Some(draw) = env.draw.as_deref_mut() {
+                    draw.align = align;
+                }
+            }
+            "draw_set_font" => {
+                let Some(size) = args.first().and_then(draw_font_size_arg) else {
+                    return;
+                };
+                if let Some(draw) = env.draw.as_deref_mut() {
+                    draw.size = size;
+                }
+            }
+            "draw_text" => {
+                dispatch_draw_text(args, instance, scope, eval_context, env);
+            }
+            "event_inherited" => {
+                dispatch_event_inherited(
+                    instance,
+                    instance_index,
+                    scope,
+                    destroy_event_entries,
+                    eval_context,
+                    env,
+                );
+            }
             "sound_play" => {
                 dispatch_runtime_sound_call(
                     env,
@@ -252,6 +329,36 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     return;
                 };
                 env.binary_files.write_byte(handle, byte);
+            }
+            "file_delete" => {
+                let Some(RuntimeValue::Text(path)) = args.first().and_then(|arg| {
+                    evaluate_runtime_expr(
+                        arg,
+                        Some(instance),
+                        Some(scope),
+                        eval_context,
+                        env,
+                        instance,
+                    )
+                }) else {
+                    return;
+                };
+                if let Err(error) = env.host.remove_temp(Path::new(&path)) {
+                    if error.kind() != RuntimeHostErrorKind::NotFound {
+                        record_host_diagnostic(
+                            env.host,
+                            env.diagnostics,
+                            iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                            "runtime-file-host-error",
+                            format!(
+                                "{} function=file_delete path={} error={}",
+                                trace_message(&env.trace, instance),
+                                path,
+                                error
+                            ),
+                        );
+                    }
+                }
             }
             "file_bin_close" => {
                 let Some(handle) =
@@ -532,6 +639,192 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     }
 }
 
+fn dispatch_draw_text<H: RuntimeHost>(
+    args: &[LoweredLogicExpr],
+    instance: &RuntimeInstance,
+    scope: &mut RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) {
+    let Some(x) = args
+        .first()
+        .and_then(|arg| {
+            evaluate_runtime_expr(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .and_then(|value| as_number(&value))
+    else {
+        return;
+    };
+    let Some(y) = args
+        .get(1)
+        .and_then(|arg| {
+            evaluate_runtime_expr(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .and_then(|value| as_number(&value))
+    else {
+        return;
+    };
+    let Some(text) = args
+        .get(2)
+        .and_then(|arg| {
+            evaluate_runtime_expr(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .map(|value| runtime_value_to_string_text(&value))
+    else {
+        return;
+    };
+    if let Some(draw) = env.draw.as_deref_mut() {
+        draw.commands.push(RuntimeDrawCommand::DrawText {
+            text,
+            x: x.round() as i32,
+            y: y.round() as i32,
+            size: draw.size,
+            colour: draw.colour,
+            align: draw.align.clone(),
+        });
+    }
+}
+
+fn draw_colour_arg(expr: &LoweredLogicExpr) -> Option<Rgba8> {
+    let name = match expr {
+        LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) => {
+            name.to_ascii_lowercase()
+        }
+        LoweredLogicExpr::LiteralNumber(number) if number.is_finite() => {
+            return Some(gm_colour_number_to_rgba(*number as u32));
+        }
+        _ => return None,
+    };
+    Some(match name.as_str() {
+        "c_black" => rgba(0, 0, 0),
+        "c_white" => rgba(255, 255, 255),
+        "c_red" => rgba(255, 0, 0),
+        "c_green" => rgba(0, 128, 0),
+        "c_blue" => rgba(0, 0, 255),
+        "c_yellow" => rgba(255, 255, 0),
+        "c_gray" | "c_grey" => rgba(128, 128, 128),
+        "c_ltgray" | "c_ltgrey" => rgba(192, 192, 192),
+        "c_dkgray" | "c_dkgrey" => rgba(64, 64, 64),
+        _ => return None,
+    })
+}
+
+fn draw_align_arg(expr: &LoweredLogicExpr) -> Option<String> {
+    let name = match expr {
+        LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) => {
+            name.to_ascii_lowercase()
+        }
+        _ => return None,
+    };
+    match name.as_str() {
+        "fa_left" => Some("left".into()),
+        "fa_center" => Some("center".into()),
+        "fa_right" => Some("right".into()),
+        _ => None,
+    }
+}
+
+fn draw_font_size_arg(expr: &LoweredLogicExpr) -> Option<u32> {
+    match expr {
+        LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) => name
+            .chars()
+            .filter(|ch| ch.is_ascii_digit())
+            .collect::<String>()
+            .parse::<u32>()
+            .ok()
+            .filter(|size| *size > 0),
+        LoweredLogicExpr::LiteralNumber(number) if number.is_finite() && *number > 0.0 => {
+            Some(number.round() as u32)
+        }
+        _ => None,
+    }
+}
+
+fn gm_colour_number_to_rgba(value: u32) -> Rgba8 {
+    rgba(
+        (value & 0xff) as u8,
+        ((value >> 8) & 0xff) as u8,
+        ((value >> 16) & 0xff) as u8,
+    )
+}
+
+fn rgba(r: u8, g: u8, b: u8) -> Rgba8 {
+    Rgba8 { r, g, b, a: 255 }
+}
+
+fn dispatch_event_inherited<H: RuntimeHost>(
+    instance: &mut RuntimeInstance,
+    instance_index: usize,
+    scope: &mut RuntimeExecutionScope,
+    destroy_event_entries: &HashMap<usize, Vec<LoweredLogicEntry>>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) {
+    let Some(owner_object_id) = env.event_owner_id else {
+        return;
+    };
+    let Some(selector) = env.event_selector.clone() else {
+        return;
+    };
+    let Some((inherited_owner_id, block_id)) =
+        inherited_event_block_id(env.objects, owner_object_id, &selector)
+    else {
+        return;
+    };
+    let Some(entry) = env
+        .lowered_entries
+        .iter()
+        .find(|entry| entry.block_id == block_id)
+        .cloned()
+    else {
+        return;
+    };
+
+    let previous_owner_id = env.event_owner_id;
+    let previous_trace = env.trace.clone();
+    env.event_owner_id = Some(inherited_owner_id);
+    env.trace.block_id.clone_from(&entry.block_id);
+
+    for nested in &entry.statements {
+        apply_runtime_statement(
+            nested,
+            instance,
+            instance_index,
+            scope,
+            destroy_event_entries,
+            eval_context,
+            env,
+        );
+        if env_has_pending_scene_change(env) {
+            break;
+        }
+    }
+
+    env.trace = previous_trace;
+    env.event_owner_id = previous_owner_id;
+}
+
 fn execute_assignment_expression<H: RuntimeHost>(
     expr: &LoweredLogicExpr,
     instance: &mut RuntimeInstance,
@@ -634,6 +927,15 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
         if name == "keyboard_get_numlock" {
             return Some(RuntimeValue::Bool(env.host.keyboard_numlock()));
         }
+        if name == "file_exists" {
+            let path = args.first().and_then(|arg| {
+                evaluate_runtime_expr(arg, instance, scope, eval_context, env, trace_instance)
+            })?;
+            let RuntimeValue::Text(path) = path else {
+                return None;
+            };
+            return Some(RuntimeValue::Bool(env.host.read(Path::new(&path)).is_ok()));
+        }
         if name == "file_bin_open" {
             let path = args.first().and_then(|arg| {
                 evaluate_runtime_expr(arg, instance, scope, eval_context, env, trace_instance)
@@ -706,6 +1008,20 @@ fn eval_runtime_binary_expr(
         "-" => Some(RuntimeValue::Number(as_number(left)? - as_number(right)?)),
         "*" => Some(RuntimeValue::Number(as_number(left)? * as_number(right)?)),
         "/" => Some(RuntimeValue::Number(as_number(left)? / as_number(right)?)),
+        "div" => {
+            let divisor = as_number(right)?;
+            if divisor == 0.0 {
+                return None;
+            }
+            Some(RuntimeValue::Number((as_number(left)? / divisor).trunc()))
+        }
+        "mod" => {
+            let divisor = as_number(right)?;
+            if divisor == 0.0 {
+                return None;
+            }
+            Some(RuntimeValue::Number(as_number(left)? % divisor))
+        }
         "==" | "=" => Some(RuntimeValue::Bool(runtime_values_equal(left, right))),
         "!=" => Some(RuntimeValue::Bool(!runtime_values_equal(left, right))),
         ">=" => Some(RuntimeValue::Bool(as_number(left)? >= as_number(right)?)),

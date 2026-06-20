@@ -67,13 +67,19 @@ fn lower_binary_expr(expr: &str) -> Option<LoweredLogicExpr> {
         }
     }
 
-    for op in ["==", "!=", ">=", "<=", "=", "+", "-", "*", "/", ">", "<"] {
-        if let Some((left, right)) = split_top_level_operator(expr, op) {
-            return Some(LoweredLogicExpr::BinaryExpr {
-                op: op.to_string(),
-                left: Box::new(lower_expr(&left)),
-                right: Box::new(lower_expr(&right)),
-            });
+    for ops in [
+        &["==", "!=", ">=", "<=", "=", ">", "<"][..],
+        &["+", "-"],
+        &["*", "/", "div", "mod"],
+    ] {
+        for op in ops {
+            if let Some((left, right)) = split_top_level_operator(expr, op) {
+                return Some(LoweredLogicExpr::BinaryExpr {
+                    op: op.to_string(),
+                    left: Box::new(lower_expr(&left)),
+                    right: Box::new(lower_expr(&right)),
+                });
+            }
         }
     }
 

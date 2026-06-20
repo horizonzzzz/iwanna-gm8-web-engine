@@ -96,7 +96,6 @@ export type WasmRuntimeBridge = {
   snapshot: () => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   frame: () => Promise<WasmRuntimeFrame> | WasmRuntimeFrame;
   setInput: (input: WasmRuntimeInputState) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
-  setGlobals: (globals: Record<string, number | boolean | string>) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   step?: (input: WasmRuntimeInputState) => Promise<WasmRuntimeBridgeStepResult> | WasmRuntimeBridgeStepResult;
   tick: (frames?: number) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   reset: () => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
@@ -182,7 +181,6 @@ type WasmRuntimeExports = {
   iwm_free: (pointer: number, size: number) => void;
   iwm_boot_json: (pointer: number, size: number) => number;
   iwm_set_input_json: (pointer: number, size: number) => number;
-  iwm_set_globals_json: (pointer: number, size: number) => number;
   iwm_step_json?: (pointer: number, size: number) => number;
   iwm_tick: (frames: number) => number;
   iwm_reset: () => number;
@@ -208,7 +206,6 @@ export function isWasmRuntimeBridge(value: unknown): value is WasmRuntimeBridge 
     && isFunction(candidate.snapshot)
     && isFunction(candidate.frame)
     && isFunction(candidate.setInput)
-    && isFunction(candidate.setGlobals)
     && isFunction(candidate.tick)
     && isFunction(candidate.reset)
     && isFunction(candidate.selectRoom)
@@ -226,7 +223,6 @@ function isWasmRuntimeExports(value: unknown): value is WasmRuntimeExports {
     && isFunction(candidate.iwm_free)
     && isFunction(candidate.iwm_boot_json)
     && isFunction(candidate.iwm_set_input_json)
-    && isFunction(candidate.iwm_set_globals_json)
     && isFunction(candidate.iwm_tick)
     && isFunction(candidate.iwm_reset)
     && isFunction(candidate.iwm_select_room)
@@ -275,14 +271,6 @@ export function makeWasmRuntimeBridge(exports: WasmRuntimeExports): WasmRuntimeB
       const { pointer, byteLength } = writeJsonInput(exports, input);
       try {
         return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_set_input_json(pointer, byteLength));
-      } finally {
-        exports.iwm_free(pointer, byteLength);
-      }
-    },
-    setGlobals: async (globals) => {
-      const { pointer, byteLength } = writeJsonInput(exports, globals);
-      try {
-        return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_set_globals_json(pointer, byteLength));
       } finally {
         exports.iwm_free(pointer, byteLength);
       }

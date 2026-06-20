@@ -203,24 +203,6 @@ pub(super) fn evaluate_instance_place(
     Some(RuntimeValue::Number(hit))
 }
 
-pub(super) fn evaluate_file_exists(
-    args: &[LoweredLogicExpr],
-    instance: Option<&RuntimeInstance>,
-    globals: &HashMap<String, RuntimeValue>,
-    scope: Option<&RuntimeExecutionScope>,
-    eval_context: Option<&RuntimeEvalContext<'_>>,
-) -> Option<RuntimeValue> {
-    let context = eval_context?;
-    let path = args
-        .first()
-        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
-        .and_then(|value| match value {
-            RuntimeValue::Text(text) => Some(text),
-            _ => None,
-        })?;
-    Some(RuntimeValue::Bool(context.known_files.contains(&path)))
-}
-
 pub(super) fn evaluate_instance_exists(
     args: &[LoweredLogicExpr],
     eval_context: Option<&RuntimeEvalContext<'_>>,
