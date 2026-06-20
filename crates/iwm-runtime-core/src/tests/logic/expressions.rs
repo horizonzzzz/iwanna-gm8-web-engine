@@ -85,6 +85,32 @@ fn core_evaluates_unary_not_in_conditionals() {
 }
 
 #[test]
+fn core_treats_uninitialized_instance_variables_as_zero_in_expressions() {
+    let core = run_step(vec![LoweredLogicStatement::Conditional {
+        condition: LoweredLogicExpr::BinaryExpr {
+            op: "&&".into(),
+            left: Box::new(LoweredLogicExpr::BinaryExpr {
+                op: "=".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("warpX".into())),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+            }),
+            right: Box::new(LoweredLogicExpr::BinaryExpr {
+                op: "=".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("warpY".into())),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+            }),
+        },
+        then_branch: vec![assign_var("entered", LoweredLogicExpr::LiteralBool(true))],
+        else_branch: vec![],
+    }]);
+
+    assert_eq!(
+        player_var(&core, "entered"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
 fn core_executes_zero_arg_script_calls_from_lowered_step_events() {
     let mut package = sample_package();
     add_step_block(

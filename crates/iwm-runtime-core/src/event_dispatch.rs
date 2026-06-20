@@ -9,6 +9,7 @@ const COLLISION_SPATIAL_CELL_SIZE: i32 = 64;
 
 #[derive(Clone)]
 pub(crate) enum RuntimeEventSelector {
+    Create,
     Step,
     Draw,
     Destroy,
@@ -17,6 +18,7 @@ pub(crate) enum RuntimeEventSelector {
     KeyboardPressed(u16),
     KeyboardReleased(u16),
     OtherAnimationEnd,
+    OtherRoomStart,
     #[cfg_attr(not(test), allow(dead_code))]
     Collision {
         target_object_id: usize,
@@ -93,6 +95,7 @@ pub(crate) fn inherited_event_block_id(
 
 fn event_selector_parts(selector: &RuntimeEventSelector) -> (usize, u32, String) {
     match selector {
+        RuntimeEventSelector::Create => (0usize, 0u32, "create".to_string()),
         RuntimeEventSelector::Step => (3usize, 0u32, "step".to_string()),
         RuntimeEventSelector::Draw => (8usize, 0u32, "draw".to_string()),
         RuntimeEventSelector::Destroy => (1usize, 0u32, "destroy".to_string()),
@@ -115,6 +118,7 @@ fn event_selector_parts(selector: &RuntimeEventSelector) -> (usize, u32, String)
         RuntimeEventSelector::OtherAnimationEnd => {
             (7usize, 7u32, "other:animation-end".to_string())
         }
+        RuntimeEventSelector::OtherRoomStart => (7usize, 4u32, "other:room-start".to_string()),
         RuntimeEventSelector::Collision { target_object_id } => {
             (4usize, *target_object_id as u32, "collision".to_string())
         }

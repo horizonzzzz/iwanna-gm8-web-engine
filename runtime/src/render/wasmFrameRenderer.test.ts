@@ -156,11 +156,68 @@ describe('renderWasmFrame', () => {
     expect(drawImage).toHaveBeenNthCalledWith(3, spriteImage0, -5, -6);
     expect(fillRect).toHaveBeenNthCalledWith(2, 30, 40, 8, 9);
     expect(fillText).toHaveBeenCalledWith('GAME OVER', 160, 88);
-    expect(context.font).toBe('700 32px sans-serif');
+    expect(context.font).toBe('32px sans-serif');
     expect(context.textAlign).toBe('center');
     expect(context.textBaseline).toBe('middle');
     expect(save).toHaveBeenCalledTimes(2);
     expect(restore).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses package font metadata for text commands', async () => {
+    const fillText = vi.fn();
+    const context = {
+      clearRect: vi.fn(),
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      fillText,
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      scale: vi.fn(),
+      fillStyle: '',
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+    };
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const resources = makeResourceIndex({
+      fonts: [
+        {
+          id: 0,
+          name: 'font12',
+          system_name: 'MS Gothic',
+          size: 12,
+          bold: false,
+          italic: false,
+        },
+      ],
+    } as never);
+    const frame = makeWasmFrame({
+      commands: [
+        {
+          kind: 'drawText',
+          text: 'Medium',
+          x: 64,
+          y: 96,
+          size: 12,
+          fontName: 'font12',
+          fontBold: false,
+          fontItalic: false,
+          colour: [255, 0, 0, 255],
+          align: 'left',
+        } as never,
+      ],
+    });
+
+    await renderWasmFrame(canvas, frame, resources, '/packages/sample');
+
+    expect(fillText).toHaveBeenCalledWith('Medium', 64, 96);
+    expect(context.font).toBe('12px "MS Gothic", sans-serif');
   });
 
   it('applies sprite alpha only while drawing the sprite', async () => {

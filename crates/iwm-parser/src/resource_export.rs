@@ -1,5 +1,6 @@
 use crate::models::{
-    BackgroundResource, ResourceIndex, SoundResource, SpriteCollisionMask, SpriteResource,
+    BackgroundResource, FontResource, ResourceIndex, SoundResource, SpriteCollisionMask,
+    SpriteResource,
 };
 use anyhow::{Context, Result};
 use gm8exe::GameAssets;
@@ -132,10 +133,26 @@ pub fn export_resources(assets: &GameAssets, output_dir: &Path) -> Result<Resour
         })
         .collect::<Result<Vec<_>>>()?;
 
+    let fonts = assets
+        .fonts
+        .iter()
+        .enumerate()
+        .filter_map(|(id, font)| font.as_ref().map(|font| (id, font)))
+        .map(|(id, font)| FontResource {
+            id,
+            name: font.name.to_string(),
+            system_name: font.sys_name.to_string(),
+            size: font.size,
+            bold: font.bold,
+            italic: font.italic,
+        })
+        .collect();
+
     Ok(ResourceIndex {
         sprites,
         backgrounds,
         sounds,
+        fonts,
     })
 }
 

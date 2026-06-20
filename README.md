@@ -24,6 +24,7 @@ Current implemented Phase 4 slices:
 - `crates/iwm-runtime-web/` exposes a browser-loadable WASM bridge surface
 - `runtime/` can load a normalized package, probe `/wasm/iwm_runtime_web.wasm`, drive the bridge for boot/tick/diagnostics, submit keyboard input, and draw returned frame commands onto the browser canvas
 - runtime package resources now carry gm8exe-derived sprite collision masks, and runtime-core uses them for pixel-level collision checks after bbox broad-phase filtering
+- runtime package resources also carry parsed GM font metadata, and text draw commands preserve resolved font name, size, bold, and italic fields through the WASM/browser render path
 
 Phase 3 is complete and delivered the runtime-facing package format and development shell with static room viewer.
 

@@ -8,17 +8,19 @@ use crate::{LoweredLogicExpr, RuntimeInstance, RuntimeValue};
 pub(crate) fn assignable_key(
     expr: &LoweredLogicExpr,
     instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
     scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<String> {
     match expr {
         LoweredLogicExpr::Identifier(name) => Some(name.clone()),
         LoweredLogicExpr::MemberAccess { target, member } => {
-            let base = assignable_key(target, instance, scope)?;
+            let base = assignable_key(target, instance, globals, scope, eval_context)?;
             Some(format!("{base}.{member}"))
         }
         LoweredLogicExpr::IndexAccess { target, index } => {
-            let base = assignable_key(target, instance, scope)?;
-            let suffix = expr_key_fragment(index, instance, scope)?;
+            let base = assignable_key(target, instance, globals, scope, eval_context)?;
+            let suffix = expr_key_fragment(index, instance, globals, scope, eval_context)?;
             Some(format!("{base}[{suffix}]"))
         }
         _ => None,
@@ -114,7 +116,7 @@ pub(super) fn evaluate_member_access(
             return runtime_instance_member_value(target_instance, member);
         }
     }
-    let base = assignable_key(target, instance, scope)?;
+    let base = assignable_key(target, instance, globals, scope, eval_context)?;
     let key = format!("{base}.{member}");
     scope
         .and_then(|scope| scope.get(&key))
@@ -128,9 +130,10 @@ pub(super) fn evaluate_index_access(
     instance: Option<&RuntimeInstance>,
     globals: &HashMap<String, RuntimeValue>,
     scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<RuntimeValue> {
-    let base = assignable_key(target, instance, scope)?;
-    let suffix = expr_key_fragment(index, instance, scope)?;
+    let base = assignable_key(target, instance, globals, scope, eval_context)?;
+    let suffix = expr_key_fragment(index, instance, globals, scope, eval_context)?;
     let key = format!("{base}[{suffix}]");
     scope
         .and_then(|scope| scope.get(&key))
@@ -141,10 +144,16 @@ pub(super) fn evaluate_index_access(
 fn expr_key_fragment(
     expr: &LoweredLogicExpr,
     instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
     scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<String> {
     match expr {
-        LoweredLogicExpr::Identifier(name) => Some(name.clone()),
+        LoweredLogicExpr::Identifier(name) => {
+            evaluate_expr(expr, instance, globals, scope, eval_context)
+                .map(runtime_value_to_string_text)
+                .or_else(|| Some(name.clone()))
+        }
         LoweredLogicExpr::LiteralNumber(number) => Some(if number.fract() == 0.0 {
             format!("{}", *number as i64)
         } else {
@@ -152,7 +161,7 @@ fn expr_key_fragment(
         }),
         LoweredLogicExpr::LiteralBool(flag) => Some(flag.to_string()),
         LoweredLogicExpr::LiteralText(text) => Some(text.clone()),
-        _ => evaluate_expr(expr, instance, &HashMap::new(), scope, None)
+        _ => evaluate_expr(expr, instance, globals, scope, eval_context)
             .map(runtime_value_to_string_text),
     }
 }

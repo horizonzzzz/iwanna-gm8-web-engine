@@ -216,6 +216,81 @@ fn select_real_sample_medium_difficulty(core: &mut RuntimeCore, host: &mut Headl
     assert_eq!(core.snapshot().room_id, Some(stage_room));
 }
 
+#[test]
+fn real_sample_bootstrap_sets_shift_jump_binding() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let title_room = real_sample_room_id(&core, "rTitle");
+
+    tick_real_sample_until_room(&mut core, &mut host, title_room, "rTitle");
+
+    assert_eq!(
+        core.globals.get("global.jumpbutton"),
+        Some(&RuntimeValue::Number(0x10 as f64))
+    );
+}
+
+#[test]
+fn real_sample_title_shift_enters_save_menu() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let title_room = real_sample_room_id(&core, "rTitle");
+    let menu_room = real_sample_room_id(&core, "rMenu");
+
+    tick_real_sample_until_room(&mut core, &mut host, title_room, "rTitle");
+    tap_real_sample_jump(&mut core, &mut host);
+
+    assert_eq!(
+        core.snapshot().room_id,
+        Some(menu_room),
+        "title Shift should follow parsed room_goto(rMenu); globals={:?}, input_trace={:?}, instances={:?}, diagnostics={:?}",
+        core.globals,
+        core.snapshot().input_trace,
+        core.current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .map(|instance| (
+                instance.object_name.clone(),
+                instance.object_id,
+                instance.alive,
+                instance.vars.clone()
+            ))
+            .collect::<Vec<_>>(),
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn real_sample_new_game_starts_at_stage_spawn_and_writes_initial_save() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    select_real_sample_medium_difficulty(&mut core, &mut host);
+
+    let snapshot = core.snapshot();
+    let player = snapshot
+        .player
+        .as_ref()
+        .expect("new game should create a live player at the first stage start");
+    assert_eq!(snapshot.room_id, Some(147));
+    assert_eq!((player.x, player.y), (913.0, 1175.0));
+    let save_bytes = host.files.read(Path::new("save1")).unwrap();
+    assert!(
+        save_bytes.starts_with(&[0, 1, 47, 0, 9, 13, 0, 11, 75, 0, 0]),
+        "new-game save should start with room/player/difficulty bytes, got {save_bytes:?}"
+    );
+}
+
 fn release_real_sample_key(host: &mut HeadlessHost, key: u16) {
     host.input.set_button_state(
         RuntimeButton::Keyboard(key),

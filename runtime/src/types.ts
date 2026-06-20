@@ -63,6 +63,14 @@ export type ResourceIndex = {
     extension: string;
     preload: boolean;
   }>;
+  fonts?: Array<{
+    id: number;
+    name: string;
+    system_name: string;
+    size: number;
+    bold: boolean;
+    italic: boolean;
+  }>;
 };
 
 export type RoomDefinition = {

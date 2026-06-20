@@ -4,7 +4,7 @@ use std::path::Path;
 use iwm_runtime_host::{
     Rgba8, RuntimeDrawCommand, RuntimeHost, RuntimeHostErrorKind, RuntimeSoundMode,
 };
-use iwm_runtime_model::ObjectDefinition;
+use iwm_runtime_model::{FontResource, ObjectDefinition, SpriteResource};
 
 use super::assignment::{assign_runtime_value, next_room_id, runtime_value_to_room_id};
 use super::calls::{
@@ -55,6 +55,11 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) room_instance_updates: &'a mut Vec<(usize, RuntimeInstance)>,
     pub(crate) room_instance_creates: &'a mut Vec<RuntimeInstanceCreateRequest>,
     pub(crate) objects: &'a [ObjectDefinition],
+    pub(crate) sprites: &'a [SpriteResource],
+    pub(crate) sprite_index: &'a HashMap<usize, usize>,
+    pub(crate) sprite_ids_by_name: &'a HashMap<String, usize>,
+    pub(crate) fonts: &'a [FontResource],
+    pub(crate) font_index_by_name: &'a HashMap<String, usize>,
     pub(crate) lowered_entries: &'a [LoweredLogicEntry],
     pub(crate) event_selector: Option<RuntimeEventSelector>,
     pub(crate) event_owner_id: Option<usize>,
@@ -67,7 +72,17 @@ pub(crate) struct RuntimeDrawContext {
     colour: Rgba8,
     align: String,
     size: u32,
+    font_name: Option<String>,
+    font_bold: bool,
+    font_italic: bool,
     commands: Vec<RuntimeDrawCommand>,
+}
+
+struct DrawFont {
+    name: Option<String>,
+    size: u32,
+    bold: bool,
+    italic: bool,
 }
 
 impl RuntimeDrawContext {
@@ -87,6 +102,9 @@ impl Default for RuntimeDrawContext {
             },
             align: "left".into(),
             size: 16,
+            font_name: None,
+            font_bold: false,
+            font_italic: false,
             commands: Vec::new(),
         }
     }
@@ -122,7 +140,13 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 ) {
                     return;
                 }
-                if let Some(key) = assignable_key(target, Some(instance), Some(scope)) {
+                if let Some(key) = assignable_key(
+                    target,
+                    Some(instance),
+                    env.globals,
+                    Some(scope),
+                    eval_context,
+                ) {
                     assign_runtime_value(key, value, instance, env.globals, scope);
                 }
             }
@@ -240,15 +264,21 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
             }
             "draw_set_font" => {
-                let Some(size) = args.first().and_then(draw_font_size_arg) else {
+                let Some(font) = args.first().and_then(|arg| draw_font_arg(arg, env)) else {
                     return;
                 };
                 if let Some(draw) = env.draw.as_deref_mut() {
-                    draw.size = size;
+                    draw.size = font.size;
+                    draw.font_name = font.name;
+                    draw.font_bold = font.bold;
+                    draw.font_italic = font.italic;
                 }
             }
             "draw_text" => {
                 dispatch_draw_text(args, instance, scope, eval_context, env);
+            }
+            "draw_sprite" => {
+                dispatch_draw_sprite(args, instance, scope, eval_context, env);
             }
             "event_inherited" => {
                 dispatch_event_inherited(
@@ -700,8 +730,92 @@ fn dispatch_draw_text<H: RuntimeHost>(
             x: x.round() as i32,
             y: y.round() as i32,
             size: draw.size,
+            font_name: draw.font_name.clone(),
+            font_bold: draw.font_bold,
+            font_italic: draw.font_italic,
             colour: draw.colour,
             align: draw.align.clone(),
+        });
+    }
+}
+
+fn dispatch_draw_sprite<H: RuntimeHost>(
+    args: &[LoweredLogicExpr],
+    instance: &RuntimeInstance,
+    scope: &mut RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) {
+    let Some(sprite_id) = args
+        .first()
+        .and_then(|arg| draw_sprite_id_arg(arg, instance, scope, eval_context, env))
+    else {
+        return;
+    };
+    let frame_index = args
+        .get(1)
+        .and_then(|arg| {
+            evaluate_runtime_expr(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .and_then(|value| as_number(&value))
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .map(|value| value.floor() as usize)
+        .unwrap_or(0);
+    let Some(x) = args
+        .get(2)
+        .and_then(|arg| {
+            evaluate_runtime_expr(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .and_then(|value| as_number(&value))
+    else {
+        return;
+    };
+    let Some(y) = args
+        .get(3)
+        .and_then(|arg| {
+            evaluate_runtime_expr(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .and_then(|value| as_number(&value))
+    else {
+        return;
+    };
+    let sprite = env
+        .sprite_index
+        .get(&sprite_id)
+        .and_then(|index| env.sprites.get(*index));
+    if let Some(draw) = env.draw.as_deref_mut() {
+        draw.commands.push(RuntimeDrawCommand::DrawSprite {
+            sprite_id,
+            frame_index,
+            x: x.round() as i32,
+            y: y.round() as i32,
+            origin_x: sprite.map(|sprite| sprite.origin_x).unwrap_or(0),
+            origin_y: sprite.map(|sprite| sprite.origin_y).unwrap_or(0),
+            xscale: 1.0,
+            yscale: 1.0,
+            alpha: 1.0,
+            angle_degrees: 0.0,
         });
     }
 }
@@ -745,6 +859,33 @@ fn draw_align_arg(expr: &LoweredLogicExpr) -> Option<String> {
     }
 }
 
+fn draw_font_arg<H: RuntimeHost>(
+    expr: &LoweredLogicExpr,
+    env: &RuntimeStatementEnvironment<'_, H>,
+) -> Option<DrawFont> {
+    if let LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) = expr {
+        if let Some(font) = env
+            .font_index_by_name
+            .get(&name.to_ascii_lowercase())
+            .and_then(|index| env.fonts.get(*index))
+        {
+            return Some(DrawFont {
+                name: Some(font.name.clone()),
+                size: font.size,
+                bold: font.bold,
+                italic: font.italic,
+            });
+        }
+    }
+
+    draw_font_size_arg(expr).map(|size| DrawFont {
+        name: None,
+        size,
+        bold: false,
+        italic: false,
+    })
+}
+
 fn draw_font_size_arg(expr: &LoweredLogicExpr) -> Option<u32> {
     match expr {
         LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) => name
@@ -758,6 +899,35 @@ fn draw_font_size_arg(expr: &LoweredLogicExpr) -> Option<u32> {
             Some(number.round() as u32)
         }
         _ => None,
+    }
+}
+
+fn draw_sprite_id_arg<H: RuntimeHost>(
+    expr: &LoweredLogicExpr,
+    instance: &RuntimeInstance,
+    scope: &mut RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) -> Option<usize> {
+    match expr {
+        LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) => env
+            .sprite_ids_by_name
+            .get(&name.to_ascii_lowercase())
+            .copied(),
+        LoweredLogicExpr::LiteralNumber(number) if number.is_finite() && *number >= 0.0 => {
+            Some(number.round() as usize)
+        }
+        _ => evaluate_runtime_expr(
+            expr,
+            Some(instance),
+            Some(scope),
+            eval_context,
+            env,
+            instance,
+        )
+        .and_then(|value| as_number(&value))
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .map(|value| value.round() as usize),
     }
 }
 
@@ -816,9 +986,6 @@ fn dispatch_event_inherited<H: RuntimeHost>(
             eval_context,
             env,
         );
-        if env_has_pending_scene_change(env) {
-            break;
-        }
     }
 
     env.trace = previous_trace;
@@ -834,7 +1001,9 @@ fn execute_assignment_expression<H: RuntimeHost>(
 ) {
     if let LoweredLogicExpr::BinaryExpr { op, left, right } = expr {
         if op == "=" {
-            if let Some(key) = assignable_key(left, Some(instance), Some(scope)) {
+            if let Some(key) =
+                assignable_key(left, Some(instance), env.globals, Some(scope), eval_context)
+            {
                 if let Some(value) = evaluate_with_diagnostics(
                     right,
                     Some(instance),
@@ -884,9 +1053,22 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
         };
     }
     if let LoweredLogicExpr::BinaryExpr { op, left, right } = expr {
-        let left = evaluate_runtime_expr(left, instance, scope, eval_context, env, trace_instance)?;
-        let right =
-            evaluate_runtime_expr(right, instance, scope, eval_context, env, trace_instance)?;
+        let left = evaluate_runtime_binary_operand(
+            left,
+            instance,
+            scope,
+            eval_context,
+            env,
+            trace_instance,
+        )?;
+        let right = evaluate_runtime_binary_operand(
+            right,
+            instance,
+            scope,
+            eval_context,
+            env,
+            trace_instance,
+        )?;
         return eval_runtime_binary_expr(op, &left, &right);
     }
     if let LoweredLogicExpr::Call { name, args } = expr {
@@ -987,6 +1169,36 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
     }
 
     evaluate_expr(expr, instance, env.globals, scope, eval_context)
+}
+
+fn evaluate_runtime_binary_operand<H: RuntimeHost>(
+    expr: &LoweredLogicExpr,
+    instance: Option<&RuntimeInstance>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+    trace_instance: &RuntimeInstance,
+) -> Option<RuntimeValue> {
+    evaluate_runtime_expr(expr, instance, scope, eval_context, env, trace_instance)
+        .or_else(|| uninitialized_runtime_instance_operand(expr, instance, scope))
+}
+
+fn uninitialized_runtime_instance_operand(
+    expr: &LoweredLogicExpr,
+    instance: Option<&RuntimeInstance>,
+    scope: Option<&RuntimeExecutionScope>,
+) -> Option<RuntimeValue> {
+    let LoweredLogicExpr::Identifier(name) = expr else {
+        return None;
+    };
+    if instance.is_some()
+        && !name.eq_ignore_ascii_case("global")
+        && !scope.map(|scope| scope.is_local_key(name)).unwrap_or(false)
+    {
+        Some(RuntimeValue::Number(0.0))
+    } else {
+        None
+    }
 }
 
 fn eval_runtime_binary_expr(

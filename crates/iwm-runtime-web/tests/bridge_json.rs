@@ -66,6 +66,9 @@ fn bridge_frame_json_preserves_draw_command_wire_shape() {
                 x: 160,
                 y: 88,
                 size: 32,
+                font_name: Some("font32".into()),
+                font_bold: true,
+                font_italic: false,
                 colour: BridgeRgba8 {
                     r: 232,
                     g: 36,
@@ -135,6 +138,9 @@ fn bridge_frame_json_preserves_draw_command_wire_shape() {
     assert_eq!(commands[5].get("x"), Some(&json!(160)));
     assert_eq!(commands[5].get("y"), Some(&json!(88)));
     assert_eq!(commands[5].get("size"), Some(&json!(32)));
+    assert_eq!(commands[5].get("fontName"), Some(&json!("font32")));
+    assert_eq!(commands[5].get("fontBold"), Some(&json!(true)));
+    assert_eq!(commands[5].get("fontItalic"), Some(&json!(false)));
     assert_eq!(commands[5].get("align"), Some(&json!("center")));
     assert_eq!(commands[5].get("colour"), Some(&json!([232, 36, 48, 220])));
 

@@ -250,6 +250,7 @@ fn sample_resources() -> ResourceIndex {
             extension: "wav".into(),
             preload: false,
         }],
+        fonts: vec![],
     }
 }
 

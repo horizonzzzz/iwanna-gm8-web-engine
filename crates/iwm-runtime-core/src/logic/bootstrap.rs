@@ -130,23 +130,29 @@ impl RuntimeCore {
 
         match statement {
             LoweredLogicStatement::Assignment { target, value } => {
-                if let Some(key) = assignable_key(target, Some(&instance_snapshot), None) {
-                    let button_states = HashMap::new();
-                    let room_instance_indices_by_object_id = HashMap::new();
-                    let room_instances = create_visible_instances(room_state, visible_instances);
-                    let eval_context = RuntimeEvalContext {
-                        current_room_id: room_state.room_id,
-                        button_states: &button_states,
-                        room_instances: room_instances.as_ref(),
-                        room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
-                        collision_spatial_index: None,
-                        room_instance_overlay: super::RuntimeRoomInstanceOverlay::empty(),
-                        room_order: &[],
-                        other_instance: None,
-                        other_runtime_id: None,
-                        place_target_ids_by_name: &self.place_target_ids_by_name,
-                        room_ids_by_name: &self.room_ids_by_name,
-                    };
+                let button_states = HashMap::new();
+                let room_instance_indices_by_object_id = HashMap::new();
+                let room_instances = create_visible_instances(room_state, visible_instances);
+                let eval_context = RuntimeEvalContext {
+                    current_room_id: room_state.room_id,
+                    button_states: &button_states,
+                    room_instances: room_instances.as_ref(),
+                    room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                    collision_spatial_index: None,
+                    room_instance_overlay: super::RuntimeRoomInstanceOverlay::empty(),
+                    room_order: &[],
+                    other_instance: None,
+                    other_runtime_id: None,
+                    place_target_ids_by_name: &self.place_target_ids_by_name,
+                    room_ids_by_name: &self.room_ids_by_name,
+                };
+                if let Some(key) = assignable_key(
+                    target,
+                    Some(&instance_snapshot),
+                    &self.globals,
+                    None,
+                    Some(&eval_context),
+                ) {
                     if let Some(value) = evaluate_expr(
                         value,
                         Some(&instance_snapshot),
@@ -472,7 +478,7 @@ fn apply_statement_to_globals_map(
 ) {
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
-            if let Some(key) = assignable_key(target, None, None) {
+            if let Some(key) = assignable_key(target, None, globals, None, None) {
                 if let Some(value) = evaluate_expr(value, None, globals, None, None) {
                     globals.insert(key, value);
                 }
@@ -528,9 +534,12 @@ fn statement_references_global_assignment(
     script_entries: &HashMap<String, LoweredLogicEntry>,
 ) -> bool {
     match statement {
-        LoweredLogicStatement::Assignment { target, .. } => assignable_key(target, None, None)
-            .map(|key| key.starts_with("global."))
-            .unwrap_or(false),
+        LoweredLogicStatement::Assignment { target, .. } => {
+            let globals = HashMap::new();
+            assignable_key(target, None, &globals, None, None)
+                .map(|key| key.starts_with("global."))
+                .unwrap_or(false)
+        }
         LoweredLogicStatement::Conditional {
             then_branch,
             else_branch,

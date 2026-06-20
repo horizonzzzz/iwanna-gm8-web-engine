@@ -53,6 +53,8 @@ pub struct ResourceIndex {
     pub sprites: Vec<SpriteResource>,
     pub backgrounds: Vec<BackgroundResource>,
     pub sounds: Vec<SoundResource>,
+    #[serde(default)]
+    pub fonts: Vec<FontResource>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +103,16 @@ pub struct SoundResource {
     pub file_path: String,
     pub extension: String,
     pub preload: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FontResource {
+    pub id: usize,
+    pub name: String,
+    pub system_name: String,
+    pub size: u32,
+    pub bold: bool,
+    pub italic: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

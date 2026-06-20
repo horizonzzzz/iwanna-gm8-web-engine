@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
+use iwm_runtime_model::RoomDefinition;
 
 use crate::event_dispatch::{
     event_owner_id_for_block_id, object_event_block_ids, runtime_collision_spatial_index,
@@ -26,6 +27,8 @@ pub struct RuntimeCore {
     /// render pass can resolve sprites without scanning the sprite list per
     /// instance.
     pub(crate) sprite_index: HashMap<usize, usize>,
+    pub(crate) sprite_ids_by_name: HashMap<String, usize>,
+    pub(crate) font_index_by_name: HashMap<String, usize>,
     pub(crate) sound_index: HashMap<String, i32>,
     pub(crate) lowered_logic_index: HashMap<String, usize>,
     /// Static-after-load tables used every tick by the step dispatch. Cached
@@ -84,6 +87,19 @@ impl RuntimeCore {
             .enumerate()
             .map(|(index, sprite)| (sprite.id, index))
             .collect::<HashMap<_, _>>();
+        let sprite_ids_by_name = package
+            .resources
+            .sprites
+            .iter()
+            .map(|sprite| (sprite.name.to_ascii_lowercase(), sprite.id))
+            .collect::<HashMap<_, _>>();
+        let font_index_by_name = package
+            .resources
+            .fonts
+            .iter()
+            .enumerate()
+            .map(|(index, font)| (font.name.to_ascii_lowercase(), index))
+            .collect::<HashMap<_, _>>();
         let sound_index = package
             .resources
             .sounds
@@ -117,6 +133,8 @@ impl RuntimeCore {
             object_index,
             room_index,
             sprite_index,
+            sprite_ids_by_name,
+            font_index_by_name,
             sound_index,
             lowered_logic_index,
             cached_script_entries: HashMap::new(),
@@ -425,9 +443,6 @@ impl RuntimeCore {
         }
 
         let button_states = button_states_without_transitions(host);
-        let left = self.bound_button_state_from_map(&button_states, "global.leftbutton", 0x25);
-        let right = self.bound_button_state_from_map(&button_states, "global.rightbutton", 0x27);
-        let jump = self.bound_button_state_from_map(&button_states, "global.jumpbutton", 0x20);
         let step_result =
             self.execute_lowered_step_events_with_button_states(host, &button_states)?;
         self.sync_current_room_views_from_globals();
@@ -436,18 +451,6 @@ impl RuntimeCore {
             self.apply_pending_room_change(host)?;
             return Ok(());
         }
-
-        if !step_result.player_motion_changed || step_result.player_jump_owned_by_script {
-            self.step_player(
-                host,
-                left.pressed,
-                right.pressed,
-                jump,
-                !step_result.player_jump_owned_by_script,
-            )?;
-        }
-
-        self.step_non_player_instances()?;
 
         if self.has_pending_scene_change() {
             self.apply_pending_room_change(host)?;
@@ -590,19 +593,6 @@ impl RuntimeCore {
         host.button_state(RuntimeButton::Keyboard(key_code))
     }
 
-    fn bound_button_state_from_map(
-        &self,
-        button_states: &HashMap<RuntimeButton, ButtonState>,
-        binding_key: &str,
-        fallback_key_code: u16,
-    ) -> ButtonState {
-        let key_code = self.bound_key_code(binding_key, fallback_key_code);
-        button_states
-            .get(&RuntimeButton::Keyboard(key_code))
-            .copied()
-            .unwrap_or_default()
-    }
-
     fn bound_key_code(&self, binding_key: &str, fallback_key_code: u16) -> u16 {
         let key_code = self
             .globals
@@ -638,6 +628,124 @@ impl RuntimeCore {
         self.room_needs_first_render_settle = true;
         self.death_waiting_for_restart = false;
         self.status = RuntimeStatus::Ready;
+        Ok(())
+    }
+
+    pub(crate) fn apply_current_room_startup_events<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+        source_room: &RoomDefinition,
+    ) -> Result<(), RuntimeCoreError> {
+        let pre_startup_len = self
+            .current_room
+            .as_ref()
+            .map(|room| room.instances.len())
+            .ok_or(RuntimeCoreError::NoRooms)?;
+
+        for placement in &source_room.instances {
+            let Some(instance_idx) = self.current_room.as_ref().and_then(|room| {
+                room.instances
+                    .iter()
+                    .position(|instance| instance.instance_id == placement.instance_id)
+            }) else {
+                continue;
+            };
+            if let Some(block_id) = placement.creation_block_id.clone() {
+                self.apply_event_blocks_to_instance(
+                    host,
+                    instance_idx,
+                    &[block_id],
+                    None,
+                    RuntimeEventSelector::Create,
+                    "instance-create".into(),
+                    None,
+                );
+                if self.has_pending_scene_change() {
+                    return Ok(());
+                }
+            }
+
+            let block_ids = {
+                let Some(room) = self.current_room.as_ref() else {
+                    return Err(RuntimeCoreError::NoRooms);
+                };
+                let Some(instance) = room.instances.get(instance_idx) else {
+                    continue;
+                };
+                object_event_block_ids(
+                    &self.package,
+                    instance.object_id,
+                    RuntimeEventSelector::Create,
+                )
+            };
+            if !block_ids.is_empty() {
+                self.apply_event_blocks_to_instance(
+                    host,
+                    instance_idx,
+                    &block_ids,
+                    None,
+                    RuntimeEventSelector::Create,
+                    "create".into(),
+                    None,
+                );
+                if self.has_pending_scene_change() {
+                    return Ok(());
+                }
+            }
+        }
+
+        let source_instance_ids = source_room
+            .instances
+            .iter()
+            .map(|placement| placement.instance_id)
+            .collect::<Vec<_>>();
+
+        let room_start_indices = self
+            .current_room
+            .as_ref()
+            .map(|room| {
+                room.instances
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, instance)| {
+                        (index >= pre_startup_len
+                            || source_instance_ids.contains(&instance.instance_id))
+                        .then_some(index)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .ok_or(RuntimeCoreError::NoRooms)?;
+        for instance_idx in room_start_indices {
+            let block_ids = {
+                let Some(room) = self.current_room.as_ref() else {
+                    return Err(RuntimeCoreError::NoRooms);
+                };
+                let Some(instance) = room.instances.get(instance_idx) else {
+                    continue;
+                };
+                object_event_block_ids(
+                    &self.package,
+                    instance.object_id,
+                    RuntimeEventSelector::OtherRoomStart,
+                )
+            };
+            if block_ids.is_empty() {
+                continue;
+            }
+            self.apply_event_blocks_to_instance(
+                host,
+                instance_idx,
+                &block_ids,
+                None,
+                RuntimeEventSelector::OtherRoomStart,
+                "other:room-start".into(),
+                None,
+            );
+            if self.has_pending_scene_change() {
+                return Ok(());
+            }
+        }
+
         Ok(())
     }
 
@@ -790,6 +898,11 @@ impl RuntimeCore {
                     room_instance_updates: &mut with_updates,
                     room_instance_creates: &mut instance_creates,
                     objects,
+                    sprites: &self.package.resources.sprites,
+                    sprite_index: &self.sprite_index,
+                    sprite_ids_by_name: &self.sprite_ids_by_name,
+                    fonts: &self.package.resources.fonts,
+                    font_index_by_name: &self.font_index_by_name,
                     lowered_entries,
                     event_selector: Some(event_selector.clone()),
                     event_owner_id: Some(event_owner_id),
@@ -1051,6 +1164,7 @@ fn button_states_without_transitions<H: RuntimeHost>(
 
 fn selector_event_tag(selector: &RuntimeEventSelector) -> String {
     match selector {
+        RuntimeEventSelector::Create => "create".into(),
         RuntimeEventSelector::Step => "step".into(),
         RuntimeEventSelector::Draw => "draw".into(),
         RuntimeEventSelector::Destroy => "destroy".into(),
@@ -1065,6 +1179,7 @@ fn selector_event_tag(selector: &RuntimeEventSelector) -> String {
             format!("keyrelease:{}", format_selector_key_name(*key))
         }
         RuntimeEventSelector::OtherAnimationEnd => "other:animation-end".into(),
+        RuntimeEventSelector::OtherRoomStart => "other:room-start".into(),
         RuntimeEventSelector::Collision { .. } => "collision".into(),
     }
 }

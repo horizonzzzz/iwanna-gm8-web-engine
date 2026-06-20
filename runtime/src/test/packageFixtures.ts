@@ -115,6 +115,7 @@ export function makeResourceIndex(overrides: Partial<ResourceIndex> = {}): Resou
     sprites: [],
     backgrounds: [],
     sounds: [],
+    fonts: [],
     ...overrides,
   };
 }

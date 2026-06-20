@@ -70,10 +70,10 @@ impl RuntimeCore {
         if let Some(room_id) = self.pending_room_transition.take() {
             let from_room_id = self.current_room.as_ref().map(|room| room.room_id);
             let persistent_instances = self.persistent_instances_for_room_transition();
-            let mut room =
-                self.build_room_with_create_visible_instances(room_id, &persistent_instances)?;
+            let (mut room, source_room) = self.build_room_layout(room_id)?;
             add_persistent_instances(&mut room, persistent_instances);
             self.current_room = Some(room);
+            self.apply_current_room_startup_events(host, &source_room)?;
             self.room_needs_first_render_settle = true;
             self.status = RuntimeStatus::Ready;
             self.record_diagnostic(

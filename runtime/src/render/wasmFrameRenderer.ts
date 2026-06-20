@@ -6,6 +6,26 @@ function rgbaToCss([r, g, b, a]: [number, number, number, number]): string {
   return `rgba(${r}, ${g}, ${b}, ${a / 255})`;
 }
 
+function makeFontMap(resources: ResourceIndex): Map<string, NonNullable<ResourceIndex['fonts']>[number]> {
+  return new Map((resources.fonts ?? []).map(font => [font.name.toLowerCase(), font]));
+}
+
+function canvasFontForText(
+  command: Extract<WasmRuntimeFrame['commands'][number], { kind: 'drawText' }>,
+  fonts: Map<string, NonNullable<ResourceIndex['fonts']>[number]>
+): string {
+  const font = command.fontName ? fonts.get(command.fontName.toLowerCase()) : undefined;
+  const italic = command.fontItalic ?? font?.italic ?? false;
+  const bold = command.fontBold ?? font?.bold ?? false;
+  const style = [
+    italic ? 'italic' : '',
+    bold ? '700' : '',
+    `${command.size}px`,
+    font?.system_name ? `${JSON.stringify(font.system_name)}, sans-serif` : 'sans-serif',
+  ].filter(Boolean);
+  return style.join(' ');
+}
+
 function resolveAxisPositions(offset: number, imageSize: number, roomSize: number, shouldTile: boolean): number[] {
   if (!shouldTile || imageSize <= 0) {
     return [offset];
@@ -101,6 +121,7 @@ export async function renderWasmFrame(
 
   const backgroundPaths = makeBackgroundPathMap(basePath, resources);
   const spritePaths = makeSpriteFrameMap(basePath, resources);
+  const fonts = makeFontMap(resources);
 
   // PHASE 1: Scan commands and collect unique images to preload
   const imagesToLoad = new Set<string>();
@@ -198,7 +219,7 @@ export async function renderWasmFrame(
       case 'drawText':
         context.save();
         context.fillStyle = rgbaToCss(command.colour);
-        context.font = `700 ${command.size}px sans-serif`;
+        context.font = canvasFontForText(command, fonts);
         context.textAlign = command.align;
         context.textBaseline = 'middle';
         context.fillText(command.text, command.x, command.y);

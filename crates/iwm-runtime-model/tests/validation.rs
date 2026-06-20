@@ -224,6 +224,7 @@ fn valid_sparse_package() -> RuntimePackageContract {
                 image_path: "resources/backgrounds/bg_sparse.png".into(),
             }],
             sounds: vec![],
+            fonts: vec![],
         },
     }
 }

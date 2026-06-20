@@ -5,7 +5,9 @@ use iwm_runtime_model::{
 
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore};
 
-use super::support::{add_step_block, append_lowered_entry, host, sample_package};
+use super::support::{
+    add_step_block, append_lowered_entry, host, real_sample_package, sample_package,
+};
 
 #[test]
 fn runtime_core_emits_browser_consumable_draw_commands() {
@@ -431,12 +433,58 @@ fn runtime_core_executes_draw_events_for_text_commands() {
             size: 40,
             colour,
             align,
+            ..
         } if text == "Data1"
             && colour.r == 255
             && colour.g == 0
             && colour.b == 0
             && colour.a == 255
             && align == "center"
+    )));
+}
+
+#[test]
+fn real_sample_menu_draws_slot_text_and_cursor_sprite() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let menu_room_id = package
+        .rooms
+        .iter()
+        .find(|room| room.name.eq_ignore_ascii_case("rMenu"))
+        .map(|room| room.id)
+        .expect("sample package should include rMenu");
+    let cursor_sprite_id = package
+        .resources
+        .sprites
+        .iter()
+        .find(|sprite| sprite.name.eq_ignore_ascii_case("sprPlayerRunning"))
+        .map(|sprite| sprite.id)
+        .expect("sample package should include sprPlayerRunning");
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.reload_room(menu_room_id).unwrap();
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    let texts = frame
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RuntimeDrawCommand::DrawText { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(texts.contains(&"Data1"), "rMenu texts: {texts:?}");
+    assert!(texts.contains(&"Data2"), "rMenu texts: {texts:?}");
+    assert!(texts.contains(&"Data3"), "rMenu texts: {texts:?}");
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawSprite {
+            sprite_id,
+            ..
+        } if *sprite_id == cursor_sprite_id
     )));
 }
 

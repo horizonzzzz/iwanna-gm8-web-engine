@@ -1,6 +1,7 @@
 use std::fs;
 
 use gm8exe::{
+    asset::font::Font,
     asset::sprite::{CollisionMap, Frame},
     asset::Sprite,
     settings::{GameHelpDialog, Settings},
@@ -162,6 +163,38 @@ fn exported_sprite_pixels_are_converted_from_bgra_to_rgba_order() {
     let pixels = &output[..info.buffer_size()];
 
     assert_eq!(pixels, &[255, 0, 0, 255]);
+}
+
+#[test]
+fn exported_font_resources_preserve_exe_metadata() {
+    use iwm_parser::resource_export::export_resources;
+
+    let mut assets = game_assets_with_sprite_frame(vec![0; 4], 1, 1);
+    assets.fonts = vec![Some(Box::new(Font {
+        name: "font12".into(),
+        sys_name: "MS Gothic".into(),
+        size: 12,
+        bold: true,
+        italic: false,
+        range_start: 32,
+        range_end: 127,
+        charset: 128,
+        aa_level: 3,
+        dmap: Box::new([0; 0x600]),
+        map_width: 1,
+        map_height: 1,
+        pixel_map: vec![255].into_boxed_slice(),
+    }))];
+
+    let temp = tempfile::tempdir().unwrap();
+    let resources = export_resources(&assets, temp.path()).unwrap();
+
+    assert_eq!(resources.fonts[0].id, 0);
+    assert_eq!(resources.fonts[0].name, "font12");
+    assert_eq!(resources.fonts[0].system_name, "MS Gothic");
+    assert_eq!(resources.fonts[0].size, 12);
+    assert!(resources.fonts[0].bold);
+    assert!(!resources.fonts[0].italic);
 }
 
 #[test]

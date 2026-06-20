@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use iwm_runtime_model::{ObjectDefinition, SpriteResource};
+use iwm_runtime_model::{ObjectDefinition, RoomDefinition, SpriteResource};
 
 use crate::helpers::{adjusted_spawn_for_player, is_preferred_player_name};
 use crate::types::{RuntimeCollisionMask, RuntimeJumpState, RuntimeRoomView};
@@ -33,6 +33,16 @@ impl RuntimeCore {
         room_id: usize,
         visible_instances: &[RuntimeInstance],
     ) -> Result<RuntimeRoomState, RuntimeCoreError> {
+        let (mut room_state, room) = self.build_room_layout(room_id)?;
+        self.apply_create_logic_with_visible_instances(&mut room_state, &room, visible_instances);
+        self.apply_room_start_logic_with_visible_instances(&mut room_state, visible_instances);
+        Ok(room_state)
+    }
+
+    pub(crate) fn build_room_layout(
+        &mut self,
+        room_id: usize,
+    ) -> Result<(RuntimeRoomState, RoomDefinition), RuntimeCoreError> {
         let room = self
             .room_index
             .get(&room_id)
@@ -135,9 +145,7 @@ impl RuntimeCore {
                 player.previous_y = adjusted.1 as f64;
             }
         }
-        self.apply_create_logic_with_visible_instances(&mut room_state, &room, visible_instances);
-        self.apply_room_start_logic_with_visible_instances(&mut room_state, visible_instances);
-        Ok(room_state)
+        Ok((room_state, room))
     }
 
     pub(crate) fn sprite_metrics(&self, object: &ObjectDefinition) -> RuntimeSpriteMetrics {

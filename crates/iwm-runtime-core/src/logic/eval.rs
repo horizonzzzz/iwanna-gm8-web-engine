@@ -91,7 +91,7 @@ pub(super) fn evaluate_expr(
             evaluate_member_access(target, member, instance, globals, scope, eval_context)
         }
         LoweredLogicExpr::IndexAccess { target, index } => {
-            evaluate_index_access(target, index, instance, globals, scope)
+            evaluate_index_access(target, index, instance, globals, scope, eval_context)
         }
         LoweredLogicExpr::BinaryExpr { op, left, right } => {
             if op == "&&" {
@@ -112,10 +112,39 @@ pub(super) fn evaluate_expr(
                 return Some(RuntimeValue::Bool(is_truthy(Some(right))));
             }
 
-            let left = evaluate_expr(left, instance, globals, scope, eval_context)?;
-            let right = evaluate_expr(right, instance, globals, scope, eval_context)?;
+            let left = evaluate_binary_operand(left, instance, globals, scope, eval_context)?;
+            let right = evaluate_binary_operand(right, instance, globals, scope, eval_context)?;
             eval_binary_expr(op, &left, &right)
         }
         LoweredLogicExpr::Raw { source } => parse_runtime_value(source),
+    }
+}
+
+fn evaluate_binary_operand(
+    expr: &LoweredLogicExpr,
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    evaluate_expr(expr, instance, globals, scope, eval_context)
+        .or_else(|| uninitialized_instance_operand(expr, instance, scope))
+}
+
+fn uninitialized_instance_operand(
+    expr: &LoweredLogicExpr,
+    instance: Option<&RuntimeInstance>,
+    scope: Option<&RuntimeExecutionScope>,
+) -> Option<RuntimeValue> {
+    let LoweredLogicExpr::Identifier(name) = expr else {
+        return None;
+    };
+    if instance.is_some()
+        && !name.eq_ignore_ascii_case("global")
+        && !scope.map(|scope| scope.is_local_key(name)).unwrap_or(false)
+    {
+        Some(RuntimeValue::Number(0.0))
+    } else {
+        None
     }
 }
