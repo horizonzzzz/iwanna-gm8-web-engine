@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  createLocalStorageWasmFileHost,
   describeWasmBridgeAvailability,
   isWasmRuntimeBridge,
   makeWasmRuntimeBridge,
@@ -296,6 +297,29 @@ describe('wasm bridge loader', () => {
 });
 
 describe('wasm bridge file imports', () => {
+  it('clears stale restart temp state on a fresh package boot while preserving saves', () => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn((key: string) => storage.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        storage.set(key, value);
+      }),
+      removeItem: vi.fn((key: string) => {
+        storage.delete(key);
+      }),
+    });
+    const host = createLocalStorageWasmFileHost('test-runtime-save');
+    const pkg = makeRuntimePackage({ sourceHash: 'hash' });
+
+    host.configurePackage?.(pkg, '/packages/sample');
+    host.writeFile('temp', Uint8Array.of(1));
+    host.writeFile('save1', Uint8Array.of(7, 8, 9));
+    host.configurePackage?.(pkg, '/packages/sample');
+
+    expect(host.readFile('temp')).toBeNull();
+    expect([...(host.readFile('save1') ?? [])]).toEqual([7, 8, 9]);
+  });
+
   it('reads, writes, and removes package save bytes through the configured file host', () => {
     const files = new Map<string, Uint8Array>();
     const fileHost: WasmFileHost = {

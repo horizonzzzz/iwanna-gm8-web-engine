@@ -70,6 +70,20 @@ export type ResourceIndex = {
     size: number;
     bold: boolean;
     italic: boolean;
+    range_start?: number;
+    range_end?: number;
+    map_width?: number;
+    map_height?: number;
+    image_path?: string;
+    glyphs?: Array<{
+      code: number;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      offset: number;
+      advance: number;
+    }>;
   }>;
 };
 

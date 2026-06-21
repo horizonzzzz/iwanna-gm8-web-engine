@@ -1,6 +1,6 @@
 use crate::models::{
-    BackgroundResource, FontResource, ResourceIndex, SoundResource, SpriteCollisionMask,
-    SpriteResource,
+    BackgroundResource, FontGlyphResource, FontResource, ResourceIndex, SoundResource,
+    SpriteCollisionMask, SpriteResource,
 };
 use anyhow::{Context, Result};
 use gm8exe::GameAssets;
@@ -14,10 +14,12 @@ pub fn export_resources(assets: &GameAssets, output_dir: &Path) -> Result<Resour
     let sprite_dir = resources_dir.join("sprites");
     let background_dir = resources_dir.join("backgrounds");
     let audio_dir = resources_dir.join("audio");
+    let font_dir = resources_dir.join("fonts");
 
     fs::create_dir_all(&sprite_dir)?;
     fs::create_dir_all(&background_dir)?;
     fs::create_dir_all(&audio_dir)?;
+    fs::create_dir_all(&font_dir)?;
 
     let sprites = assets
         .sprites
@@ -138,15 +140,27 @@ pub fn export_resources(assets: &GameAssets, output_dir: &Path) -> Result<Resour
         .iter()
         .enumerate()
         .filter_map(|(id, font)| font.as_ref().map(|font| (id, font)))
-        .map(|(id, font)| FontResource {
-            id,
-            name: font.name.to_string(),
-            system_name: font.sys_name.to_string(),
-            size: font.size,
-            bold: font.bold,
-            italic: font.italic,
+        .map(|(id, font)| {
+            let path = font_dir.join(format!("{id}.png"));
+            let rgba = font_alpha_to_rgba(&font.pixel_map, font.map_width, font.map_height);
+            write_rgba_png(&path, font.map_width, font.map_height, &rgba)?;
+
+            Ok(FontResource {
+                id,
+                name: font.name.to_string(),
+                system_name: font.sys_name.to_string(),
+                size: font.size,
+                bold: font.bold,
+                italic: font.italic,
+                range_start: font.range_start,
+                range_end: font.range_end,
+                map_width: font.map_width,
+                map_height: font.map_height,
+                image_path: relative_path(output_dir, &path)?,
+                glyphs: font_glyphs(&font.dmap),
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
 
     Ok(ResourceIndex {
         sprites,
@@ -160,6 +174,31 @@ pub fn bgra_to_rgba(input: Vec<u8>) -> Vec<u8> {
     input
         .chunks_exact(4)
         .flat_map(|chunk| [chunk[2], chunk[1], chunk[0], chunk[3]])
+        .collect()
+}
+
+fn font_alpha_to_rgba(input: &[u8], width: u32, height: u32) -> Vec<u8> {
+    let pixel_count = (width as usize).saturating_mul(height as usize);
+    (0..pixel_count)
+        .flat_map(|index| [255, 255, 255, input.get(index).copied().unwrap_or(0)])
+        .collect()
+}
+
+fn font_glyphs(dmap: &[u32; 0x600]) -> Vec<FontGlyphResource> {
+    (0..256)
+        .map(|code| {
+            let index = code * 6;
+            // GM8/OpenGMK draws at dmap[5] + cursor and advances cursor by dmap[4].
+            FontGlyphResource {
+                code: code as u32,
+                x: dmap[index],
+                y: dmap[index + 1],
+                width: dmap[index + 2],
+                height: dmap[index + 3],
+                offset: dmap[index + 5] as i32,
+                advance: dmap[index + 4] as i32,
+            }
+        })
         .collect()
 }
 

@@ -169,6 +169,15 @@ fn exported_sprite_pixels_are_converted_from_bgra_to_rgba_order() {
 fn exported_font_resources_preserve_exe_metadata() {
     use iwm_parser::resource_export::export_resources;
 
+    let mut dmap = [0; 0x600];
+    let glyph = 65 * 6;
+    dmap[glyph] = 1;
+    dmap[glyph + 1] = 2;
+    dmap[glyph + 2] = 3;
+    dmap[glyph + 3] = 4;
+    dmap[glyph + 4] = 6;
+    dmap[glyph + 5] = 5;
+
     let mut assets = game_assets_with_sprite_frame(vec![0; 4], 1, 1);
     assets.fonts = vec![Some(Box::new(Font {
         name: "font12".into(),
@@ -180,10 +189,10 @@ fn exported_font_resources_preserve_exe_metadata() {
         range_end: 127,
         charset: 128,
         aa_level: 3,
-        dmap: Box::new([0; 0x600]),
-        map_width: 1,
+        dmap: Box::new(dmap),
+        map_width: 2,
         map_height: 1,
-        pixel_map: vec![255].into_boxed_slice(),
+        pixel_map: vec![0, 255].into_boxed_slice(),
     }))];
 
     let temp = tempfile::tempdir().unwrap();
@@ -195,6 +204,25 @@ fn exported_font_resources_preserve_exe_metadata() {
     assert_eq!(resources.fonts[0].size, 12);
     assert!(resources.fonts[0].bold);
     assert!(!resources.fonts[0].italic);
+    assert_eq!(resources.fonts[0].range_start, 32);
+    assert_eq!(resources.fonts[0].range_end, 127);
+    assert_eq!(resources.fonts[0].map_width, 2);
+    assert_eq!(resources.fonts[0].map_height, 1);
+    assert_eq!(resources.fonts[0].image_path, "resources/fonts/0.png");
+    assert_eq!(resources.fonts[0].glyphs[65].x, 1);
+    assert_eq!(resources.fonts[0].glyphs[65].y, 2);
+    assert_eq!(resources.fonts[0].glyphs[65].width, 3);
+    assert_eq!(resources.fonts[0].glyphs[65].height, 4);
+    assert_eq!(resources.fonts[0].glyphs[65].offset, 5);
+    assert_eq!(resources.fonts[0].glyphs[65].advance, 6);
+
+    let bytes = fs::read(temp.path().join("resources/fonts/0.png")).unwrap();
+    let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    let mut reader = decoder.read_info().unwrap();
+    let mut output = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut output).unwrap();
+    let pixels = &output[..info.buffer_size()];
+    assert_eq!(pixels, &[255, 255, 255, 0, 255, 255, 255, 255]);
 }
 
 #[test]
@@ -213,5 +241,9 @@ fn runtime_resources_are_written_under_expected_directories() {
     assert_eq!(
         base.join("audio").to_string_lossy().replace('\\', "/"),
         "resources/audio"
+    );
+    assert_eq!(
+        base.join("fonts").to_string_lossy().replace('\\', "/"),
+        "resources/fonts"
     );
 }

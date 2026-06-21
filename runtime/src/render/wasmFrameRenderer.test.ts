@@ -90,6 +90,56 @@ const sampleFrame = makeWasmFrame({
   ],
 });
 
+function makeMockContext(overrides: Record<string, unknown> = {}) {
+  return {
+    clearRect: vi.fn(),
+    fillRect: vi.fn(),
+    drawImage: vi.fn(),
+    fillText: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    translate: vi.fn(),
+    rotate: vi.fn(),
+    scale: vi.fn(),
+    fillStyle: '',
+    font: '',
+    textAlign: '',
+    textBaseline: '',
+    ...overrides,
+  };
+}
+
+function makeMockCanvas(context: object): HTMLCanvasElement {
+  return {
+    width: 0,
+    height: 0,
+    getContext: vi.fn(() => context),
+  } as unknown as HTMLCanvasElement;
+}
+
+function bitmapFontResources(offset: number) {
+  return makeResourceIndex({
+    fonts: [
+      {
+        id: 0,
+        name: 'font12',
+        system_name: 'System',
+        size: 12,
+        bold: false,
+        italic: false,
+        range_start: 32,
+        range_end: 127,
+        map_width: 16,
+        map_height: 8,
+        image_path: 'resources/fonts/0.png',
+        glyphs: [
+          { code: 65, x: 2, y: 3, width: 4, height: 5, offset, advance: 6 },
+        ],
+      },
+    ],
+  });
+}
+
 describe('renderWasmFrame', () => {
   it('draws bridge frame commands onto the canvas', async () => {
     const clearRect = vi.fn();
@@ -158,7 +208,7 @@ describe('renderWasmFrame', () => {
     expect(fillText).toHaveBeenCalledWith('GAME OVER', 160, 88);
     expect(context.font).toBe('32px sans-serif');
     expect(context.textAlign).toBe('center');
-    expect(context.textBaseline).toBe('middle');
+    expect(context.textBaseline).toBe('top');
     expect(save).toHaveBeenCalledTimes(2);
     expect(restore).toHaveBeenCalledTimes(2);
   });
@@ -218,6 +268,98 @@ describe('renderWasmFrame', () => {
 
     expect(fillText).toHaveBeenCalledWith('Medium', 64, 96);
     expect(context.font).toBe('12px "MS Gothic", sans-serif');
+  });
+
+  it('renders drawText through parsed GM font atlas when glyph data is available', async () => {
+    const finalDrawImage = vi.fn();
+    const finalContext = makeMockContext({ drawImage: finalDrawImage });
+    const maskContext = makeMockContext({
+      globalCompositeOperation: '',
+      fillStyle: '',
+    });
+    const maskCanvas = makeMockCanvas(maskContext);
+    const createElement = vi.spyOn(document, 'createElement').mockReturnValue(maskCanvas);
+    const canvas = makeMockCanvas(finalContext);
+    const fontAtlas = { id: 'font-atlas', width: 16, height: 8 } as unknown as HTMLImageElement;
+    const resources = bitmapFontResources(1);
+    const frame = makeWasmFrame({
+      commands: [
+        {
+          kind: 'drawText',
+          text: 'A',
+          x: 64,
+          y: 96,
+          size: 12,
+          fontName: 'font12',
+          fontBold: false,
+          fontItalic: false,
+          colour: [255, 0, 0, 255],
+          align: 'left',
+        },
+      ],
+    });
+    const cache = {
+      getImage: vi.fn(async () => fontAtlas),
+      getCachedImage: vi.fn(() => fontAtlas),
+    };
+
+    await renderWasmFrame(canvas, frame, resources, '/packages/sample', cache as never);
+
+    expect(cache.getImage).toHaveBeenCalledWith('/packages/sample/resources/fonts/0.png');
+    expect(createElement).toHaveBeenCalledWith('canvas');
+    expect(maskCanvas.width).toBe(4);
+    expect(maskCanvas.height).toBe(5);
+    expect(maskContext.drawImage).toHaveBeenCalledWith(fontAtlas, 2, 3, 4, 5, 0, 0, 4, 5);
+    expect(maskContext.globalCompositeOperation).toBe('source-in');
+    expect(maskContext.fillStyle).toBe('rgba(255, 0, 0, 1)');
+    expect(maskContext.fillRect).toHaveBeenCalledWith(0, 0, 4, 5);
+    expect(finalDrawImage).toHaveBeenCalledWith(maskCanvas, 65, 96);
+    expect(finalContext.fillText).not.toHaveBeenCalled();
+
+    createElement.mockRestore();
+  });
+
+  it('preserves GM font glyph overhangs when bitmap text has negative offsets', async () => {
+    const finalDrawImage = vi.fn();
+    const finalContext = makeMockContext({ drawImage: finalDrawImage });
+    const maskContext = makeMockContext({
+      globalCompositeOperation: '',
+      fillStyle: '',
+    });
+    const maskCanvas = makeMockCanvas(maskContext);
+    const createElement = vi.spyOn(document, 'createElement').mockReturnValue(maskCanvas);
+    const canvas = makeMockCanvas(finalContext);
+    const fontAtlas = { id: 'font-atlas', width: 16, height: 8 } as unknown as HTMLImageElement;
+    const resources = bitmapFontResources(-2);
+    const frame = makeWasmFrame({
+      commands: [
+        {
+          kind: 'drawText',
+          text: 'A',
+          x: 64,
+          y: 96,
+          size: 12,
+          fontName: 'font12',
+          fontBold: false,
+          fontItalic: false,
+          colour: [255, 0, 0, 255],
+          align: 'left',
+        },
+      ],
+    });
+    const cache = {
+      getImage: vi.fn(async () => fontAtlas),
+      getCachedImage: vi.fn(() => fontAtlas),
+    };
+
+    await renderWasmFrame(canvas, frame, resources, '/packages/sample', cache as never);
+
+    expect(maskCanvas.width).toBe(4);
+    expect(maskCanvas.height).toBe(5);
+    expect(maskContext.drawImage).toHaveBeenCalledWith(fontAtlas, 2, 3, 4, 5, 0, 0, 4, 5);
+    expect(finalDrawImage).toHaveBeenCalledWith(maskCanvas, 62, 96);
+
+    createElement.mockRestore();
   });
 
   it('applies sprite alpha only while drawing the sprite', async () => {

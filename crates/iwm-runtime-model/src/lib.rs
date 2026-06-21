@@ -113,6 +113,29 @@ pub struct FontResource {
     pub size: u32,
     pub bold: bool,
     pub italic: bool,
+    #[serde(default)]
+    pub range_start: u32,
+    #[serde(default)]
+    pub range_end: u32,
+    #[serde(default)]
+    pub map_width: u32,
+    #[serde(default)]
+    pub map_height: u32,
+    #[serde(default)]
+    pub image_path: String,
+    #[serde(default)]
+    pub glyphs: Vec<FontGlyphResource>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FontGlyphResource {
+    pub code: u32,
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+    pub offset: i32,
+    pub advance: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

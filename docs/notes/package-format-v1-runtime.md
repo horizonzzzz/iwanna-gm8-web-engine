@@ -17,6 +17,7 @@ Current emitted runtime package directory contents:
 - `resources/sprites/...`
 - `resources/backgrounds/...`
 - `resources/audio/...`
+- `resources/fonts/...`
 
 This package is runtime-consumable but still phase-limited.
 
@@ -35,7 +36,7 @@ Included in this phase:
 - sprite exports now include `bbox_left`, `bbox_right`, `bbox_top`, and `bbox_bottom` collision bounds plus optional `collision_masks` sourced from the parser's OpenGMK sprite collision metadata
 - browser-ready background exports
 - audio file exports
-- parsed font metadata in `resources/index.json`, including GM font name, system font name, size, bold, and italic flags
+- parsed font metadata in `resources/index.json`, including GM font name, system font name, size, bold, italic, character range, atlas path, atlas dimensions, and glyph metrics
 - normalized room instance placements with runtime categorization hints
 - parser-normalized GM room order in `manifest.room_order`
 - normalized object event table with event tags and collision target ids for dispatch
@@ -96,7 +97,8 @@ Important current invariants:
 - room, instance, and object event block ids should resolve consistently across `scripts.ir.json`, `logic.raw.json`, and `logic.lowered.json`
 - sprite resource collision bounds are emitted in `resources/index.json` for each sprite record; the parser also emits `collision_masks` and `per_frame_collision_masks` from gm8exe collision maps so runtime consumers can perform pixel-level checks after bbox broad-phase filtering
 - sprite PNG frame exports are browser RGBA data; gm8exe BGRA frame buffers are converted during resource export, matching the background export path
-- font resources are metadata records in `resources/index.json`; runtime draw commands may reference these records by GM font name after lowered `draw_set_font(...)` calls
+- font resources are records in `resources/index.json` with a browser-loadable atlas PNG under `resources/fonts/` plus 256 gm8exe-derived glyph metric records; runtime draw commands may reference these records by GM font name after lowered `draw_set_font(...)` calls
+- font glyph `offset` is the draw-position offset from the current cursor, while `advance` is the cursor movement after drawing; this matches the GM/OpenGMK draw loop rather than the raw `dmap` field comments
 - runtime consumers should validate cross-file references explicitly instead of silently assuming contiguous ids
 
 This matters because normalized package ids may remain sparse even when the emitted JSON arrays are dense. Runtime code must resolve identities by `id` rather than by array offset.
@@ -149,7 +151,7 @@ The current `iwm-runtime-web` bridge can now:
 - accept browser-submitted keyboard input snapshots
 - return runtime snapshots
 - return browser-consumable frame snapshots
-- return browser-consumable text draw commands, including resolved font metadata, when runtime logic emits text commands; package-owned death feedback such as Dife `GAMEOVER` / blood sprites flows through ordinary runtime sprite commands
+- return browser-consumable text draw commands, including resolved font metadata, when runtime logic emits text commands; the browser renderer can use package-owned font atlases and glyph metrics for GM bitmap-font drawing, and package-owned death feedback such as Dife `GAMEOVER` / blood sprites flows through ordinary runtime sprite commands
 - advance deterministic ticks
 - reset the runtime
 - switch rooms by room id

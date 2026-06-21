@@ -2,17 +2,20 @@ import type { WasmRuntimeFrame } from '../runtime/wasmBridge';
 import type { ResourceIndex } from '../types';
 import { makeBackgroundPathMap, makeSpriteFrameMap, ResourceCache } from './resourceCache';
 
+type FontResource = NonNullable<ResourceIndex['fonts']>[number];
+type DrawTextCommand = Extract<WasmRuntimeFrame['commands'][number], { kind: 'drawText' }>;
+
 function rgbaToCss([r, g, b, a]: [number, number, number, number]): string {
   return `rgba(${r}, ${g}, ${b}, ${a / 255})`;
 }
 
-function makeFontMap(resources: ResourceIndex): Map<string, NonNullable<ResourceIndex['fonts']>[number]> {
+function makeFontMap(resources: ResourceIndex): Map<string, FontResource> {
   return new Map((resources.fonts ?? []).map(font => [font.name.toLowerCase(), font]));
 }
 
 function canvasFontForText(
-  command: Extract<WasmRuntimeFrame['commands'][number], { kind: 'drawText' }>,
-  fonts: Map<string, NonNullable<ResourceIndex['fonts']>[number]>
+  command: DrawTextCommand,
+  fonts: Map<string, FontResource>
 ): string {
   const font = command.fontName ? fonts.get(command.fontName.toLowerCase()) : undefined;
   const italic = command.fontItalic ?? font?.italic ?? false;
@@ -24,6 +27,101 @@ function canvasFontForText(
     font?.system_name ? `${JSON.stringify(font.system_name)}, sans-serif` : 'sans-serif',
   ].filter(Boolean);
   return style.join(' ');
+}
+
+function resourcePath(basePath: string, path: string): string {
+  return `${basePath.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
+}
+
+function fontForCommand(command: DrawTextCommand, fonts: Map<string, FontResource>): FontResource | undefined {
+  return command.fontName ? fonts.get(command.fontName.toLowerCase()) : undefined;
+}
+
+function fontAtlasPath(basePath: string, font: FontResource | undefined): string | null {
+  if (!font?.image_path || !font.glyphs?.length) {
+    return null;
+  }
+  return resourcePath(basePath, font.image_path);
+}
+
+function drawBitmapText(
+  context: CanvasRenderingContext2D,
+  atlas: HTMLImageElement,
+  command: DrawTextCommand,
+  font: FontResource
+): boolean {
+  if (!font.glyphs?.length || typeof document === 'undefined') {
+    return false;
+  }
+  const glyphs = new Map(font.glyphs.map(glyph => [glyph.code, glyph]));
+  const placements: Array<{
+    glyph: NonNullable<FontResource['glyphs']>[number];
+    drawX: number;
+  }> = [];
+  let textWidth = 0;
+  let textHeight = 0;
+  let minDrawX = 0;
+  let maxDrawX = 0;
+  let hasVisibleGlyph = false;
+  for (const char of command.text) {
+    const code = char.codePointAt(0) ?? 0;
+    const glyph = glyphs.get(code) ?? glyphs.get(32);
+    if (!glyph) {
+      continue;
+    }
+    const drawX = textWidth + glyph.offset;
+    placements.push({ glyph, drawX });
+    if (glyph.width > 0 && glyph.height > 0) {
+      minDrawX = hasVisibleGlyph ? Math.min(minDrawX, drawX) : drawX;
+      maxDrawX = hasVisibleGlyph ? Math.max(maxDrawX, drawX + glyph.width) : drawX + glyph.width;
+      hasVisibleGlyph = true;
+    }
+    textWidth += glyph.advance || glyph.width;
+    textHeight = Math.max(textHeight, glyph.height);
+  }
+  if (placements.length === 0) {
+    return false;
+  }
+  if (!hasVisibleGlyph || textWidth <= 0 || textHeight <= 0) {
+    return true;
+  }
+
+  const mask = document.createElement('canvas');
+  mask.width = Math.max(1, Math.ceil(maxDrawX - minDrawX));
+  mask.height = Math.max(1, Math.ceil(textHeight));
+  const maskContext = mask.getContext('2d');
+  if (!maskContext) {
+    return false;
+  }
+
+  for (const { glyph, drawX } of placements) {
+    if (glyph.width <= 0 || glyph.height <= 0) {
+      continue;
+    }
+    maskContext.drawImage(
+      atlas,
+      glyph.x,
+      glyph.y,
+      glyph.width,
+      glyph.height,
+      drawX - minDrawX,
+      0,
+      glyph.width,
+      glyph.height
+    );
+  }
+  maskContext.globalCompositeOperation = 'source-in';
+  maskContext.fillStyle = rgbaToCss(command.colour);
+  maskContext.fillRect(0, 0, mask.width, mask.height);
+
+  let x = command.x;
+  if (command.align === 'center') {
+    x -= textWidth / 2;
+  } else if (command.align === 'right') {
+    x -= textWidth;
+  }
+  context.drawImage(mask, x + minDrawX, command.y);
+  return true;
 }
 
 function resolveAxisPositions(offset: number, imageSize: number, roomSize: number, shouldTile: boolean): number[] {
@@ -149,6 +247,13 @@ export async function renderWasmFrame(
         }
         break;
       }
+      case 'drawText': {
+        const path = fontAtlasPath(basePath, fontForCommand(command, fonts));
+        if (path) {
+          imagesToLoad.add(path);
+        }
+        break;
+      }
     }
   }
 
@@ -219,10 +324,19 @@ export async function renderWasmFrame(
       case 'drawText':
         context.save();
         context.fillStyle = rgbaToCss(command.colour);
-        context.font = canvasFontForText(command, fonts);
-        context.textAlign = command.align;
-        context.textBaseline = 'middle';
-        context.fillText(command.text, command.x, command.y);
+        {
+          const font = fontForCommand(command, fonts);
+          const path = fontAtlasPath(basePath, font);
+          const drewBitmapText = font && path
+            ? drawBitmapText(context, cache.getCachedImage(path), command, font)
+            : false;
+          if (!drewBitmapText) {
+            context.font = canvasFontForText(command, fonts);
+            context.textAlign = command.align;
+            context.textBaseline = 'top';
+            context.fillText(command.text, command.x, command.y);
+          }
+        }
         context.restore();
         break;
 

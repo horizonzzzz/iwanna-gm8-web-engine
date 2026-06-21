@@ -116,6 +116,7 @@ class LocalStorageWasmFileHost implements WasmFileHost {
   configurePackage(pkg: RuntimePackage, basePath: string): void {
     const hash = pkg.manifest.source_hash || pkg.manifest.source_name || 'package';
     this.packageKey = `${basePath || 'default'}:${hash}`;
+    this.removeFile('temp');
   }
 
   readFile(path: string): Uint8Array | null {
