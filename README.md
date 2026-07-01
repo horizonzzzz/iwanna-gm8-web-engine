@@ -93,6 +93,18 @@ npm --prefix runtime run test:browser
 npm --prefix runtime run build
 ```
 
+The default Rust test suite intentionally uses in-memory fixtures for runtime
+semantics. Tests that exercise the generated local Dife sample package are
+behind an explicit feature so stale `runtime/public/packages/sample` output
+cannot break ordinary `cargo test` runs:
+
+```powershell
+cargo test -p iwm-runtime-core --features local-sample-tests
+```
+
+Run those local sample-backed tests only after rebuilding and validating
+`runtime/public/packages/sample` from your local corpus.
+
 The browser smoke covers the shell-visible runtime telemetry path:
 
 - WASM boot status

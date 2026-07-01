@@ -5,9 +5,9 @@ use iwm_runtime_model::{
 
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore};
 
-use super::support::{
-    add_step_block, append_lowered_entry, host, real_sample_package, sample_package,
-};
+#[cfg(feature = "local-sample-tests")]
+use super::support::real_sample_package;
+use super::support::{add_step_block, append_lowered_entry, host, sample_package};
 
 #[test]
 fn runtime_core_emits_browser_consumable_draw_commands() {
@@ -415,6 +415,15 @@ fn runtime_core_executes_draw_events_for_text_commands() {
                     LoweredLogicExpr::LiteralText("Data1".into()),
                 ],
             },
+            LoweredLogicStatement::FunctionCall {
+                name: "draw_sprite".into(),
+                args: vec![
+                    LoweredLogicExpr::Identifier("spr_sparse".into()),
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::LiteralNumber(64.0),
+                    LoweredLogicExpr::LiteralNumber(72.0),
+                ],
+            },
         ],
     );
 
@@ -441,9 +450,19 @@ fn runtime_core_executes_draw_events_for_text_commands() {
             && colour.a == 255
             && align == "center"
     )));
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawSprite {
+            sprite_id: 1,
+            x: 64,
+            y: 72,
+            ..
+        }
+    )));
 }
 
 #[test]
+#[cfg(feature = "local-sample-tests")]
 fn real_sample_menu_draws_slot_text_and_cursor_sprite() {
     let Some(package) = real_sample_package() else {
         return;

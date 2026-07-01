@@ -4,6 +4,7 @@ use iwm_runtime_model::{
     ObjectEventEntry, ResourceIndex, RoomBackgroundLayer, RoomDefinition, RoomInstancePlacement,
     RoomTilePlacement, RoomView, RuntimeManifest, ScriptIrFile, SoundResource, SpriteResource,
 };
+#[cfg(feature = "local-sample-tests")]
 use std::path::Path;
 
 use crate::helpers::collides_at;
@@ -387,6 +388,7 @@ pub(super) fn assert_no_runtime_blockers(core: &RuntimeCore) {
     );
 }
 
+#[cfg(feature = "local-sample-tests")]
 pub(super) fn real_sample_package() -> Option<RuntimePackage> {
     let package_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")

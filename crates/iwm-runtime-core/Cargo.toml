@@ -9,5 +9,8 @@ iwm-runtime-host = { path = "../iwm-runtime-host" }
 iwm-runtime-model = { path = "../iwm-runtime-model" }
 serde = { workspace = true }
 
+[features]
+local-sample-tests = []
+
 [dev-dependencies]
 serde_json = { workspace = true }
