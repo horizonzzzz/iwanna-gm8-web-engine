@@ -26,6 +26,7 @@ Read these files before making structural or workflow decisions:
 - `docs/superpowers/specs/2026-05-19-iwanna-gm8-web-engine-design.md`
 - `docs/notes/package-format-v1-runtime.md`
 - `docs/notes/runtime-wasm-gap-analysis.md`
+- `docs/notes/runtime-performance-optimization.md`
 - `docs/notes/runtime-gold-sample.md`
 - `docs/notes/runtime-vendor-reference-map.md`
 - `docs/notes/opengmk-host-coupling-audit.md`
