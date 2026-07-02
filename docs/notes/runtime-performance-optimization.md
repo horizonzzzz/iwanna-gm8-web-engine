@@ -37,9 +37,10 @@ Interpretation:
 
 1. Build mode was the first fixed cost. Release WASM is now the default sync
    path and should remain the default for browser smoke tests.
-2. The JSON bridge is still a medium-term fixed tax. It creates encode, decode,
-   parse, stringify, and GC pressure at every tick/frame boundary. Treat this as
-   a separate bridge-contract project.
+2. The JSON bridge fixed tax has a first hot-path reduction: the browser bridge
+   now prefers a binary `iwm_step_buffer` path for the combined per-tick
+   input/snapshot/frame exchange when the WASM export is available. JSON remains
+   for package boot, diagnostics, control calls, and legacy fallback paths.
 3. Runtime-core indexing and allocation churn is the best next core target:
    stronger spatial indexes, scratch-buffer reuse, and avoiding per-tick
    `HashMap` / `Vec` rebuilds.
@@ -177,6 +178,17 @@ cost:
 - JS-side `JSON.parse`
 - JS object allocation and GC pressure
 - repeated command array materialization
+
+Current status:
+
+- the combined `step(input) -> { snapshot, frame }` browser hot path now has a
+  versioned little-endian binary buffer contract
+- `iwm_step_buffer` accepts compact input flags plus raw virtual-key arrays and
+  returns the bridge snapshot plus frame command list in one binary result
+- the TypeScript bridge prefers `iwm_step_buffer` when present and falls back to
+  the existing JSON `iwm_step_json` path for older WASM builds
+- package boot, diagnostics, reset/select-room/tick control calls, and standalone
+  snapshot/frame helpers still use JSON
 
 It will not solve every smoothness issue:
 

@@ -1,13 +1,26 @@
 use std::sync::{Mutex, OnceLock};
 
+use crate::bridge_buffer::{
+    decode_web_input_state_from_buffer, encode_bridge_step_result_to_buffer,
+};
 use crate::result_store::{
-    last_result_len, read_utf8_from_ptr, store_error_result, store_json_result,
+    last_result_len, read_utf8_from_ptr, store_error_result, store_json_result, store_result_bytes,
 };
 use crate::{WebInputState, WebRuntimeHost};
 
 fn parse_web_input_state(pointer: *const u8, len: usize) -> Result<WebInputState, String> {
     let input_json = read_utf8_from_ptr(pointer, len)?;
     serde_json::from_str::<WebInputState>(&input_json).map_err(|error| error.to_string())
+}
+
+fn parse_web_input_state_buffer(pointer: *const u8, len: usize) -> Result<WebInputState, String> {
+    if pointer.is_null() {
+        return Err("received null pointer for input buffer".into());
+    }
+    // SAFETY: The caller provides a pointer and byte length allocated in this
+    // module's WASM memory. We validate non-null here and only borrow the slice.
+    let bytes = unsafe { std::slice::from_raw_parts(pointer, len) };
+    decode_web_input_state_from_buffer(bytes)
 }
 
 fn runtime_host() -> &'static Mutex<WebRuntimeHost> {
@@ -78,6 +91,23 @@ pub extern "C" fn iwm_step_json(pointer: *const u8, len: usize) -> usize {
     let mut host = runtime_host().lock().expect("runtime host mutex poisoned");
     match host.step(input) {
         Ok(result) => store_json_result(&result),
+        Err(error) => store_error_result(error),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn iwm_step_buffer(pointer: *const u8, len: usize) -> usize {
+    let input = match parse_web_input_state_buffer(pointer, len) {
+        Ok(value) => value,
+        Err(error) => return store_error_result(error),
+    };
+
+    let mut host = runtime_host().lock().expect("runtime host mutex poisoned");
+    match host
+        .step(input)
+        .and_then(|result| encode_bridge_step_result_to_buffer(&result))
+    {
+        Ok(bytes) => store_result_bytes(bytes),
         Err(error) => store_error_result(error),
     }
 }

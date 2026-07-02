@@ -127,6 +127,7 @@ export function useRuntimeShell() {
   const autoTickDelayMsRef = useRef<number | null>(null);
   const exclusiveOpRef = useRef(false);
   const skippedAutoTickIntervalsRef = useRef(0);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     packagePathRef.current = packagePath;
@@ -199,7 +200,9 @@ export function useRuntimeShell() {
     autoTickInFlightRef.current = false;
     autoTickKeyboardSourceRef.current = null;
     autoTickDelayMsRef.current = null;
-    setAutoTickRunning(false);
+    if (mountedRef.current) {
+      setAutoTickRunning(false);
+    }
   }, []);
 
   const tickRuntimeOnce = useCallback(
@@ -226,6 +229,9 @@ export function useRuntimeShell() {
       const canvas = canvasRef.current;
       if (canvas) {
         await renderWasmFrame(canvas, frame, currentPackage.resources, packagePathRef.current, renderCacheRef.current);
+      }
+      if (!mountedRef.current) {
+        return;
       }
       const renderMs = nowMs() - renderStart;
       const nextPerformance: RuntimePerformanceStats = {
@@ -269,7 +275,9 @@ export function useRuntimeShell() {
         autoTickInFlightPromiseRef.current = tickRuntimeOnce(currentKeyboardInput(keyboardSource))
           .catch((tickError) => {
             stopAutoTick();
-            setError(`Runtime tick failed: ${formatErrorMessage(tickError)}`);
+            if (mountedRef.current) {
+              setError(`Runtime tick failed: ${formatErrorMessage(tickError)}`);
+            }
           })
           .finally(() => {
             autoTickInFlightRef.current = false;
@@ -456,7 +464,10 @@ export function useRuntimeShell() {
   }, [draw, loadedPackage, packagePath, runExclusiveWithAutoTick]);
 
   useEffect(() => {
-    return () => stopAutoTick();
+    return () => {
+      mountedRef.current = false;
+      stopAutoTick();
+    };
   }, [stopAutoTick]);
 
   const displayWidth = loadedPackage?.manifest.display_width ?? 800;

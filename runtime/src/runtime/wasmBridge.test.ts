@@ -294,6 +294,204 @@ describe('wasm bridge loader', () => {
     expect(result?.frame.tick).toBe(1);
     expect(result?.frame.commands[0]?.kind).toBe('present');
   });
+
+  it('prefers binary combined step export when wasm provides it', async () => {
+    const memory = {
+      buffer: new ArrayBuffer(4096)
+    };
+    const pointer = 1024;
+    const encoder = new TextEncoder();
+    const bytes: number[] = [];
+    const pushU8 = (value: number) => bytes.push(value & 0xff);
+    const pushU16 = (value: number) => {
+      pushU8(value);
+      pushU8(value >> 8);
+    };
+    const pushU32 = (value: number) => {
+      pushU8(value);
+      pushU8(value >> 8);
+      pushU8(value >> 16);
+      pushU8(value >> 24);
+    };
+    const pushI32 = (value: number) => pushU32(value >>> 0);
+    const pushU64 = (value: number) => {
+      const buffer = new ArrayBuffer(8);
+      new DataView(buffer).setBigUint64(0, BigInt(value), true);
+      bytes.push(...new Uint8Array(buffer));
+    };
+    const pushF64 = (value: number) => {
+      const buffer = new ArrayBuffer(8);
+      new DataView(buffer).setFloat64(0, value, true);
+      bytes.push(...new Uint8Array(buffer));
+    };
+    const pushString = (value: string) => {
+      const encoded = encoder.encode(value);
+      pushU32(encoded.byteLength);
+      bytes.push(...encoded);
+    };
+    const pushOptionU32 = (value: number | null) => {
+      pushU8(value == null ? 0 : 1);
+      if (value != null) {
+        pushU32(value);
+      }
+    };
+    const pushOptionString = (value: string | null) => {
+      pushU8(value == null ? 0 : 1);
+      if (value != null) {
+        pushString(value);
+      }
+    };
+    const pushStringArray = (values: string[]) => {
+      pushU32(values.length);
+      for (const value of values) {
+        pushString(value);
+      }
+    };
+
+    pushU32(0x424d5749);
+    pushU16(1);
+    pushU16(2);
+    pushString('ready');
+    pushU64(1);
+    pushOptionU32(0);
+    pushOptionString('room0');
+    pushOptionU32(60);
+    pushU32(4);
+    pushU8(0);
+    pushU16(16);
+    pushU8(1);
+    pushU8(1);
+    pushU8(0);
+    pushStringArray(['0x10:p1jp1jr0']);
+    for (const nanos of [1, 2, 3, 4, 5, 6, 7, 8, 36]) {
+      pushU64(nanos);
+    }
+    pushStringArray(['runtime-idle:tick advanced']);
+    pushU64(1);
+    pushOptionU32(0);
+    pushU32(320);
+    pushU32(240);
+    pushU32(7);
+    pushU8(0);
+    pushU8(1);
+    pushU8(2);
+    pushU8(3);
+    pushU8(4);
+    pushU8(1);
+    pushU32(44);
+    pushI32(-10);
+    pushI32(20);
+    pushU8(1);
+    pushU8(0);
+    pushU8(1);
+    pushU8(0);
+    pushU8(2);
+    pushU32(55);
+    pushI32(32);
+    pushI32(64);
+    pushU32(8);
+    pushU32(16);
+    pushU32(32);
+    pushU32(32);
+    pushF64(1.5);
+    pushF64(0.5);
+    pushU8(3);
+    pushU32(7);
+    pushU32(0);
+    pushI32(96);
+    pushI32(128);
+    pushI32(16);
+    pushI32(24);
+    pushF64(1.0);
+    pushF64(1.0);
+    pushF64(0.5);
+    pushF64(0.0);
+    pushU8(4);
+    pushI32(1);
+    pushI32(2);
+    pushU32(3);
+    pushU32(4);
+    pushU8(250);
+    pushU8(251);
+    pushU8(252);
+    pushU8(253);
+    pushU8(5);
+    pushString('GAME OVER');
+    pushI32(160);
+    pushI32(88);
+    pushU32(32);
+    pushOptionString('font32');
+    pushU8(1);
+    pushU8(0);
+    pushU8(232);
+    pushU8(36);
+    pushU8(48);
+    pushU8(220);
+    pushString('center');
+    pushU8(6);
+
+    const encodedStep = Uint8Array.from(bytes);
+    let lastResultLength = encodedStep.byteLength;
+    const capturedInput: Uint8Array[] = [];
+    const writeStep = () => {
+      new Uint8Array(memory.buffer).set(encodedStep, pointer);
+      lastResultLength = encodedStep.byteLength;
+    };
+
+    const legacyStep = vi.fn(() => {
+      throw new Error('legacy JSON step should not be used');
+    });
+    const binaryStep = vi.fn((inputPointer: number, inputLength: number) => {
+      capturedInput.push(new Uint8Array(memory.buffer.slice(inputPointer, inputPointer + inputLength)));
+      writeStep();
+      return pointer;
+    });
+
+    const bridge = makeWasmRuntimeBridge({
+      memory,
+      iwm_alloc: () => 8,
+      iwm_free: () => undefined,
+      iwm_boot_json: () => pointer,
+      iwm_set_input_json: () => pointer,
+      iwm_step_json: legacyStep,
+      iwm_step_buffer: binaryStep,
+      iwm_tick: () => pointer,
+      iwm_reset: () => pointer,
+      iwm_select_room: () => pointer,
+      iwm_snapshot_json: () => pointer,
+      iwm_frame_json: () => pointer,
+      iwm_diagnostics_json: () => pointer,
+      iwm_last_result_len: () => lastResultLength,
+    } as any);
+
+    const result = await bridge.step?.({
+      left: true,
+      right: false,
+      jump: true,
+      jumpPressed: true,
+      jumpReleased: false,
+      restart: false,
+      keysHeld: [0x10],
+      keysPressed: [0x10],
+      keysReleased: [],
+    });
+
+    expect(legacyStep).not.toHaveBeenCalled();
+    expect(binaryStep).toHaveBeenCalledTimes(1);
+    expect(capturedInput[0]?.[0]).toBe(0x49);
+    expect(result?.snapshot.inputTrace.activeKeys).toEqual(['0x10:p1jp1jr0']);
+    expect(result?.frame.commands.map((command) => command.kind)).toEqual([
+      'clear',
+      'drawBackground',
+      'drawTile',
+      'drawSprite',
+      'fillRect',
+      'drawText',
+      'present',
+    ]);
+    expect(result?.frame.commands[3]).toMatchObject({ kind: 'drawSprite', spriteId: 7, alpha: 0.5 });
+    expect(result?.frame.commands[5]).toMatchObject({ kind: 'drawText', text: 'GAME OVER', fontName: 'font32', align: 'center' });
+  });
 });
 
 describe('wasm bridge file imports', () => {

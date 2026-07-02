@@ -8,10 +8,14 @@ fn last_result_bytes() -> &'static Mutex<Vec<u8>> {
 }
 
 pub fn store_result(result: String) -> usize {
+    store_result_bytes(result.into_bytes())
+}
+
+pub fn store_result_bytes(result: Vec<u8>) -> usize {
     let mut bytes = last_result_bytes()
         .lock()
         .expect("last result mutex poisoned");
-    *bytes = result.into_bytes();
+    *bytes = result;
     bytes.as_ptr() as usize
 }
 
