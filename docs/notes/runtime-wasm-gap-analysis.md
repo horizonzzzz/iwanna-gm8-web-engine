@@ -79,19 +79,24 @@ These are the gaps that block normal play. If any of these are absent, the game 
 
 ### 1. GML Script Execution
 
-The core game logic is still mostly dead.
+The runtime now executes a meaningful lowered IWanna-critical slice, but it is
+still not a general GML execution engine.
 
-Current `tick()` behavior is hardcoded movement plus a few runtime diagnostics, with only a very small lowered-logic slice dispatched for `step` events. Most object logic from the room is still not executed.
+Current `tick()` behavior combines runtime-owned fallback movement with lowered
+event execution for the supported subset. Step, keyboard, alarm, collision,
+room-start, create/destroy, instance creation/destruction, scoped locals, common
+helpers, and selected file/audio/rendering paths have real coverage, but broader
+GM event semantics and helper coverage remain incomplete.
 
 The blocker is no longer interpreted as "add more heuristics to the TS runtime". The real blocker is that the runtime path still lacks a trustworthy executable contract for common GML calls, expressions, event dispatch, and variable lookup.
 
 Impact:
 
-- enemies do not run their `Step` logic
-- many sample-specific spawn chains still do not run
-- traps do not trigger
-- doors do not open
-- score / state logic does not run
+- unsupported enemies or traps can still fail when their logic depends on unimplemented event categories, helpers, or expression forms
+- some sample-specific spawn chains still depend on missing lifecycle or room-creation semantics
+- traps can fail to trigger when they depend on unsupported collision/lifecycle paths
+- doors and transitions can fail when they depend on unsupported room or script semantics
+- score and broader state logic can fail when it depends on unsupported global/instance variable behavior
 - broader `with` parity still depends on the remaining expression, lifecycle, and instance-id semantics even though the current lowered runtime slice now switches object/self/other/all execution context
 
 ### 2. Audio

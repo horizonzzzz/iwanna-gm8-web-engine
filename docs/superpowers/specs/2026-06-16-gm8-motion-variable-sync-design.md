@@ -1,8 +1,15 @@
 # GM8 Motion Variable Bidirectional Sync Design
 
-> **Status:** Current
+> **Status:** Historical / implemented
 > **Date:** 2026-06-16
 > **Scope:** `crates/iwm-runtime-core/`, `crates/iwm-runtime-model/`
+>
+> This design has been implemented for the current runtime-core slice. The
+> active source of truth is now the code and tests around
+> `RuntimeInstance::set_speed`, `RuntimeInstance::set_direction`,
+> `RuntimeInstance::set_hspeed`, `RuntimeInstance::set_vspeed`,
+> `RuntimeInstance::set_hvspeed`, `apply_gm_motion_vars()`, and the
+> `movement_math` / movement tests.
 
 ## Problem
 

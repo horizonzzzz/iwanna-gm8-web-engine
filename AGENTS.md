@@ -223,6 +223,25 @@ For runtime lowered-logic blockers, prefer `iwm-cli runtime-diagnostics` after p
 
 Do not debug all layers at once.
 
+## Codebase Context Tools
+
+This project has two graph-backed context systems:
+
+- `codebase-memory-mcp`, exposed as MCP tools for symbol search, architecture overview, call tracing, source snippets, and Cypher queries.
+- `graphify`, stored under `graphify-out/`, for broad semantic navigation, documentation/code relationship exploration, reports, and visualization.
+
+Default to `codebase-memory-mcp` for engineering work:
+
+- use `search_graph` to find functions, classes, routes, variables, and implementations
+- use `trace_path` for callers, callees, dependency tracing, impact analysis, and data-flow questions
+- use `get_code_snippet` after `search_graph` when exact source for a symbol is needed
+- use `query_graph` for complex multi-hop or aggregate questions
+- use `get_architecture` for a high-level structure and cluster overview
+
+Fall back to `rg`, filesystem search, or direct file reads only for string literals, non-code files, config values, generated artifacts, or when the MCP graph does not contain enough information.
+
+Use `graphify` as the secondary knowledge-map path, not the default code navigation path. It is appropriate for explicit `/graphify` requests, broad architecture or onboarding questions, cross-document semantic context, visual graph/report exploration, or when codebase-memory does not cover the needed relationship.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
@@ -230,7 +249,8 @@ This project has a knowledge graph at graphify-out/ with god nodes, community st
 When the user types `/graphify`, invoke the `skill` tool with `skill: "graphify"` before doing anything else.
 
 Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- For explicit `/graphify` requests, broad semantic codebase questions, architecture/onboarding exploration, or documentation/code relationship questions, run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- For ordinary code discovery, implementation, debugging, refactoring, call tracing, or impact analysis, prefer `codebase-memory-mcp` tools first.
 - Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.

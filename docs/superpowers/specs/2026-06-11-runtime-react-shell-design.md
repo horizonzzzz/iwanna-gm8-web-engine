@@ -1,5 +1,11 @@
 # Runtime React Shell Design
 
+> **Status:** Historical / implemented
+>
+> The runtime shell now uses the React structure described here. Keep this file
+> as design history; use `runtime/src/ui/`, current tests, `README.md`, and
+> `docs/notes/runtime-wasm-gap-analysis.md` for current behavior.
+
 ## Overview
 
 This document defines the UI-layer migration for `runtime/` from the current command-style DOM shell to a React-based shell built on the existing Vite app.
