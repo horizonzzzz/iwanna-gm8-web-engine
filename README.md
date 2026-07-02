@@ -1,5 +1,7 @@
 # iwanna-gm8-web-engine
 
+[中文说明](README-CN.md)
+
 Browser-playable IWanna MVP targeting legacy GM8-style fangames.
 
 ## Current Direction
