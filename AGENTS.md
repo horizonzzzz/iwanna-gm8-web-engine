@@ -83,7 +83,7 @@ Current expected setup commands:
 
 WASM bridge workflow commands:
 
-- `cargo build -p iwm-runtime-web --target wasm32-unknown-unknown`
+- `cargo build -p iwm-runtime-web --release --target wasm32-unknown-unknown`
 - `npm --prefix runtime run sync:wasm`
 
 Package generation commands:

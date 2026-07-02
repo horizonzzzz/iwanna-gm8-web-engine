@@ -64,14 +64,14 @@ cargo test -p iwm-runtime-core --features local-sample-tests
 $env:PATH='C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\bin;' + $env:PATH
 $env:CC='clang'
 $env:CXX='clang++'
-cargo build -p iwm-runtime-web --target wasm32-unknown-unknown
+cargo build -p iwm-runtime-web --release --target wasm32-unknown-unknown
 npm --prefix runtime run sync:wasm
 ```
 
 `sync:wasm` 会把：
 
 ```text
-target\wasm32-unknown-unknown\debug\iwm_runtime_web.wasm
+target\wasm32-unknown-unknown\release\iwm_runtime_web.wasm
 ```
 
 复制到：

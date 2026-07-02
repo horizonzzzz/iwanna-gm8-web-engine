@@ -91,11 +91,11 @@ prerequisites used by the runtime shell.
 $env:PATH='C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\bin;' + $env:PATH
 $env:CC='clang'
 $env:CXX='clang++'
-cargo build -p iwm-runtime-web --target wasm32-unknown-unknown
+cargo build -p iwm-runtime-web --release --target wasm32-unknown-unknown
 npm --prefix runtime run sync:wasm
 ```
 
-This copies `target\wasm32-unknown-unknown\debug\iwm_runtime_web.wasm` to
+This copies `target\wasm32-unknown-unknown\release\iwm_runtime_web.wasm` to
 `runtime\public\wasm\iwm_runtime_web.wasm`.
 
 ## Build A Runtime Package
