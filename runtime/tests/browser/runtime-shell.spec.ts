@@ -1,4 +1,12 @@
 import { expect, test } from '@playwright/test';
+import {
+  expectFinitePhaseTimings,
+  expectNoRuntimeBlockers,
+  hasDiagnostic,
+  readRuntimeScenario,
+  runWasmScenario,
+  summarizePlayerTrace,
+} from './wasmScenario';
 
 async function loadPackage(page: import('@playwright/test').Page, packagePath: string): Promise<void> {
   await page.goto('/');
@@ -131,4 +139,140 @@ test('sample package creates and renders a bullet from the browser wasm bridge o
   expect(result.creationEvent).toContain('object=bullet');
   expect(result.afterInstanceCount).toBe(result.beforeInstanceCount + 1);
   expect(result.afterCommandCount).toBeGreaterThan(result.beforeCommandCount);
+});
+
+const room143MovementBaselines = [
+  {
+    name: 'tap jump',
+    scenario: 'dife-room143-tap-jump.json',
+    ticks: 240,
+    expected: {
+      sampleCount: 12,
+      minX: 81.0,
+      maxX: 81.0,
+      minY: 558.135,
+      maxY: 567.445,
+      maxAbsHspeed: 0.0,
+      maxAbsVspeed: 3.155,
+    },
+  },
+  {
+    name: 'held jump',
+    scenario: 'dife-room143-hold-jump.json',
+    ticks: 240,
+    expected: {
+      sampleCount: 12,
+      minX: 81.0,
+      maxX: 81.0,
+      minY: 482.4,
+      maxY: 567.3,
+      maxAbsHspeed: 0.0,
+      maxAbsVspeed: 6.7,
+    },
+  },
+  {
+    name: 'release-cut jump',
+    scenario: 'dife-room143-release-cut.json',
+    ticks: 240,
+    expected: {
+      sampleCount: 12,
+      minX: 81.0,
+      maxX: 81.0,
+      minY: 511.55,
+      maxY: 567.13,
+      maxAbsHspeed: 0.0,
+      maxAbsVspeed: 1.615,
+    },
+  },
+  {
+    name: 'right movement',
+    scenario: 'dife-room143-move-right.json',
+    ticks: 120,
+    expected: {
+      sampleCount: 6,
+      minX: 135.0,
+      maxX: 154.0,
+      minY: 567.4,
+      maxY: 567.4,
+      maxAbsHspeed: 3.0,
+      maxAbsVspeed: 0.0,
+    },
+  },
+] as const;
+
+for (const baseline of room143MovementBaselines) {
+  test(`sample package browser wasm bridge matches the room143 ${baseline.name} trace baseline`, async ({ page }) => {
+    const result = await runWasmScenario(page, {
+      scenario: readRuntimeScenario(baseline.scenario),
+      roomId: 143,
+      ticks: baseline.ticks,
+      preselectTicks: 2,
+      traceEvery: 20,
+    });
+    const summary = summarizePlayerTrace(result.trace);
+
+    expectNoRuntimeBlockers(result.diagnostics);
+    expect(result.finalRoomId).toBe(143);
+    expect(summary.sampleCount).toBe(baseline.expected.sampleCount);
+    expect(summary.minX).toBeCloseTo(baseline.expected.minX, 3);
+    expect(summary.maxX).toBeCloseTo(baseline.expected.maxX, 3);
+    expect(summary.minY).toBeCloseTo(baseline.expected.minY, 3);
+    expect(summary.maxY).toBeCloseTo(baseline.expected.maxY, 3);
+    expect(summary.maxAbsHspeed).toBeCloseTo(baseline.expected.maxAbsHspeed, 3);
+    expect(summary.maxAbsVspeed).toBeCloseTo(baseline.expected.maxAbsVspeed, 3);
+  });
+}
+
+test('sample package browser wasm bridge replays the room143 shoot scenario', async ({ page }) => {
+  const result = await runWasmScenario(page, {
+    scenario: readRuntimeScenario('dife-room143-shoot.json'),
+    roomId: 143,
+    ticks: 80,
+    preselectTicks: 2,
+    traceEvery: 20,
+  });
+
+  expectNoRuntimeBlockers(result.diagnostics);
+  expect(result.finalRoomId).toBe(143);
+  expect(result.finalFrameCommandCount).toBeGreaterThan(0);
+  expect(result.trace.map((sample) => sample.tick)).toEqual([20, 40, 60, 80]);
+  expect(result.trace.every((sample) => sample.player?.objectName === 'player')).toBe(true);
+  expect(hasDiagnostic(result.diagnostics, 'runtime-instance-created', 'object=bullet')).toBe(true);
+  expect(hasDiagnostic(result.diagnostics, 'runtime-instance-destroyed', 'object=bullet')).toBe(true);
+});
+
+test('sample package browser wasm bridge replays the room151 hazard death scenario', async ({ page }) => {
+  const result = await runWasmScenario(page, {
+    scenario: readRuntimeScenario('dife-room151-death-right.json'),
+    roomId: 151,
+    ticks: 180,
+    preselectTicks: 2,
+    traceEvery: 20,
+  });
+
+  expectNoRuntimeBlockers(result.diagnostics);
+  expect(result.finalRoomId).toBe(151);
+  expect(result.finalFrameCommandCount).toBeGreaterThan(0);
+  expect(result.trace.map((sample) => sample.tick)).toContain(20);
+  expect(result.trace.map((sample) => sample.tick)).toContain(40);
+  expect(result.trace.some((sample) => (sample.player?.hspeed ?? 0) > 0)).toBe(true);
+  expect(hasDiagnostic(result.diagnostics, 'runtime-player-died', 'object=player', 'reason=hazard')).toBe(true);
+  expect(hasDiagnostic(result.diagnostics, 'runtime-instance-created', 'object=GAMEOVER')).toBe(true);
+  expect(hasDiagnostic(result.diagnostics, 'runtime-instance-created', 'object=bloodEmitter2')).toBe(true);
+});
+
+test('sample package browser wasm bridge exposes timing phase samples during the room151 scenario', async ({ page }) => {
+  const result = await runWasmScenario(page, {
+    scenario: readRuntimeScenario('dife-room151-death-right.json'),
+    roomId: 151,
+    ticks: 180,
+    preselectTicks: 2,
+    performanceEvery: 30,
+  });
+
+  expectNoRuntimeBlockers(result.diagnostics);
+  expect(result.performance.map((sample) => sample.tick)).toEqual([30, 60, 90, 120, 150, 180]);
+  for (const sample of result.performance) {
+    expectFinitePhaseTimings(sample);
+  }
 });
