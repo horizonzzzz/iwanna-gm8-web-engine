@@ -161,6 +161,7 @@ impl RuntimeCore {
                         place_target_ids_by_name: &self.place_target_ids_by_name,
                         room_ids_by_name: &self.room_ids_by_name,
                     };
+                    tick_context.with_target_indices.clear();
                     let mut statement_env = RuntimeStatementEnvironment {
                         script_entries,
                         sound_index: &self.sound_index,
@@ -172,6 +173,7 @@ impl RuntimeCore {
                         host: &mut *host,
                         diagnostics: &mut self.diagnostics,
                         object_query_scratch: Some(&mut tick_context.object_query_scratch),
+                        with_target_indices: &mut tick_context.with_target_indices,
                         room_instance_updates: &mut with_updates,
                         room_instance_creates: &mut instance_creates,
                         objects,
@@ -365,6 +367,7 @@ impl RuntimeCore {
                 };
                 let destroy_event_entries = &self.cached_destroy_event_entries;
                 let mut room_instance_updates = Vec::new();
+                let mut with_target_indices = Vec::new();
                 for entry in &entries {
                     let event_owner_id = event_owner_id_for_block_id(objects, &entry.block_id)
                         .unwrap_or(instance.object_id);
@@ -390,6 +393,7 @@ impl RuntimeCore {
                             host: &mut *host,
                             diagnostics: &mut self.diagnostics,
                             object_query_scratch: None,
+                            with_target_indices: &mut with_target_indices,
                             room_instance_updates: &mut room_instance_updates,
                             room_instance_creates: creates,
                             objects,

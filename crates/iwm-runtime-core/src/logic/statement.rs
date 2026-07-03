@@ -16,7 +16,7 @@ use super::context::{
 };
 use super::control_flow::{
     env_has_pending_scene_change, merged_statement_overlay, sync_instance_from_updates,
-    with_target_indices,
+    write_with_target_indices,
 };
 use super::diagnostics::{
     record_unsupported_expr_functions, record_unsupported_function, record_unsupported_statement,
@@ -58,6 +58,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) host: &'a mut H,
     pub(crate) diagnostics: &'a mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
     pub(crate) object_query_scratch: Option<&'a mut RuntimeObjectQueryScratch>,
+    pub(crate) with_target_indices: &'a mut Vec<usize>,
     pub(crate) room_instance_updates: &'a mut Vec<(usize, RuntimeInstance)>,
     pub(crate) room_instance_creates: &'a mut Vec<RuntimeInstanceCreateRequest>,
     pub(crate) objects: &'a [ObjectDefinition],
@@ -498,9 +499,10 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             let Some(context) = eval_context else {
                 return;
             };
-            let target_indices = with_target_indices(target, instance_index, context);
+            write_with_target_indices(target, instance_index, context, env.with_target_indices);
+            let target_indices = std::mem::take(env.with_target_indices);
             let other_snapshot = instance.clone();
-            for target_index in target_indices {
+            for &target_index in &target_indices {
                 if target_index == instance_index {
                     for nested in body {
                         let overlay = merged_statement_overlay(
@@ -572,6 +574,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     break;
                 }
             }
+            *env.with_target_indices = target_indices;
         }
         LoweredLogicStatement::For {
             init,

@@ -300,6 +300,44 @@ fn instance_created_inside_with_all_does_not_run_same_with_iteration() {
 }
 
 #[test]
+fn instance_created_inside_with_object_does_not_run_same_with_iteration() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::With {
+            target: LoweredLogicExpr::Identifier("obj_marker".into()),
+            body: vec![
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("visited_by_with_object".into()),
+                    value: LoweredLogicExpr::LiteralBool(true),
+                },
+                LoweredLogicStatement::FunctionCall {
+                    name: "instance_create".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralNumber(80.0),
+                        LoweredLogicExpr::LiteralNumber(96.0),
+                        LoweredLogicExpr::Identifier("obj_marker".into()),
+                    ],
+                },
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let markers = instances_named(&core, "obj_marker");
+    assert_eq!(markers.len(), 2);
+    let created_marker = markers
+        .into_iter()
+        .find(|instance| (instance.x, instance.y) == (80.0, 96.0))
+        .unwrap();
+    assert_eq!(created_marker.vars.get("visited_by_with_object"), None);
+}
+
+#[test]
 fn runtime_instance_create_event_can_see_created_instance() {
     let mut package = sample_package();
     add_spawned_object(

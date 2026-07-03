@@ -11,6 +11,7 @@ pub(crate) struct RuntimeTickContext {
     pub(crate) object_index: RuntimeObjectIndex,
     pub(crate) object_query_scratch: RuntimeObjectQueryScratch,
     pub(crate) dispatch_owners: Vec<(usize, usize)>,
+    pub(crate) with_target_indices: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

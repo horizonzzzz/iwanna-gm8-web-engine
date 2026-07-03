@@ -937,6 +937,7 @@ impl RuntimeCore {
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                     room_ids_by_name: &self.room_ids_by_name,
                 };
+                let mut with_target_indices = Vec::new();
                 let mut statement_env = crate::logic::RuntimeStatementEnvironment {
                     script_entries,
                     sound_index: &self.sound_index,
@@ -948,6 +949,7 @@ impl RuntimeCore {
                     host: &mut *host,
                     diagnostics: &mut self.diagnostics,
                     object_query_scratch: None,
+                    with_target_indices: &mut with_target_indices,
                     room_instance_updates: &mut with_updates,
                     room_instance_creates: &mut instance_creates,
                     objects,
