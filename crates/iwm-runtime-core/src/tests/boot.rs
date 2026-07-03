@@ -4,7 +4,9 @@ use crate::{
     RuntimeCoreError, RuntimeStatus,
 };
 
-use super::support::sample_package;
+use super::support::{
+    add_collision_block, add_destroy_block, add_step_block, append_lowered_entry, sample_package,
+};
 
 #[test]
 fn core_loads_default_room_and_instances() {
@@ -236,4 +238,45 @@ fn core_caches_create_and_destroy_event_entries_on_load() {
     assert!(destroy_entries
         .iter()
         .any(|entry| entry.block_id == "object:0:event:1:0"));
+}
+
+#[test]
+fn core_caches_lowered_event_entry_indices_on_load() {
+    let mut package = sample_package();
+
+    append_lowered_entry(&mut package, "object:0:event:0:0".into(), vec![]);
+    add_step_block(&mut package, vec![]);
+    add_destroy_block(&mut package, vec![]);
+    add_collision_block(&mut package, 2, vec![]);
+
+    let core = RuntimeCore::load(package).unwrap();
+
+    assert_eq!(
+        core.cached_dispatch_tables
+            .step_entry_indices_by_object_id
+            .get(&0)
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        core.cached_dispatch_tables
+            .create_entry_indices_by_object_id
+            .get(&0)
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        core.cached_dispatch_tables
+            .destroy_entry_indices_by_object_id
+            .get(&0)
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        core.cached_dispatch_tables
+            .collision_entry_indices_by_owner_and_target
+            .get(&(0, 2))
+            .map(Vec::len),
+        Some(1)
+    );
 }

@@ -25,17 +25,95 @@ pub(crate) enum RuntimeEventSelector {
     },
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct RuntimeEventDispatchTables {
+    pub(crate) entry_indices_by_event_tag_and_object_id:
+        HashMap<String, HashMap<usize, Vec<usize>>>,
+    pub(crate) step_entry_indices_by_object_id: HashMap<usize, Vec<usize>>,
+    pub(crate) create_entry_indices_by_object_id: HashMap<usize, Vec<usize>>,
+    pub(crate) destroy_entry_indices_by_object_id: HashMap<usize, Vec<usize>>,
+    pub(crate) collision_entry_indices_by_owner_and_target: HashMap<(usize, usize), Vec<usize>>,
+}
+
+pub(crate) fn runtime_event_dispatch_tables(
+    package: &RuntimePackage,
+    lowered_logic_index: &HashMap<String, usize>,
+) -> RuntimeEventDispatchTables {
+    let mut tables = RuntimeEventDispatchTables::default();
+    let event_specs = runtime_event_specs(package);
+
+    for object in &package.objects {
+        for (event_type, sub_event, event_tag) in &event_specs {
+            let block_ids = object_event_block_ids_by_parts(
+                &package.objects,
+                object.id,
+                *event_type,
+                *sub_event,
+                event_tag,
+            );
+            let entry_indices = block_ids
+                .iter()
+                .filter_map(|block_id| lowered_logic_index.get(block_id).copied())
+                .collect::<Vec<_>>();
+            if entry_indices.is_empty() {
+                continue;
+            }
+
+            tables
+                .entry_indices_by_event_tag_and_object_id
+                .entry(event_tag.clone())
+                .or_default()
+                .insert(object.id, entry_indices.clone());
+
+            match (*event_type, *sub_event, event_tag.as_str()) {
+                (3, 0, "step") => {
+                    tables
+                        .step_entry_indices_by_object_id
+                        .insert(object.id, entry_indices);
+                }
+                (0, 0, "create") => {
+                    tables
+                        .create_entry_indices_by_object_id
+                        .insert(object.id, entry_indices);
+                }
+                (1, 0, "destroy") => {
+                    tables
+                        .destroy_entry_indices_by_object_id
+                        .insert(object.id, entry_indices);
+                }
+                (4, target_object_id, "collision") => {
+                    tables
+                        .collision_entry_indices_by_owner_and_target
+                        .insert((object.id, target_object_id as usize), entry_indices);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    tables
+}
+
 pub(crate) fn object_event_block_ids(
     package: &RuntimePackage,
     object_id: usize,
     selector: RuntimeEventSelector,
 ) -> Vec<String> {
     let (event_type, sub_event, wanted) = event_selector_parts(&selector);
+    object_event_block_ids_by_parts(&package.objects, object_id, event_type, sub_event, &wanted)
+}
 
+fn object_event_block_ids_by_parts(
+    objects: &[ObjectDefinition],
+    object_id: usize,
+    event_type: usize,
+    sub_event: u32,
+    wanted: &str,
+) -> Vec<String> {
     let mut current_object_id = Some(object_id);
     let mut block_ids = Vec::new();
     while let Some(id) = current_object_id {
-        let Some(object) = package.objects.iter().find(|object| object.id == id) else {
+        let Some(object) = objects.iter().find(|object| object.id == id) else {
             break;
         };
 
@@ -52,10 +130,23 @@ pub(crate) fn object_event_block_ids(
             break;
         }
 
-        current_object_id = object_parent_id(&package.objects, id);
+        current_object_id = object_parent_id(objects, id);
     }
 
     block_ids
+}
+
+fn runtime_event_specs(package: &RuntimePackage) -> Vec<(usize, u32, String)> {
+    let mut specs = Vec::new();
+    for object in &package.objects {
+        for event in &object.events {
+            let spec = (event.event_type, event.sub_event, event.event_tag.clone());
+            if !specs.contains(&spec) {
+                specs.push(spec);
+            }
+        }
+    }
+    specs
 }
 
 pub(crate) fn event_owner_id_for_block_id(

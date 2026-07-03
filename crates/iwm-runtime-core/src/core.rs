@@ -6,9 +6,9 @@ use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 use iwm_runtime_model::RoomDefinition;
 
 use crate::event_dispatch::{
-    event_owner_id_for_block_id, object_event_block_ids,
+    event_owner_id_for_block_id, object_event_block_ids, runtime_event_dispatch_tables,
     runtime_instance_indices_by_object_id_from_instances, RuntimeCollisionSpatialIndex,
-    RuntimeEventSelector,
+    RuntimeEventDispatchTables, RuntimeEventSelector,
 };
 use crate::helpers::{as_number, collides_at, is_player_instance};
 use crate::logic::RuntimeBinaryFileState;
@@ -38,6 +38,7 @@ pub struct RuntimeCore {
     pub(crate) cached_script_entries: HashMap<String, LoweredLogicEntry>,
     pub(crate) cached_room_order: Vec<usize>,
     pub(crate) cached_step_event_blocks: HashMap<usize, Vec<String>>,
+    pub(crate) cached_dispatch_tables: RuntimeEventDispatchTables,
     pub(crate) cached_create_event_entries: HashMap<usize, Vec<LoweredLogicEntry>>,
     pub(crate) cached_destroy_event_entries: HashMap<usize, Vec<LoweredLogicEntry>>,
     pub(crate) cached_collision_target_ids: HashMap<usize, Vec<usize>>,
@@ -142,6 +143,7 @@ impl RuntimeCore {
             cached_script_entries: HashMap::new(),
             cached_room_order: Vec::new(),
             cached_step_event_blocks: HashMap::new(),
+            cached_dispatch_tables: RuntimeEventDispatchTables::default(),
             cached_create_event_entries: HashMap::new(),
             cached_destroy_event_entries: HashMap::new(),
             cached_collision_target_ids: HashMap::new(),
@@ -174,6 +176,8 @@ impl RuntimeCore {
         core.cached_script_entries = core.lowered_script_entries();
         core.cached_room_order = core.runtime_room_order();
         core.cached_step_event_blocks = core.object_event_blocks_by_tag("step");
+        core.cached_dispatch_tables =
+            runtime_event_dispatch_tables(&core.package, &core.lowered_logic_index);
         core.cached_create_event_entries = core.lowered_event_entries_by_tag_for_runtime("create");
         core.cached_destroy_event_entries =
             core.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
@@ -757,7 +761,8 @@ impl RuntimeCore {
         host: &mut H,
         selector: RuntimeEventSelector,
     ) -> Result<(), RuntimeCoreError> {
-        let block_lookups: Vec<(usize, Vec<String>)> = {
+        let event_tag = selector_event_tag(&selector);
+        let entry_lookups: Vec<(usize, Vec<usize>)> = {
             let Some(room) = self.current_room.as_ref() else {
                 return Err(RuntimeCoreError::NoRooms);
             };
@@ -766,25 +771,20 @@ impl RuntimeCore {
                 .enumerate()
                 .filter(|(_, i)| i.alive)
                 .filter_map(|(idx, instance)| {
-                    let block_ids =
-                        object_event_block_ids(&self.package, instance.object_id, selector.clone());
-                    if block_ids.is_empty() {
-                        None
-                    } else {
-                        Some((idx, block_ids))
-                    }
+                    self.cached_entry_indices_for_selector(instance.object_id, &selector)
+                        .map(|entry_indices| (idx, entry_indices.to_vec()))
                 })
                 .collect()
         };
 
-        for (instance_idx, block_ids) in block_lookups {
-            self.apply_event_blocks_to_instance(
+        for (instance_idx, entry_indices) in entry_lookups {
+            self.apply_event_entry_indices_to_instance(
                 host,
                 instance_idx,
-                &block_ids,
+                &entry_indices,
                 None,
                 selector.clone(),
-                selector_event_tag(&selector),
+                event_tag.clone(),
                 None,
             );
             if self.has_pending_scene_change() {
@@ -793,6 +793,27 @@ impl RuntimeCore {
         }
 
         Ok(())
+    }
+
+    fn cached_entry_indices_for_selector(
+        &self,
+        object_id: usize,
+        selector: &RuntimeEventSelector,
+    ) -> Option<&[usize]> {
+        if let RuntimeEventSelector::Collision { target_object_id } = selector {
+            return self
+                .cached_dispatch_tables
+                .collision_entry_indices_by_owner_and_target
+                .get(&(object_id, *target_object_id))
+                .map(Vec::as_slice);
+        }
+
+        let event_tag = selector_event_tag(selector);
+        self.cached_dispatch_tables
+            .entry_indices_by_event_tag_and_object_id
+            .get(&event_tag)
+            .and_then(|entries_by_object| entries_by_object.get(&object_id))
+            .map(Vec::as_slice)
     }
 
     fn apply_event_blocks_to_instance<H: RuntimeHost>(
@@ -805,12 +826,31 @@ impl RuntimeCore {
         event_tag: String,
         collision_spatial_index: Option<&RuntimeCollisionSpatialIndex>,
     ) {
-        // Clone entries first to avoid borrow conflicts
-        let entries: Vec<LoweredLogicEntry> = block_ids
+        let entry_indices: Vec<usize> = block_ids
             .iter()
-            .filter_map(|block_id| self.lowered_logic_entry(block_id).cloned())
+            .filter_map(|block_id| self.lowered_logic_index.get(block_id).copied())
             .collect();
+        self.apply_event_entry_indices_to_instance(
+            host,
+            instance_idx,
+            &entry_indices,
+            other_instance,
+            event_selector,
+            event_tag,
+            collision_spatial_index,
+        );
+    }
 
+    fn apply_event_entry_indices_to_instance<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+        instance_idx: usize,
+        entry_indices: &[usize],
+        other_instance: Option<RuntimeInstance>,
+        event_selector: RuntimeEventSelector,
+        event_tag: String,
+        collision_spatial_index: Option<&RuntimeCollisionSpatialIndex>,
+    ) {
         let script_entries = &self.cached_script_entries;
         let destroy_event_entries = &self.cached_destroy_event_entries;
         let objects = &self.package.objects;
@@ -851,7 +891,10 @@ impl RuntimeCore {
             runtime_instance_indices_by_object_id_from_instances(&room.instances)
         };
 
-        for entry in &entries {
+        for entry_index in entry_indices {
+            let Some(entry) = lowered_entries.get(*entry_index) else {
+                continue;
+            };
             let event_owner_id =
                 event_owner_id_for_block_id(objects, &entry.block_id).unwrap_or(instance.object_id);
             crate::diagnostics::record_execution_trace(

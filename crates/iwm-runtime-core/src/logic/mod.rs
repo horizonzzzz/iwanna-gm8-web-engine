@@ -53,7 +53,6 @@ impl RuntimeCore {
         host: &mut H,
         button_states: &HashMap<RuntimeButton, ButtonState>,
     ) -> Result<StepExecutionResult, RuntimeCoreError> {
-        let step_event_blocks = &self.cached_step_event_blocks;
         let script_entries = &self.cached_script_entries;
         let objects = &self.package.objects;
         let lowered_entries = self
@@ -74,18 +73,10 @@ impl RuntimeCore {
                 .enumerate()
                 .filter(|(_, instance)| instance.alive)
                 .filter_map(|(index, instance)| {
-                    let entries = step_event_blocks
-                        .get(&instance.object_id)
-                        .into_iter()
-                        .flat_map(|block_ids| block_ids.iter())
-                        .filter_map(|block_id| self.lowered_logic_entry(block_id).cloned())
-                        .collect::<Vec<_>>();
-
-                    if entries.is_empty() {
-                        None
-                    } else {
-                        Some((index, entries))
-                    }
+                    self.cached_dispatch_tables
+                        .step_entry_indices_by_object_id
+                        .contains_key(&instance.object_id)
+                        .then_some((index, instance.object_id))
                 })
                 .collect::<Vec<_>>();
             (
@@ -100,7 +91,7 @@ impl RuntimeCore {
         let mut instance_updates: HashMap<usize, RuntimeInstance> = HashMap::new();
         let mut instance_creates: Vec<RuntimeInstanceCreateRequest> = Vec::new();
 
-        for (index, entries) in dispatches {
+        for (index, object_id) in dispatches {
             let Some(mut instance) = instance_updates.get(&index).cloned().or_else(|| {
                 self.current_room
                     .as_ref()
@@ -113,15 +104,26 @@ impl RuntimeCore {
             }
             let is_player = crate::helpers::is_player_instance(&instance);
             let motion_before = (instance.x, instance.y, instance.hspeed, instance.vspeed);
+            let Some(entry_indices) = self
+                .cached_dispatch_tables
+                .step_entry_indices_by_object_id
+                .get(&object_id)
+            else {
+                continue;
+            };
             if is_player
-                && entries
+                && entry_indices
                     .iter()
+                    .filter_map(|entry_index| lowered_entries.get(*entry_index))
                     .any(|entry| statements_reference_jump_queries(&entry.statements))
             {
                 player_jump_owned_by_script = true;
             }
 
-            for entry in &entries {
+            for entry_index in entry_indices {
+                let Some(entry) = lowered_entries.get(*entry_index) else {
+                    continue;
+                };
                 let event_owner_id = event_owner_id_for_block_id(objects, &entry.block_id)
                     .unwrap_or(instance.object_id);
                 crate::diagnostics::record_execution_trace(
