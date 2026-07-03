@@ -4,6 +4,7 @@ use std::path::Path;
 use iwm_runtime_host::{RuntimeButton, RuntimeHost, RuntimeHostError};
 
 use crate::event_dispatch::RuntimeCollisionSpatialIndex;
+use crate::tick_context::{RuntimeObjectIndex, RuntimeObjectQueryScratch};
 use crate::{RuntimeInstance, RuntimeValue};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -224,6 +225,7 @@ pub(crate) struct RuntimeEvalContext<'a> {
     pub button_states: &'a HashMap<RuntimeButton, iwm_runtime_host::ButtonState>,
     pub room_instances: &'a [RuntimeInstance],
     pub room_instance_indices_by_object_id: &'a HashMap<usize, Vec<usize>>,
+    pub object_index: Option<&'a RuntimeObjectIndex>,
     pub collision_spatial_index: Option<&'a RuntimeCollisionSpatialIndex>,
     pub room_instance_overlay: RuntimeRoomInstanceOverlay<'a>,
     pub room_order: &'a [usize],
@@ -247,6 +249,7 @@ impl<'a> RuntimeEvalContext<'a> {
             button_states: self.button_states,
             room_instances: self.room_instances,
             room_instance_indices_by_object_id: self.room_instance_indices_by_object_id,
+            object_index: self.object_index,
             collision_spatial_index: self.collision_spatial_index,
             room_instance_overlay,
             room_order: self.room_order,
@@ -301,6 +304,40 @@ impl<'a> RuntimeEvalContext<'a> {
         self.room_instance_indices_matching_object_ids(target_object_ids)
             .into_iter()
             .filter_map(|index| self.room_instance(index).map(|instance| (index, instance)))
+    }
+
+    pub(crate) fn write_room_instance_indices_matching_object_ids(
+        &self,
+        target_object_ids: &[usize],
+        scratch: &mut RuntimeObjectQueryScratch,
+    ) {
+        scratch.begin_query(self.room_instances.len());
+
+        if let Some(object_index) = self.object_index {
+            for object_id in target_object_ids {
+                for &index in object_index.indices_for_object_id(*object_id) {
+                    scratch.push_candidate(index);
+                }
+            }
+            return;
+        }
+
+        if self.room_instance_indices_by_object_id.is_empty() {
+            for (index, instance) in self.room_instances.iter().enumerate() {
+                if target_object_ids.contains(&instance.object_id) {
+                    scratch.push_candidate(index);
+                }
+            }
+            return;
+        }
+
+        for object_id in target_object_ids {
+            if let Some(indices) = self.room_instance_indices_by_object_id.get(object_id) {
+                for &index in indices {
+                    scratch.push_candidate(index);
+                }
+            }
+        }
     }
 
     pub(crate) fn room_instances_matching_object_ids_near<'b>(
@@ -367,6 +404,14 @@ impl<'a> RuntimeEvalContext<'a> {
     }
 
     fn room_instance_indices_matching_object_ids(&self, target_object_ids: &[usize]) -> Vec<usize> {
+        if let Some(object_index) = self.object_index {
+            return target_object_ids
+                .iter()
+                .flat_map(|object_id| object_index.indices_for_object_id(*object_id).iter())
+                .copied()
+                .collect();
+        }
+
         if self.room_instance_indices_by_object_id.is_empty() {
             return self
                 .room_instances

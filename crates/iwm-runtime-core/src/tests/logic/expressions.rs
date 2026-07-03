@@ -250,16 +250,7 @@ fn core_evaluates_keyboard_query_calls_against_host_button_state() {
             else_branch: vec![],
         }],
     );
-    core.lowered_logic_index = core
-        .package
-        .lowered_logic
-        .as_ref()
-        .unwrap()
-        .entries
-        .iter()
-        .enumerate()
-        .map(|(index, entry)| (entry.block_id.clone(), index))
-        .collect();
+    core.rebuild_lowered_logic_caches();
 
     core.tick(&mut host).unwrap();
 

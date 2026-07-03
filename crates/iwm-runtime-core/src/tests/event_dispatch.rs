@@ -12,6 +12,7 @@ use crate::event_dispatch::{
     runtime_instance_indices_by_object_id, RuntimeCollisionScratch, RuntimeCollisionSpatialIndex,
     RuntimeEventSelector,
 };
+use crate::tick_context::{RuntimeObjectIndex, RuntimeObjectQueryScratch};
 
 #[test]
 fn core_dispatches_held_keyboard_event_blocks() {
@@ -564,6 +565,36 @@ fn collision_spatial_index_rebuild_clears_stale_candidates_with_reused_scratch()
     index.rebuild(core.current_room().unwrap());
     index.candidate_indices_into(2, &player, player.x, player.y, &mut scratch);
     assert!(scratch.candidates().is_empty());
+}
+
+#[test]
+fn runtime_object_index_rebuild_clears_stale_object_membership() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut index = RuntimeObjectIndex::default();
+
+    index.rebuild(core.current_room().unwrap());
+    assert_eq!(index.indices_for_object_id(0), &[0]);
+
+    {
+        let room = core.current_room.as_mut().unwrap();
+        room.instances.retain(|instance| instance.object_id != 0);
+    }
+
+    index.rebuild(core.current_room().unwrap());
+    assert!(index.indices_for_object_id(0).is_empty());
+    assert_eq!(index.indices_for_object_id(2), &[1]);
+}
+
+#[test]
+fn object_query_scratch_dedupes_candidate_indices() {
+    let mut scratch = RuntimeObjectQueryScratch::default();
+
+    scratch.begin_query(4);
+    scratch.push_candidate(2);
+    scratch.push_candidate(2);
+    scratch.push_candidate(3);
+
+    assert_eq!(scratch.candidates(), &[2, 3]);
 }
 
 #[test]

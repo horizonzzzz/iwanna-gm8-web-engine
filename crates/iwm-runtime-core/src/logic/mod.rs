@@ -20,8 +20,8 @@ use iwm_runtime_model::ObjectDefinition;
 
 use crate::event_dispatch::{
     collision_event_target_object_ids, event_owner_id_for_block_id, object_event_block_ids,
-    object_ids_matching_or_inheriting_from, runtime_instance_indices_by_object_id,
-    runtime_instance_indices_by_object_id_from_instances, RuntimeEventSelector,
+    object_ids_matching_or_inheriting_from, runtime_instance_indices_by_object_id_from_instances,
+    RuntimeEventSelector,
 };
 use context::RuntimeInstanceCreateRequest;
 
@@ -63,27 +63,27 @@ impl RuntimeCore {
             .unwrap_or(&[]);
         let room_order = &self.cached_room_order;
         let destroy_event_entries = &self.cached_destroy_event_entries;
-        let (current_room_id, dispatches, room_instance_indices_by_object_id) = {
+        let mut tick_context = std::mem::take(&mut self.tick_context);
+        let room_instance_indices_by_object_id = HashMap::new();
+        let current_room_id = {
             let Some(room) = self.current_room.as_ref() else {
                 return Err(RuntimeCoreError::NoRooms);
             };
-            let dispatches = room
-                .instances
-                .iter()
-                .enumerate()
-                .filter(|(_, instance)| instance.alive)
-                .filter_map(|(index, instance)| {
-                    self.cached_dispatch_tables
-                        .step_entry_indices_by_object_id
-                        .contains_key(&instance.object_id)
-                        .then_some((index, instance.object_id))
-                })
-                .collect::<Vec<_>>();
-            (
-                room.room_id,
-                dispatches,
-                runtime_instance_indices_by_object_id(room),
-            )
+            tick_context.rebuild_object_index(room);
+            tick_context.clear_dispatch_owners();
+            tick_context.dispatch_owners.extend(
+                room.instances
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, instance)| instance.alive)
+                    .filter_map(|(index, instance)| {
+                        self.cached_dispatch_tables
+                            .step_entry_indices_by_object_id
+                            .contains_key(&instance.object_id)
+                            .then_some((index, instance.object_id))
+                    }),
+            );
+            room.room_id
         };
 
         let mut player_motion_changed = false;
@@ -91,7 +91,7 @@ impl RuntimeCore {
         let mut instance_updates: HashMap<usize, RuntimeInstance> = HashMap::new();
         let mut instance_creates: Vec<RuntimeInstanceCreateRequest> = Vec::new();
 
-        for (index, object_id) in dispatches {
+        for (index, object_id) in tick_context.dispatch_owners.iter().copied() {
             let Some(mut instance) = instance_updates.get(&index).cloned().or_else(|| {
                 self.current_room
                     .as_ref()
@@ -152,6 +152,7 @@ impl RuntimeCore {
                         button_states,
                         room_instances: &room.instances,
                         room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                        object_index: Some(&tick_context.object_index),
                         collision_spatial_index: None,
                         room_instance_overlay: eval_overlay,
                         room_order: room_order.as_slice(),
@@ -170,6 +171,7 @@ impl RuntimeCore {
                         binary_files: &mut self.binary_files,
                         host: &mut *host,
                         diagnostics: &mut self.diagnostics,
+                        object_query_scratch: Some(&mut tick_context.object_query_scratch),
                         room_instance_updates: &mut with_updates,
                         room_instance_creates: &mut instance_creates,
                         objects,
@@ -211,6 +213,7 @@ impl RuntimeCore {
                             }
                         }
                         self.apply_runtime_instance_creates(host, &mut instance_creates);
+                        self.tick_context = tick_context;
                         return Ok(StepExecutionResult {
                             interrupted: true,
                             player_motion_changed,
@@ -237,6 +240,7 @@ impl RuntimeCore {
             }
         }
         self.apply_runtime_instance_creates(host, &mut instance_creates);
+        self.tick_context = tick_context;
 
         Ok(StepExecutionResult {
             interrupted: false,
@@ -345,6 +349,7 @@ impl RuntimeCore {
                     button_states: &button_states,
                     room_instances,
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                    object_index: None,
                     collision_spatial_index: None,
                     room_instance_overlay: RuntimeRoomInstanceOverlay::with_current(
                         &committed_updates,
@@ -384,6 +389,7 @@ impl RuntimeCore {
                             binary_files: &mut self.binary_files,
                             host: &mut *host,
                             diagnostics: &mut self.diagnostics,
+                            object_query_scratch: None,
                             room_instance_updates: &mut room_instance_updates,
                             room_instance_creates: creates,
                             objects,

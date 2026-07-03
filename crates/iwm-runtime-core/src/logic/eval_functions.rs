@@ -6,6 +6,7 @@ use super::context::{RuntimeEvalContext, RuntimeExecutionScope};
 use super::eval::evaluate_expr;
 use super::eval_values::is_truthy;
 use crate::helpers::as_number;
+use crate::tick_context::RuntimeObjectQueryScratch;
 use crate::{LoweredLogicExpr, RuntimeInstance, RuntimeValue};
 
 pub(super) fn evaluate_ord_call(args: &[LoweredLogicExpr]) -> Option<RuntimeValue> {
@@ -219,11 +220,23 @@ pub(super) fn evaluate_instance_number(
     args: &[LoweredLogicExpr],
     eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<RuntimeValue> {
+    let mut scratch = RuntimeObjectQueryScratch::default();
+    evaluate_instance_number_with_scratch(args, eval_context, &mut scratch)
+}
+
+pub(super) fn evaluate_instance_number_with_scratch(
+    args: &[LoweredLogicExpr],
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    scratch: &mut RuntimeObjectQueryScratch,
+) -> Option<RuntimeValue> {
     let context = eval_context?;
     let target_object_ids = instance_target_object_ids(args.first()?, context)?;
-    let count = context
-        .room_instances_matching_object_ids(&target_object_ids)
-        .filter(|(_, instance)| instance.alive)
+    context.write_room_instance_indices_matching_object_ids(&target_object_ids, scratch);
+    let count = scratch
+        .candidates()
+        .iter()
+        .filter_map(|&index| context.room_instance(index))
+        .filter(|instance| instance.alive)
         .count();
     Some(RuntimeValue::Number(count as f64))
 }
@@ -235,6 +248,16 @@ pub(super) fn evaluate_distance_to_object(
     _scope: Option<&RuntimeExecutionScope>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<RuntimeValue> {
+    let mut scratch = RuntimeObjectQueryScratch::default();
+    evaluate_distance_to_object_with_scratch(args, instance, eval_context, &mut scratch)
+}
+
+pub(super) fn evaluate_distance_to_object_with_scratch(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    scratch: &mut RuntimeObjectQueryScratch,
+) -> Option<RuntimeValue> {
     let context = eval_context?;
     let instance = instance?;
     let object_name = args.first().and_then(|arg| match arg {
@@ -244,10 +267,13 @@ pub(super) fn evaluate_distance_to_object(
     let target_object_ids = context
         .place_target_ids_by_name
         .get(&object_name.to_ascii_lowercase())?;
-    let distance = context
-        .room_instances_matching_object_ids(target_object_ids)
-        .filter(|(_, candidate)| candidate.alive && candidate.runtime_id != instance.runtime_id)
-        .map(|(_, candidate)| instance_bbox_distance(instance, candidate))
+    context.write_room_instance_indices_matching_object_ids(target_object_ids, scratch);
+    let distance = scratch
+        .candidates()
+        .iter()
+        .filter_map(|&index| context.room_instance(index))
+        .filter(|candidate| candidate.alive && candidate.runtime_id != instance.runtime_id)
+        .map(|candidate| instance_bbox_distance(instance, candidate))
         .fold(1_000_000.0, f64::min);
 
     Some(RuntimeValue::Number(distance))
@@ -259,6 +285,18 @@ pub(super) fn evaluate_collision_line(
     globals: &HashMap<String, RuntimeValue>,
     scope: Option<&RuntimeExecutionScope>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let mut scratch = RuntimeObjectQueryScratch::default();
+    evaluate_collision_line_with_scratch(args, instance, globals, scope, eval_context, &mut scratch)
+}
+
+pub(super) fn evaluate_collision_line_with_scratch(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    scratch: &mut RuntimeObjectQueryScratch,
 ) -> Option<RuntimeValue> {
     let context = eval_context?;
     let x1 = args
@@ -295,14 +333,17 @@ pub(super) fn evaluate_collision_line(
     let target_object_ids = context
         .place_target_ids_by_name
         .get(&object_name.to_ascii_lowercase())?;
-    let hit = context
-        .room_instances_matching_object_ids(target_object_ids)
-        .find(|(_, candidate)| {
+    context.write_room_instance_indices_matching_object_ids(target_object_ids, scratch);
+    let hit = scratch
+        .candidates()
+        .iter()
+        .filter_map(|&index| context.room_instance(index))
+        .find(|candidate| {
             candidate.alive
                 && (!exclude_self || current_runtime_id != Some(candidate.runtime_id))
                 && line_intersects_instance(candidate, x1, y1, x2, y2, precise)
         })
-        .map(|(_, candidate)| candidate.instance_id as f64)
+        .map(|candidate| candidate.instance_id as f64)
         .unwrap_or(-4.0);
 
     Some(RuntimeValue::Number(hit))

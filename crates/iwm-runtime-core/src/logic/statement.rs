@@ -23,12 +23,17 @@ use super::diagnostics::{
     trace_message,
 };
 use super::eval::{assignable_key, evaluate_expr, is_truthy};
+use super::eval_functions::{
+    evaluate_collision_line_with_scratch, evaluate_distance_to_object_with_scratch,
+    evaluate_instance_number_with_scratch,
+};
 use super::instances::{
     assign_runtime_member_reference, pending_create_member_value,
     pending_create_member_value_by_object_target, runtime_instance_create_request,
 };
 use crate::event_dispatch::{inherited_event_block_id, RuntimeEventSelector};
 use crate::helpers::{as_number, record_host_diagnostic};
+use crate::tick_context::RuntimeObjectQueryScratch;
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeInstance, RuntimeValue,
 };
@@ -52,6 +57,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) binary_files: &'a mut RuntimeBinaryFileState,
     pub(crate) host: &'a mut H,
     pub(crate) diagnostics: &'a mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
+    pub(crate) object_query_scratch: Option<&'a mut RuntimeObjectQueryScratch>,
     pub(crate) room_instance_updates: &'a mut Vec<(usize, RuntimeInstance)>,
     pub(crate) room_instance_creates: &'a mut Vec<RuntimeInstanceCreateRequest>,
     pub(crate) objects: &'a [ObjectDefinition],
@@ -1072,6 +1078,36 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
         return eval_runtime_binary_expr(op, &left, &right);
     }
     if let LoweredLogicExpr::Call { name, args } = expr {
+        match name.as_str() {
+            "instance_number" => {
+                if let Some(scratch) = env.object_query_scratch.as_deref_mut() {
+                    return evaluate_instance_number_with_scratch(args, eval_context, scratch);
+                }
+            }
+            "distance_to_object" => {
+                if let Some(scratch) = env.object_query_scratch.as_deref_mut() {
+                    return evaluate_distance_to_object_with_scratch(
+                        args,
+                        instance,
+                        eval_context,
+                        scratch,
+                    );
+                }
+            }
+            "collision_line" => {
+                if let Some(scratch) = env.object_query_scratch.as_deref_mut() {
+                    return evaluate_collision_line_with_scratch(
+                        args,
+                        instance,
+                        env.globals,
+                        scope,
+                        eval_context,
+                        scratch,
+                    );
+                }
+            }
+            _ => {}
+        }
         if name == "instance_create" {
             let instance = instance?;
             let scope = scope?;

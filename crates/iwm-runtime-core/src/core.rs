@@ -113,18 +113,6 @@ impl RuntimeCore {
                     .map(|id| (sound.name.to_ascii_lowercase(), id))
             })
             .collect::<HashMap<_, _>>();
-        let lowered_logic_index = package
-            .lowered_logic
-            .as_ref()
-            .map(|lowered_logic| {
-                lowered_logic
-                    .entries
-                    .iter()
-                    .enumerate()
-                    .map(|(index, entry)| (entry.block_id.clone(), index))
-                    .collect::<HashMap<_, _>>()
-            })
-            .unwrap_or_default();
         let room_ids_by_name = package
             .rooms
             .iter()
@@ -139,7 +127,7 @@ impl RuntimeCore {
             sprite_ids_by_name,
             font_index_by_name,
             sound_index,
-            lowered_logic_index,
+            lowered_logic_index: HashMap::new(),
             cached_script_entries: HashMap::new(),
             cached_room_order: Vec::new(),
             cached_step_event_blocks: HashMap::new(),
@@ -173,20 +161,37 @@ impl RuntimeCore {
             tick_context: RuntimeTickContext::default(),
         };
 
-        core.cached_script_entries = core.lowered_script_entries();
         core.cached_room_order = core.runtime_room_order();
-        core.cached_step_event_blocks = core.object_event_blocks_by_tag("step");
-        core.cached_dispatch_tables =
-            runtime_event_dispatch_tables(&core.package, &core.lowered_logic_index);
-        core.cached_create_event_entries = core.lowered_event_entries_by_tag_for_runtime("create");
-        core.cached_destroy_event_entries =
-            core.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
-        core.cached_collision_target_ids = core.collision_target_ids_by_object_id();
-        core.cached_collision_matching_object_ids = core.collision_matching_object_ids_by_target();
-        core.place_target_ids_by_name = core.compute_place_target_ids_by_name();
+        core.rebuild_lowered_logic_caches();
         core.boot_default_room()?;
         core.package_bootstrap_globals = core.globals.clone();
         Ok(core)
+    }
+
+    pub(crate) fn rebuild_lowered_logic_caches(&mut self) {
+        self.lowered_logic_index = self
+            .package
+            .lowered_logic
+            .as_ref()
+            .map(|lowered_logic| {
+                lowered_logic
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .map(|(index, entry)| (entry.block_id.clone(), index))
+                    .collect::<HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        self.cached_script_entries = self.lowered_script_entries();
+        self.cached_step_event_blocks = self.object_event_blocks_by_tag("step");
+        self.cached_dispatch_tables =
+            runtime_event_dispatch_tables(&self.package, &self.lowered_logic_index);
+        self.cached_create_event_entries = self.lowered_event_entries_by_tag_for_runtime("create");
+        self.cached_destroy_event_entries =
+            self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
+        self.cached_collision_target_ids = self.collision_target_ids_by_object_id();
+        self.cached_collision_matching_object_ids = self.collision_matching_object_ids_by_target();
+        self.place_target_ids_by_name = self.compute_place_target_ids_by_name();
     }
 
     pub fn status(&self) -> RuntimeStatus {
@@ -923,6 +928,7 @@ impl RuntimeCore {
                     button_states: &button_states,
                     room_instances: &room.instances,
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                    object_index: None,
                     collision_spatial_index,
                     room_instance_overlay: eval_overlay,
                     room_order,
@@ -941,6 +947,7 @@ impl RuntimeCore {
                     binary_files: &mut self.binary_files,
                     host: &mut *host,
                     diagnostics: &mut self.diagnostics,
+                    object_query_scratch: None,
                     room_instance_updates: &mut with_updates,
                     room_instance_creates: &mut instance_creates,
                     objects,
