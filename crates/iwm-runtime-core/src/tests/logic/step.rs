@@ -1,6 +1,25 @@
 use super::*;
 
+use crate::logic::RuntimeSparseInstanceOverlay;
 use iwm_runtime_model::RoomInstancePlacement;
+
+#[test]
+fn sparse_instance_overlay_reads_latest_update_and_clears_dirty_slots() {
+    let core = RuntimeCore::load(sample_package()).unwrap();
+    let mut moved = player(&core).clone();
+    moved.x = 32.0;
+
+    let mut overlay = RuntimeSparseInstanceOverlay::default();
+    overlay.set(3, moved);
+
+    assert_eq!(overlay.get(3).map(|instance| instance.x), Some(32.0));
+    assert_eq!(overlay.dirty_indices(), &[3]);
+
+    overlay.clear_dirty();
+
+    assert!(overlay.get(3).is_none());
+    assert!(overlay.dirty_indices().is_empty());
+}
 
 #[test]
 fn core_executes_lowered_step_room_goto_calls() {

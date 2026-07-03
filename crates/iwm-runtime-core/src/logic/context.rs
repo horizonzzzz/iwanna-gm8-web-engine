@@ -3,6 +3,7 @@ use std::path::Path;
 
 use iwm_runtime_host::{RuntimeButton, RuntimeHost, RuntimeHostError};
 
+use super::overlay::RuntimeSparseInstanceOverlay;
 use crate::event_dispatch::RuntimeCollisionSpatialIndex;
 use crate::tick_context::{RuntimeObjectIndex, RuntimeObjectQueryScratch};
 use crate::{RuntimeInstance, RuntimeValue};
@@ -114,8 +115,8 @@ impl RuntimeBinaryFileState {
 }
 
 pub(crate) struct RuntimeRoomInstanceOverlay<'a> {
-    committed_updates: Option<&'a HashMap<usize, RuntimeInstance>>,
-    pending_updates: Vec<(usize, RuntimeInstance)>,
+    committed_updates: Option<&'a RuntimeSparseInstanceOverlay>,
+    pending_updates: RuntimeSparseInstanceOverlay,
     current_instance: Option<(usize, RuntimeInstance)>,
 }
 
@@ -123,32 +124,32 @@ impl<'a> RuntimeRoomInstanceOverlay<'a> {
     pub(crate) fn empty() -> Self {
         Self {
             committed_updates: None,
-            pending_updates: Vec::new(),
+            pending_updates: RuntimeSparseInstanceOverlay::default(),
             current_instance: None,
         }
     }
 
     pub(crate) fn with_current(
-        committed_updates: &'a HashMap<usize, RuntimeInstance>,
-        pending_updates: &[(usize, RuntimeInstance)],
+        committed_updates: &'a RuntimeSparseInstanceOverlay,
+        pending_updates: &RuntimeSparseInstanceOverlay,
         current_index: usize,
         current_instance: &RuntimeInstance,
     ) -> Self {
         Self {
             committed_updates: Some(committed_updates),
-            pending_updates: pending_updates.to_vec(),
+            pending_updates: pending_updates.snapshot(),
             current_instance: Some((current_index, current_instance.clone())),
         }
     }
 
     pub(super) fn merge_pending_current(
         &self,
-        pending_updates: &[(usize, RuntimeInstance)],
+        pending_updates: &RuntimeSparseInstanceOverlay,
         current_index: usize,
         current_instance: &RuntimeInstance,
     ) -> Self {
-        let mut merged_pending = self.pending_updates.clone();
-        merged_pending.extend(pending_updates.iter().cloned());
+        let mut merged_pending = self.pending_updates.snapshot();
+        merged_pending.extend_from_overlay(pending_updates);
         Self {
             committed_updates: self.committed_updates,
             pending_updates: merged_pending,
@@ -165,17 +166,12 @@ impl<'a> RuntimeRoomInstanceOverlay<'a> {
                 return instance;
             }
         }
-        if let Some((_, instance)) = self
-            .pending_updates
-            .iter()
-            .rev()
-            .find(|(update_index, _)| *update_index == index)
-        {
+        if let Some(instance) = self.pending_updates.get(index) {
             return instance;
         }
         if let Some(instance) = self
             .committed_updates
-            .and_then(|updates| updates.get(&index))
+            .and_then(|updates| updates.get(index))
         {
             return instance;
         }

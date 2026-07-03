@@ -11,7 +11,7 @@ use crate::event_dispatch::{
     RuntimeEventDispatchTables, RuntimeEventSelector,
 };
 use crate::helpers::{as_number, collides_at, is_player_instance};
-use crate::logic::RuntimeBinaryFileState;
+use crate::logic::{RuntimeBinaryFileState, RuntimeSparseInstanceOverlay};
 use crate::tick_context::{RuntimeCollisionHit, RuntimeTickContext};
 use crate::{
     LoweredLogicEntry, RuntimeCoreError, RuntimeInputTraceSnapshot, RuntimeInstance,
@@ -888,7 +888,7 @@ impl RuntimeCore {
         };
 
         let mut instance_creates = Vec::new();
-        let mut instance_updates = HashMap::new();
+        let mut instance_updates = RuntimeSparseInstanceOverlay::default();
         let room_instance_indices_by_object_id = {
             let Some(room) = self.current_room.as_ref() else {
                 return;
@@ -912,7 +912,7 @@ impl RuntimeCore {
                 &event_tag,
             );
             let mut scope = crate::logic::RuntimeExecutionScope::default();
-            let mut with_updates = Vec::new();
+            let mut with_updates = RuntimeSparseInstanceOverlay::default();
             for statement in &entry.statements {
                 let Some(room) = self.current_room.as_ref() else {
                     return;
@@ -988,14 +988,14 @@ impl RuntimeCore {
                     break;
                 }
             }
-            crate::logic::commit_instance_updates(&mut instance_updates, with_updates);
+            crate::logic::commit_instance_updates(&mut instance_updates, &mut with_updates);
             if self.has_pending_scene_change() {
                 break;
             }
         }
 
         if let Some(room) = self.current_room.as_mut() {
-            for (update_index, updated_instance) in instance_updates {
+            for (update_index, updated_instance) in instance_updates.drain_dirty_updates() {
                 if let Some(slot) = room.instances.get_mut(update_index) {
                     *slot = updated_instance;
                 }

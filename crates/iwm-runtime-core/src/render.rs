@@ -12,7 +12,7 @@ use crate::helpers::as_number;
 use crate::logic::{
     apply_runtime_statement, commit_instance_updates, sync_current_instance_from_updates,
     RuntimeDrawContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay,
-    RuntimeStatementEnvironment,
+    RuntimeSparseInstanceOverlay, RuntimeStatementEnvironment,
 };
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState};
 
@@ -326,11 +326,11 @@ impl RuntimeCore {
         };
 
         let mut draw_context = RuntimeDrawContext::default();
-        let mut instance_updates: HashMap<usize, RuntimeInstance> = HashMap::new();
+        let mut instance_updates = RuntimeSparseInstanceOverlay::default();
         let mut instance_creates = Vec::new();
 
         for (index, entries) in dispatches {
-            let Some(mut instance) = instance_updates.get(&index).cloned().or_else(|| {
+            let Some(mut instance) = instance_updates.get(index).cloned().or_else(|| {
                 self.current_room
                     .as_ref()
                     .and_then(|room| room.instances.get(index).cloned())
@@ -345,7 +345,7 @@ impl RuntimeCore {
                 let event_owner_id = event_owner_id_for_block_id(objects, &entry.block_id)
                     .unwrap_or(instance.object_id);
                 let mut scope = RuntimeExecutionScope::default();
-                let mut with_updates = Vec::new();
+                let mut with_updates = RuntimeSparseInstanceOverlay::default();
                 for statement in &entry.statements {
                     let Some(room) = self.current_room.as_ref() else {
                         return Err(RuntimeCoreError::NoRooms);
@@ -417,7 +417,7 @@ impl RuntimeCore {
                         break;
                     }
                 }
-                commit_instance_updates(&mut instance_updates, with_updates);
+                commit_instance_updates(&mut instance_updates, &mut with_updates);
                 if self.has_pending_scene_change() {
                     break;
                 }
@@ -428,7 +428,7 @@ impl RuntimeCore {
         }
 
         if let Some(room) = self.current_room.as_mut() {
-            for (index, updated_instance) in instance_updates {
+            for (index, updated_instance) in instance_updates.drain_dirty_updates() {
                 if let Some(slot) = room.instances.get_mut(index) {
                     *slot = updated_instance;
                 }

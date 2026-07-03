@@ -1,6 +1,7 @@
 use iwm_runtime_host::RuntimeHost;
 
 use super::context::{RuntimeEvalContext, RuntimeRoomInstanceOverlay};
+use super::overlay::RuntimeSparseInstanceOverlay;
 use super::statement::RuntimeStatementEnvironment;
 use crate::{LoweredLogicExpr, RuntimeInstance};
 
@@ -12,7 +13,7 @@ pub(super) fn env_has_pending_scene_change<H: RuntimeHost>(
 
 pub(super) fn merged_statement_overlay<'a>(
     base_overlay: &RuntimeRoomInstanceOverlay<'a>,
-    pending_updates: &[(usize, RuntimeInstance)],
+    pending_updates: &RuntimeSparseInstanceOverlay,
     current_index: usize,
     current_instance: &RuntimeInstance,
 ) -> RuntimeRoomInstanceOverlay<'a> {
@@ -22,16 +23,11 @@ pub(super) fn merged_statement_overlay<'a>(
 pub(super) fn sync_instance_from_updates(
     current_index: usize,
     current_instance: &mut RuntimeInstance,
-    pending_updates: &mut Vec<(usize, RuntimeInstance)>,
+    pending_updates: &mut RuntimeSparseInstanceOverlay,
 ) {
-    let Some(last_update_index) = pending_updates
-        .iter()
-        .rposition(|(index, _)| *index == current_index)
-    else {
-        return;
-    };
-    *current_instance = pending_updates[last_update_index].1.clone();
-    pending_updates.retain(|(index, _)| *index != current_index);
+    if let Some(instance) = pending_updates.take(current_index) {
+        *current_instance = instance;
+    }
 }
 
 pub(super) fn write_with_target_indices(

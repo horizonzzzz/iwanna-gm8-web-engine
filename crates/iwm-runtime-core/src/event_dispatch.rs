@@ -223,6 +223,7 @@ fn object_parent_id(objects: &[ObjectDefinition], object_id: usize) -> Option<us
         .and_then(|object| object.parent_index.try_into().ok())
 }
 
+#[cfg(test)]
 pub(crate) fn runtime_instance_indices_by_object_id(
     room: &RuntimeRoomState,
 ) -> HashMap<usize, Vec<usize>> {

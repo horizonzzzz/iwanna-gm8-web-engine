@@ -31,6 +31,7 @@ use super::instances::{
     assign_runtime_member_reference, pending_create_member_value,
     pending_create_member_value_by_object_target, runtime_instance_create_request,
 };
+use super::overlay::RuntimeSparseInstanceOverlay;
 use crate::event_dispatch::{inherited_event_block_id, RuntimeEventSelector};
 use crate::helpers::{as_number, record_host_diagnostic};
 use crate::tick_context::RuntimeObjectQueryScratch;
@@ -59,7 +60,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) diagnostics: &'a mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
     pub(crate) object_query_scratch: Option<&'a mut RuntimeObjectQueryScratch>,
     pub(crate) with_target_indices: &'a mut Vec<usize>,
-    pub(crate) room_instance_updates: &'a mut Vec<(usize, RuntimeInstance)>,
+    pub(crate) room_instance_updates: &'a mut RuntimeSparseInstanceOverlay,
     pub(crate) room_instance_creates: &'a mut Vec<RuntimeInstanceCreateRequest>,
     pub(crate) objects: &'a [ObjectDefinition],
     pub(crate) sprites: &'a [SpriteResource],
@@ -568,8 +569,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         break;
                     }
                 }
-                env.room_instance_updates
-                    .push((target_index, target_instance));
+                env.room_instance_updates.set(target_index, target_instance);
                 if env_has_pending_scene_change(env) {
                     break;
                 }

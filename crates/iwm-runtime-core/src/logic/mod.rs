@@ -11,6 +11,7 @@ mod eval_functions;
 mod eval_values;
 mod eval_variables;
 mod instances;
+mod overlay;
 mod statement;
 
 use std::collections::{HashMap, VecDeque};
@@ -35,6 +36,7 @@ pub(crate) use context::{
     RuntimeBinaryFileState, RuntimeEvalContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay,
     StepExecutionResult,
 };
+pub(crate) use overlay::RuntimeSparseInstanceOverlay;
 pub(crate) use statement::{
     apply_runtime_statement, RuntimeDrawContext, RuntimeExecutionTrace, RuntimeStatementEnvironment,
 };
@@ -88,11 +90,11 @@ impl RuntimeCore {
 
         let mut player_motion_changed = false;
         let mut player_jump_owned_by_script = false;
-        let mut instance_updates: HashMap<usize, RuntimeInstance> = HashMap::new();
+        let mut instance_updates = RuntimeSparseInstanceOverlay::default();
         let mut instance_creates: Vec<RuntimeInstanceCreateRequest> = Vec::new();
 
         for (index, object_id) in tick_context.dispatch_owners.iter().copied() {
-            let Some(mut instance) = instance_updates.get(&index).cloned().or_else(|| {
+            let Some(mut instance) = instance_updates.get(index).cloned().or_else(|| {
                 self.current_room
                     .as_ref()
                     .and_then(|room| room.instances.get(index).cloned())
@@ -136,7 +138,7 @@ impl RuntimeCore {
                     "step",
                 );
                 let mut scope = RuntimeExecutionScope::default();
-                let mut with_updates = Vec::new();
+                let mut with_updates = RuntimeSparseInstanceOverlay::default();
                 for statement in &entry.statements {
                     let Some(room) = self.current_room.as_ref() else {
                         return Err(RuntimeCoreError::NoRooms);
@@ -205,10 +207,12 @@ impl RuntimeCore {
                     );
                     sync_current_instance_from_updates(index, &mut instance, &mut with_updates);
                     if self.has_pending_scene_change() {
-                        instance_updates.insert(index, instance);
-                        commit_instance_updates(&mut instance_updates, with_updates);
+                        instance_updates.set(index, instance);
+                        commit_instance_updates(&mut instance_updates, &mut with_updates);
                         if let Some(room) = self.current_room.as_mut() {
-                            for (update_index, updated_instance) in instance_updates {
+                            for (update_index, updated_instance) in
+                                instance_updates.drain_dirty_updates()
+                            {
                                 if let Some(slot) = room.instances.get_mut(update_index) {
                                     *slot = updated_instance;
                                 }
@@ -223,7 +227,7 @@ impl RuntimeCore {
                         });
                     }
                 }
-                commit_instance_updates(&mut instance_updates, with_updates);
+                commit_instance_updates(&mut instance_updates, &mut with_updates);
             }
 
             if is_player
@@ -231,11 +235,11 @@ impl RuntimeCore {
             {
                 player_motion_changed = true;
             }
-            instance_updates.insert(index, instance);
+            instance_updates.set(index, instance);
         }
 
         if let Some(room) = self.current_room.as_mut() {
-            for (index, instance) in instance_updates {
+            for (index, instance) in instance_updates.drain_dirty_updates() {
                 if let Some(slot) = room.instances.get_mut(index) {
                     *slot = instance;
                 }
@@ -345,7 +349,8 @@ impl RuntimeCore {
                     .unwrap_or(&[]);
                 let button_states = HashMap::new();
                 let room_order = &self.cached_room_order;
-                let committed_updates = HashMap::new();
+                let committed_updates = RuntimeSparseInstanceOverlay::default();
+                let pending_updates = RuntimeSparseInstanceOverlay::default();
                 let eval_context = RuntimeEvalContext {
                     current_room_id,
                     button_states: &button_states,
@@ -355,7 +360,7 @@ impl RuntimeCore {
                     collision_spatial_index: None,
                     room_instance_overlay: RuntimeRoomInstanceOverlay::with_current(
                         &committed_updates,
-                        &[],
+                        &pending_updates,
                         create_index,
                         &instance,
                     ),
@@ -366,7 +371,7 @@ impl RuntimeCore {
                     room_ids_by_name: &self.room_ids_by_name,
                 };
                 let destroy_event_entries = &self.cached_destroy_event_entries;
-                let mut room_instance_updates = Vec::new();
+                let mut room_instance_updates = RuntimeSparseInstanceOverlay::default();
                 let mut with_target_indices = Vec::new();
                 for entry in &entries {
                     let event_owner_id = event_owner_id_for_block_id(objects, &entry.block_id)
@@ -432,7 +437,9 @@ impl RuntimeCore {
                     }
                 }
                 if let Some(room) = self.current_room.as_mut() {
-                    for (update_index, updated_instance) in room_instance_updates {
+                    for (update_index, updated_instance) in
+                        room_instance_updates.drain_dirty_updates()
+                    {
                         if let Some(slot) = room.instances.get_mut(update_index) {
                             *slot = updated_instance;
                         }
@@ -619,24 +626,19 @@ fn object_matches_or_inherits_from(
 pub(crate) fn sync_current_instance_from_updates(
     current_index: usize,
     current_instance: &mut RuntimeInstance,
-    pending_updates: &mut Vec<(usize, RuntimeInstance)>,
+    pending_updates: &mut RuntimeSparseInstanceOverlay,
 ) {
-    let Some(last_update_index) = pending_updates
-        .iter()
-        .rposition(|(index, _)| *index == current_index)
-    else {
-        return;
-    };
-    *current_instance = pending_updates[last_update_index].1.clone();
-    pending_updates.retain(|(index, _)| *index != current_index);
+    if let Some(instance) = pending_updates.take(current_index) {
+        *current_instance = instance;
+    }
 }
 
 pub(crate) fn commit_instance_updates(
-    committed_updates: &mut HashMap<usize, RuntimeInstance>,
-    updates: Vec<(usize, RuntimeInstance)>,
+    committed_updates: &mut RuntimeSparseInstanceOverlay,
+    updates: &mut RuntimeSparseInstanceOverlay,
 ) {
-    for (index, instance) in updates {
-        committed_updates.insert(index, instance);
+    for (index, instance) in updates.drain_dirty_updates() {
+        committed_updates.set(index, instance);
     }
 }
 

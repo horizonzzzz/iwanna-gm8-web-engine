@@ -241,17 +241,14 @@ fn assign_runtime_member_by_index<H: RuntimeHost>(
 
     let Some(mut target_instance) = env
         .room_instance_updates
-        .iter()
-        .rev()
-        .find(|(index, _)| *index == target_index)
-        .map(|(_, instance)| instance.clone())
+        .get(target_index)
+        .cloned()
         .or_else(|| eval_context.and_then(|context| context.room_instance(target_index).cloned()))
     else {
         return false;
     };
     assign_instance_field_or_var(member.to_string(), value, &mut target_instance);
-    env.room_instance_updates
-        .push((target_index, target_instance));
+    env.room_instance_updates.set(target_index, target_instance);
     true
 }
 
