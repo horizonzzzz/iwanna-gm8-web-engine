@@ -464,6 +464,7 @@ export function useRuntimeShell() {
   }, [draw, loadedPackage, packagePath, runExclusiveWithAutoTick]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       stopAutoTick();

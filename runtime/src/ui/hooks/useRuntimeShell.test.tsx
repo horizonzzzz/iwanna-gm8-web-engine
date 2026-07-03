@@ -1,4 +1,5 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../app/App';
 import type { WasmRuntimeBridge } from '../../runtime/wasmBridge';
@@ -87,6 +88,7 @@ function arrangeWasmPackage(pkg: RuntimePackage = makeRuntimePackage()): WasmRun
 }
 
 afterEach(() => {
+  cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
@@ -119,6 +121,24 @@ describe('useRuntimeShell', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled());
     await waitFor(() => expect(screen.getByText(/^Tick: [1-9]\d*/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled());
+  });
+
+  it('keeps automatic ticking active after StrictMode replays effects', async () => {
+    arrangeWasmPackage();
+
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Load Package' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByText(/^Tick: [1-9]\d*/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/^Frame: \d/)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled());
