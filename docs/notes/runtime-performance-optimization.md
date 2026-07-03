@@ -33,6 +33,14 @@ Interpretation:
 - future larger rooms can still stall because several runtime paths scale by
   repeatedly scanning or rebuilding data structures
 
+Current P1 implementation check after the runtime-core refactor batch:
+
+- release WASM rebuild and sync succeeded on this workspace
+- room151 browser smoke passed through the Playwright WASM bridge path
+- room151 CLI runtime diagnostics ran for 240 ticks with no runtime blockers
+- static render caching remains deferred because the current recorded room151
+  release `renderMs` p95 is `2.70ms`, below the `3.50ms` P1 gate
+
 ## Current Bottleneck Ranking
 
 1. Build mode was the first fixed cost. Release WASM is now the default sync
@@ -41,11 +49,10 @@ Interpretation:
    now prefers a binary `iwm_step_buffer` path for the combined per-tick
    input/snapshot/frame exchange when the WASM export is available. JSON remains
    for package boot, diagnostics, control calls, and legacy fallback paths.
-3. Runtime-core indexing and allocation churn is the best next core target. The
-   first slice now exists for collision dispatch: `RuntimeTickContext` owns a
-   reusable collision spatial index, collision scratch, and collision hit buffer.
-   Broader object-target queries and same-tick update overlays still need the
-   same treatment.
+3. Runtime-core indexing and allocation churn was the best next core target. The
+   P1 slices now cover package-load event dispatch tables, tick-owned collision
+   scratch, tick-owned object-query scratch, `with(object)` target scratch, and
+   sparse same-tick instance update overlays.
 4. Browser canvas rendering is measurable but not the primary room151 bottleneck
    in release mode.
 5. The browser tick loop matters for perceived smoothness, but it does not
@@ -65,8 +72,16 @@ Current implementation status:
 - `RuntimeTickContext` exists in runtime core.
 - Collision dispatch uses the tick context's reusable spatial index, candidate
   scratch, and hit buffer.
-- Step/event statement execution still uses separate local update maps and
-  object-target scratch; those remain follow-up work.
+- Step dispatch reuses tick-context dispatch owner scratch and object-query
+  scratch.
+- Object-target helpers such as `instance_number`, `distance_to_object`, and
+  `collision_line` use the tick-owned object index and query scratch on the step
+  hot path.
+- `with(object)` target collection writes into caller-owned scratch instead of
+  allocating a fresh target vector for every statement.
+- Same-tick update visibility now uses `RuntimeSparseInstanceOverlay` instead of
+  per-phase `HashMap<usize, RuntimeInstance>` overlays and reverse-scanned
+  pending update vectors.
 
 Candidate contents:
 
@@ -126,6 +141,15 @@ This matters for rooms with many instances that share the same object type. The
 dispatch question is mostly static; only the live instance set changes every
 tick.
 
+Current status:
+
+- package load builds cached lowered entry index tables for step, create,
+  destroy, generic tagged events, and collision events
+- step and generic event dispatch read package-owned lowered entries by index
+  instead of cloning `LoweredLogicEntry` values
+- runtime tests can refresh lowered-logic caches through a single helper when
+  they mutate package logic after load
+
 ### 4. Reuse Scratch Buffers
 
 Add persistent scratch storage to `RuntimeCore` or to a contained runtime context.
@@ -146,6 +170,15 @@ pathological room, allow it to shrink after room change or after several ticks
 below a lower threshold. This avoids trading CPU stalls for unbounded memory
 retention.
 
+Current status:
+
+- collision candidates, collision hits, step dispatch owners, object query
+  candidates, and `with(object)` target indices have reusable storage
+- object query candidate deduplication uses epoch-mark scratch indexed by runtime
+  instance slot
+- generic create/draw/event paths keep local scratch where they do not yet have a
+  tick context, but use the same statement-environment buffer model
+
 ### 5. Replace Per-Tick Update HashMaps With Sparse Overlays
 
 Same-tick update visibility is required for correctness, but a generic
@@ -164,6 +197,18 @@ Prefer a sparse overlay:
 This preserves same-tick read-after-write behavior while making the common case
 cheap.
 
+Current status:
+
+- `RuntimeSparseInstanceOverlay` stores dirty runtime instance slots in a sparse
+  slot vector plus `dirty_indices`
+- step, generic event, draw-event, and create-event update queues use sparse
+  overlays for committed and pending updates
+- `RuntimeRoomInstanceOverlay` reads current, pending, then committed sparse
+  overlays before falling back to the room instance
+- the current implementation still stores whole `RuntimeInstance` snapshots; a
+  future field-delta overlay can reduce clone size further once behavior is fully
+  stable
+
 ### 6. Cache Static Render Data
 
 Render-frame construction still has room to avoid repeated work even though
@@ -179,6 +224,13 @@ Cache per-room static data:
 Invalidate this cache on room change, package reload, or when runtime semantics
 eventually support mutable tile/background state. Dynamic instances and draw
 events should stay per-frame.
+
+Current status:
+
+- deferred for this P1 batch
+- current room151 release baseline has `renderMs` p95 below the `3.50ms` gate
+- revisit when a larger sample or fresh browser measurement shows render-frame
+  construction dominating frame cost
 
 ## JSON Bridge Work
 
@@ -269,17 +321,19 @@ control.
 
 1. Keep release WASM as the default performance path and avoid judging
    smoothness from debug WASM.
-2. Implement the runtime-core tick context with reusable scratch buffers.
-   Collision dispatch now uses this path; broaden it to step/event statement
-   scratch next.
+2. Implement the runtime-core tick context with reusable scratch buffers. Done
+   for collision dispatch, step dispatch owners, object queries, and
+   `with(object)` targets.
 3. Move collision, place-meeting, and object-target queries onto denser reusable
-   spatial/object indexes. Collision dispatch is done; place/object-target
-   logic queries remain.
+   spatial/object indexes. Collision dispatch and the main object-target logic
+   helpers are done; broader place-query densification remains follow-up work.
 4. Precompute event dispatch and inheritance lookup tables at package/runtime
-   load.
-5. Replace same-tick update hash maps with sparse overlays.
+   load. Event dispatch tables are done; denser object ordinal tables remain a
+   future refinement.
+5. Replace same-tick update hash maps with sparse overlays. Done with sparse
+   whole-instance overlays; field-delta overlays remain optional future work.
 6. Cache static render-frame data per room if render-frame construction becomes
-   visible in measurements.
+   visible in measurements. Deferred behind the render p95 gate.
 7. Implement the binary bridge as a separate bridge-contract project.
 8. Consider Worker, `SharedArrayBuffer`, `OffscreenCanvas`, WebGL/WebGPU, and
    `AudioWorklet` only when measurements show main-thread host limits, or when
