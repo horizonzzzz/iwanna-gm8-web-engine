@@ -8,8 +8,9 @@ use super::support::{
     sample_package,
 };
 use crate::event_dispatch::{
-    collision_event_target_object_ids, object_event_block_ids, runtime_collision_spatial_index,
-    runtime_instance_indices_by_object_id, RuntimeEventSelector,
+    collision_event_target_object_ids, object_event_block_ids,
+    runtime_instance_indices_by_object_id, RuntimeCollisionScratch, RuntimeCollisionSpatialIndex,
+    RuntimeEventSelector,
 };
 
 #[test]
@@ -482,7 +483,8 @@ fn collision_spatial_index_excludes_far_instances_for_same_object_id() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    let index = runtime_collision_spatial_index(room);
+    let mut index = RuntimeCollisionSpatialIndex::default();
+    index.rebuild(room);
     let candidates = index.candidate_indices(2, player, player.x, player.y);
 
     assert_eq!(candidates, vec![2]);
@@ -520,10 +522,48 @@ fn collision_spatial_index_finds_near_solid_instances_only() {
         .iter()
         .find(|instance| instance.player_candidate)
         .unwrap();
-    let index = runtime_collision_spatial_index(room);
+    let mut index = RuntimeCollisionSpatialIndex::default();
+    index.rebuild(room);
     let candidates = index.solid_candidate_indices(player, player.x, player.y);
 
     assert_eq!(candidates, vec![2]);
+}
+
+#[test]
+fn collision_spatial_index_rebuild_clears_stale_candidates_with_reused_scratch() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let mut index = RuntimeCollisionSpatialIndex::default();
+    let mut scratch = RuntimeCollisionScratch::default();
+    let (player, block_index) = {
+        let room = core.current_room().unwrap();
+        let player = room
+            .instances
+            .iter()
+            .find(|instance| instance.player_candidate)
+            .unwrap()
+            .clone();
+        let block_index = room
+            .instances
+            .iter()
+            .position(|instance| instance.solid)
+            .unwrap();
+        (player, block_index)
+    };
+
+    index.rebuild(core.current_room().unwrap());
+    index.candidate_indices_into(2, &player, player.x, player.y, &mut scratch);
+    assert_eq!(scratch.candidates(), &[2]);
+
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let block = &mut room.instances[block_index];
+        block.x = 10_000.0;
+        block.y = 10_000.0;
+    }
+
+    index.rebuild(core.current_room().unwrap());
+    index.candidate_indices_into(2, &player, player.x, player.y, &mut scratch);
+    assert!(scratch.candidates().is_empty());
 }
 
 #[test]

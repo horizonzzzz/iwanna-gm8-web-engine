@@ -6,12 +6,13 @@ use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 use iwm_runtime_model::RoomDefinition;
 
 use crate::event_dispatch::{
-    event_owner_id_for_block_id, object_event_block_ids, runtime_collision_spatial_index,
+    event_owner_id_for_block_id, object_event_block_ids,
     runtime_instance_indices_by_object_id_from_instances, RuntimeCollisionSpatialIndex,
     RuntimeEventSelector,
 };
 use crate::helpers::{as_number, collides_at, is_player_instance};
 use crate::logic::RuntimeBinaryFileState;
+use crate::tick_context::{RuntimeCollisionHit, RuntimeTickContext};
 use crate::{
     LoweredLogicEntry, RuntimeCoreError, RuntimeInputTraceSnapshot, RuntimeInstance,
     RuntimeJumpSnapshot, RuntimePackage, RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot,
@@ -60,6 +61,7 @@ pub struct RuntimeCore {
     pub(crate) last_tick_phases: RuntimeTickPhaseSnapshot,
     pub(crate) death_waiting_for_restart: bool,
     pub(crate) binary_files: RuntimeBinaryFileState,
+    pub(crate) tick_context: RuntimeTickContext,
 }
 
 impl RuntimeCore {
@@ -166,6 +168,7 @@ impl RuntimeCore {
             last_tick_phases: RuntimeTickPhaseSnapshot::default(),
             death_waiting_for_restart: false,
             binary_files: RuntimeBinaryFileState::default(),
+            tick_context: RuntimeTickContext::default(),
         };
 
         core.cached_script_entries = core.lowered_script_entries();
@@ -1034,12 +1037,17 @@ impl RuntimeCore {
         &mut self,
         host: &mut H,
     ) -> Result<(), RuntimeCoreError> {
-        let (collisions, spatial_index) = {
+        if self.current_room.is_none() {
+            return Err(RuntimeCoreError::NoRooms);
+        }
+
+        let mut tick_context = std::mem::take(&mut self.tick_context);
+        {
             let Some(room) = self.current_room.as_ref() else {
                 return Err(RuntimeCoreError::NoRooms);
             };
-            let mut hits = Vec::new();
-            let spatial_index = runtime_collision_spatial_index(room);
+            tick_context.clear_collision_hits();
+            tick_context.rebuild_collision_spatial_index(room);
             for (instance_index, instance) in room.instances.iter().enumerate() {
                 if !instance.alive {
                     continue;
@@ -1060,61 +1068,63 @@ impl RuntimeCore {
                         continue;
                     };
                     for matching_object_id in matching_object_ids {
-                        for other_index in spatial_index.candidate_indices(
+                        tick_context.collision_spatial_index.candidate_indices_into(
                             *matching_object_id,
                             instance,
                             instance.x,
                             instance.y,
-                        ) {
+                            &mut tick_context.collision_scratch,
+                        );
+                        for &other_index in tick_context.collision_scratch.candidates() {
                             let Some(other) = room.instances.get(other_index) else {
                                 continue;
                             };
                             if instance.runtime_id == other.runtime_id {
                                 continue;
                             }
-                            if crate::helpers::collides_at(
+                            if collides_at(
                                 instance,
                                 instance.x,
                                 instance.y,
                                 std::slice::from_ref(other),
                                 Some(instance.runtime_id),
                             ) {
-                                hits.push((
-                                    instance_index,
+                                tick_context.collision_hits.push(RuntimeCollisionHit {
+                                    instance_idx: instance_index,
                                     target_object_id,
-                                    other_index,
-                                    instance.solid || other.solid,
-                                ));
+                                    other_idx: other_index,
+                                    solid_collision: instance.solid || other.solid,
+                                });
                             }
                         }
                     }
                 }
             }
-            (hits, spatial_index)
         };
 
-        for (instance_idx, target_object_id, other_idx, solid_collision) in collisions {
+        for hit in tick_context.collision_hits.iter().copied() {
             let other_instance = {
                 let Some(room) = self.current_room.as_mut() else {
                     continue;
                 };
-                if instance_idx >= room.instances.len() || other_idx >= room.instances.len() {
+                if hit.instance_idx >= room.instances.len() || hit.other_idx >= room.instances.len()
+                {
                     continue;
                 }
-                if !room.instances[instance_idx].alive || !room.instances[other_idx].alive {
+                if !room.instances[hit.instance_idx].alive || !room.instances[hit.other_idx].alive {
                     continue;
                 }
-                if solid_collision {
-                    if let Some(instance) = room.instances.get_mut(instance_idx) {
+                if hit.solid_collision {
+                    if let Some(instance) = room.instances.get_mut(hit.instance_idx) {
                         instance.x = instance.previous_x;
                         instance.y = instance.previous_y;
                     }
-                    if let Some(other) = room.instances.get_mut(other_idx) {
+                    if let Some(other) = room.instances.get_mut(hit.other_idx) {
                         other.x = other.previous_x;
                         other.y = other.previous_y;
                     }
                 }
-                room.instances.get(other_idx).cloned()
+                room.instances.get(hit.other_idx).cloned()
             };
             let Some(other_instance) = other_instance else {
                 continue;
@@ -1123,26 +1133,31 @@ impl RuntimeCore {
                 let Some(room) = self.current_room.as_ref() else {
                     continue;
                 };
-                let Some(instance) = room.instances.get(instance_idx) else {
+                let Some(instance) = room.instances.get(hit.instance_idx) else {
                     continue;
                 };
                 object_event_block_ids(
                     &self.package,
                     instance.object_id,
-                    RuntimeEventSelector::Collision { target_object_id },
+                    RuntimeEventSelector::Collision {
+                        target_object_id: hit.target_object_id,
+                    },
                 )
             };
             self.apply_event_blocks_to_instance(
                 host,
-                instance_idx,
+                hit.instance_idx,
                 &block_ids,
                 Some(other_instance),
-                RuntimeEventSelector::Collision { target_object_id },
+                RuntimeEventSelector::Collision {
+                    target_object_id: hit.target_object_id,
+                },
                 "collision".into(),
-                Some(&spatial_index),
+                Some(&tick_context.collision_spatial_index),
             );
         }
 
+        self.tick_context = tick_context;
         Ok(())
     }
 }

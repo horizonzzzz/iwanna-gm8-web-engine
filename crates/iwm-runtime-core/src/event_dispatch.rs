@@ -155,11 +155,41 @@ pub(crate) fn runtime_instance_indices_by_object_id_from_instances(
 
 #[derive(Debug, Default)]
 pub(crate) struct RuntimeCollisionSpatialIndex {
-    cells_by_object_id: HashMap<usize, HashMap<(i32, i32), Vec<usize>>>,
-    solid_cells: HashMap<(i32, i32), Vec<usize>>,
+    cells_by_object_id: HashMap<usize, HashMap<i64, Vec<usize>>>,
+    solid_cells: HashMap<i64, Vec<usize>>,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct RuntimeCollisionScratch {
+    candidates: Vec<usize>,
+    candidate_marks: Vec<u32>,
+    mark_epoch: u32,
 }
 
 impl RuntimeCollisionSpatialIndex {
+    pub(crate) fn rebuild(&mut self, room: &RuntimeRoomState) {
+        self.clear_cells();
+        for (instance_index, instance) in room.instances.iter().enumerate() {
+            if !instance.alive {
+                continue;
+            }
+            let (left, top, right, bottom) = bounds_at(instance, instance.x, instance.y);
+            let object_cells = self
+                .cells_by_object_id
+                .entry(instance.object_id)
+                .or_default();
+            for_each_cell_for_bounds(left, top, right, bottom, |cell| {
+                object_cells.entry(cell).or_default().push(instance_index);
+                if instance.solid {
+                    self.solid_cells
+                        .entry(cell)
+                        .or_default()
+                        .push(instance_index);
+                }
+            });
+        }
+    }
+
     pub(crate) fn candidate_indices(
         &self,
         object_id: usize,
@@ -167,10 +197,24 @@ impl RuntimeCollisionSpatialIndex {
         x: f64,
         y: f64,
     ) -> Vec<usize> {
+        let mut scratch = RuntimeCollisionScratch::default();
+        self.candidate_indices_into(object_id, instance, x, y, &mut scratch);
+        scratch.candidates().to_vec()
+    }
+
+    pub(crate) fn candidate_indices_into(
+        &self,
+        object_id: usize,
+        instance: &RuntimeInstance,
+        x: f64,
+        y: f64,
+        scratch: &mut RuntimeCollisionScratch,
+    ) {
         let Some(cells) = self.cells_by_object_id.get(&object_id) else {
-            return Vec::new();
+            scratch.clear_candidates();
+            return;
         };
-        candidate_indices_from_cells(cells, instance, x, y)
+        candidate_indices_from_cells(cells, instance, x, y, scratch);
     }
 
     pub(crate) fn solid_candidate_indices(
@@ -179,59 +223,91 @@ impl RuntimeCollisionSpatialIndex {
         x: f64,
         y: f64,
     ) -> Vec<usize> {
-        candidate_indices_from_cells(&self.solid_cells, instance, x, y)
+        let mut scratch = RuntimeCollisionScratch::default();
+        self.solid_candidate_indices_into(instance, x, y, &mut scratch);
+        scratch.candidates().to_vec()
+    }
+
+    pub(crate) fn solid_candidate_indices_into(
+        &self,
+        instance: &RuntimeInstance,
+        x: f64,
+        y: f64,
+        scratch: &mut RuntimeCollisionScratch,
+    ) {
+        candidate_indices_from_cells(&self.solid_cells, instance, x, y, scratch);
+    }
+
+    fn clear_cells(&mut self) {
+        for object_cells in self.cells_by_object_id.values_mut() {
+            for indices in object_cells.values_mut() {
+                indices.clear();
+            }
+        }
+        for indices in self.solid_cells.values_mut() {
+            indices.clear();
+        }
     }
 }
 
-pub(crate) fn runtime_collision_spatial_index(
-    room: &RuntimeRoomState,
-) -> RuntimeCollisionSpatialIndex {
-    let mut index = RuntimeCollisionSpatialIndex::default();
-    for (instance_index, instance) in room.instances.iter().enumerate() {
-        if !instance.alive {
-            continue;
-        }
-        let (left, top, right, bottom) = bounds_at(instance, instance.x, instance.y);
-        let object_cells = index
-            .cells_by_object_id
-            .entry(instance.object_id)
-            .or_default();
-        for cell in cells_for_bounds(left, top, right, bottom) {
-            object_cells.entry(cell).or_default().push(instance_index);
-            if instance.solid {
-                index
-                    .solid_cells
-                    .entry(cell)
-                    .or_default()
-                    .push(instance_index);
-            }
+impl RuntimeCollisionScratch {
+    pub(crate) fn candidates(&self) -> &[usize] {
+        &self.candidates
+    }
+
+    fn clear_candidates(&mut self) {
+        self.candidates.clear();
+    }
+
+    fn begin_query(&mut self) {
+        self.candidates.clear();
+        self.mark_epoch = self.mark_epoch.wrapping_add(1);
+        if self.mark_epoch == 0 {
+            self.candidate_marks.fill(0);
+            self.mark_epoch = 1;
         }
     }
-    index
+
+    fn mark_candidate(&mut self, index: usize) -> bool {
+        if index >= self.candidate_marks.len() {
+            self.candidate_marks.resize(index + 1, 0);
+        }
+        if self.candidate_marks[index] == self.mark_epoch {
+            return false;
+        }
+        self.candidate_marks[index] = self.mark_epoch;
+        true
+    }
 }
 
 fn candidate_indices_from_cells(
-    cells: &HashMap<(i32, i32), Vec<usize>>,
+    cells: &HashMap<i64, Vec<usize>>,
     instance: &RuntimeInstance,
     x: f64,
     y: f64,
-) -> Vec<usize> {
-    let mut candidates = Vec::new();
+    scratch: &mut RuntimeCollisionScratch,
+) {
+    scratch.begin_query();
     let (left, top, right, bottom) = bounds_at(instance, x, y);
-    for cell in cells_for_bounds(left, top, right, bottom) {
+    for_each_cell_for_bounds(left, top, right, bottom, |cell| {
         let Some(indices) = cells.get(&cell) else {
-            continue;
+            return;
         };
         for index in indices {
-            if !candidates.contains(index) {
-                candidates.push(*index);
+            if scratch.mark_candidate(*index) {
+                scratch.candidates.push(*index);
             }
         }
-    }
-    candidates
+    });
 }
 
-fn cells_for_bounds(left: i32, top: i32, right: i32, bottom: i32) -> Vec<(i32, i32)> {
+fn for_each_cell_for_bounds(
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+    mut visit: impl FnMut(i64),
+) {
     let right = (right - 1).max(left);
     let bottom = (bottom - 1).max(top);
     let left_cell = left.div_euclid(COLLISION_SPATIAL_CELL_SIZE);
@@ -239,13 +315,15 @@ fn cells_for_bounds(left: i32, top: i32, right: i32, bottom: i32) -> Vec<(i32, i
     let top_cell = top.div_euclid(COLLISION_SPATIAL_CELL_SIZE);
     let bottom_cell = bottom.div_euclid(COLLISION_SPATIAL_CELL_SIZE);
 
-    let mut cells = Vec::new();
     for y in top_cell..=bottom_cell {
         for x in left_cell..=right_cell {
-            cells.push((x, y));
+            visit(pack_cell_key(x, y));
         }
     }
-    cells
+}
+
+fn pack_cell_key(x: i32, y: i32) -> i64 {
+    ((x as i64) << 32) | (y as u32 as i64)
 }
 
 pub(crate) fn collision_event_target_object_ids(

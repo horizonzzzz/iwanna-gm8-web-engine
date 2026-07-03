@@ -8,6 +8,7 @@ mod movement;
 mod render;
 mod room_builder;
 mod room_transitions;
+mod tick_context;
 mod types;
 
 #[cfg(test)]

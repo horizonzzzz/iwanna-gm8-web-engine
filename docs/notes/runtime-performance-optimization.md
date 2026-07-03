@@ -41,9 +41,11 @@ Interpretation:
    now prefers a binary `iwm_step_buffer` path for the combined per-tick
    input/snapshot/frame exchange when the WASM export is available. JSON remains
    for package boot, diagnostics, control calls, and legacy fallback paths.
-3. Runtime-core indexing and allocation churn is the best next core target:
-   stronger spatial indexes, scratch-buffer reuse, and avoiding per-tick
-   `HashMap` / `Vec` rebuilds.
+3. Runtime-core indexing and allocation churn is the best next core target. The
+   first slice now exists for collision dispatch: `RuntimeTickContext` owns a
+   reusable collision spatial index, collision scratch, and collision hit buffer.
+   Broader object-target queries and same-tick update overlays still need the
+   same treatment.
 4. Browser canvas rendering is measurable but not the primary room151 bottleneck
    in release mode.
 5. The browser tick loop matters for perceived smoothness, but it does not
@@ -57,6 +59,14 @@ Introduce a runtime-owned tick context, for example `RuntimeTickContext`, that i
 cleared and reused for one runtime tick. It should hold phase-local indexes,
 scratch vectors, and temporary views instead of letting each subsystem allocate
 its own short-lived structures.
+
+Current implementation status:
+
+- `RuntimeTickContext` exists in runtime core.
+- Collision dispatch uses the tick context's reusable spatial index, candidate
+  scratch, and hit buffer.
+- Step/event statement execution still uses separate local update maps and
+  object-target scratch; those remain follow-up work.
 
 Candidate contents:
 
@@ -83,14 +93,16 @@ Practical sequence:
 
 1. Keep the existing spatial-index behavior, but move its allocations into the
    tick context and reuse buckets with `clear()` so capacity survives across
-   ticks.
+   ticks. This is implemented for collision dispatch.
 2. Replace object-id hash lookup on hot paths with package-load ordinals:
    `object_id -> object_ord` once, then `Vec<ObjectSpatialBuckets>` at runtime.
 3. Pack grid cells into a small key, for example `(cell_x, cell_y) -> i64`, and
-   reuse a scratch list of nearby cell keys per query.
+   reuse a scratch list of nearby cell keys per query. Cell packing is now in
+   place for the collision spatial index.
 4. Avoid `Vec::contains` or per-query `HashSet` for candidate deduplication.
    Use `candidate_mark: Vec<u32>` indexed by runtime instance slot plus a
-   monotonic `mark_epoch`. When the epoch overflows, clear the mark array.
+   monotonic `mark_epoch`. When the epoch overflows, clear the mark array. This
+   candidate-mark path is now used by collision dispatch.
 5. Cache object inheritance expansion, such as "all children of collision target
    object X", at package/runtime load instead of recomputing it during collision
    dispatch.
@@ -258,8 +270,11 @@ control.
 1. Keep release WASM as the default performance path and avoid judging
    smoothness from debug WASM.
 2. Implement the runtime-core tick context with reusable scratch buffers.
+   Collision dispatch now uses this path; broaden it to step/event statement
+   scratch next.
 3. Move collision, place-meeting, and object-target queries onto denser reusable
-   spatial/object indexes.
+   spatial/object indexes. Collision dispatch is done; place/object-target
+   logic queries remain.
 4. Precompute event dispatch and inheritance lookup tables at package/runtime
    load.
 5. Replace same-tick update hash maps with sparse overlays.
