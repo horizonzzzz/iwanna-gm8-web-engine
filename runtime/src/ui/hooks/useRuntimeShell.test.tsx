@@ -98,7 +98,7 @@ describe('useRuntimeShell', () => {
     const { result } = renderHook(() => useRuntimeShell());
 
     await act(async () => {
-      await result.current.loadCurrentPackage(makeKeyboard());
+      await result.current.loadCurrentPackage();
     });
     await waitFor(() => expect(result.current.loadedPackage).not.toBeNull());
 
@@ -119,6 +119,9 @@ describe('useRuntimeShell', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled());
     await waitFor(() => expect(screen.getByText(/^Tick: [1-9]\d*/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled());
   });
 
   it('schedules automatic ticks from the selected room speed', async () => {
