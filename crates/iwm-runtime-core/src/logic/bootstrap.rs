@@ -135,6 +135,7 @@ impl RuntimeCore {
                 let room_instances = create_visible_instances(room_state, visible_instances);
                 let eval_context = RuntimeEvalContext {
                     current_room_id: room_state.room_id,
+                    room_speed: room_state.speed,
                     button_states: &button_states,
                     room_instances: room_instances.as_ref(),
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
@@ -177,6 +178,7 @@ impl RuntimeCore {
                 let room_instances = create_visible_instances(room_state, visible_instances);
                 let eval_context = RuntimeEvalContext {
                     current_room_id: room_state.room_id,
+                    room_speed: room_state.speed,
                     button_states: &button_states,
                     room_instances: room_instances.as_ref(),
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
@@ -310,6 +312,7 @@ impl RuntimeCore {
         let room_instances = create_visible_instances(room_state, visible_instances);
         let eval_context = RuntimeEvalContext {
             current_room_id: room_state.room_id,
+            room_speed: room_state.speed,
             button_states: &button_states,
             room_instances: room_instances.as_ref(),
             room_instance_indices_by_object_id: &room_instance_indices_by_object_id,

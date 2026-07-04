@@ -67,7 +67,7 @@ impl RuntimeCore {
         let destroy_event_entries = &self.cached_destroy_event_entries;
         let mut tick_context = std::mem::take(&mut self.tick_context);
         let room_instance_indices_by_object_id = HashMap::new();
-        let current_room_id = {
+        let (current_room_id, current_room_speed) = {
             let Some(room) = self.current_room.as_ref() else {
                 return Err(RuntimeCoreError::NoRooms);
             };
@@ -85,7 +85,7 @@ impl RuntimeCore {
                             .then_some((index, instance.object_id))
                     }),
             );
-            room.room_id
+            (room.room_id, room.speed)
         };
 
         let mut player_motion_changed = false;
@@ -151,6 +151,7 @@ impl RuntimeCore {
                     );
                     let eval_context = RuntimeEvalContext {
                         current_room_id,
+                        room_speed: current_room_speed,
                         button_states,
                         room_instances: &room.instances,
                         room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
@@ -308,7 +309,11 @@ impl RuntimeCore {
             .map(|room| runtime_instance_indices_by_object_id_from_instances(&room.instances));
         while let Some(create) = pending_creates.pop_front() {
             let scene_change_before_create = self.pending_scene_change_state();
-            let Some(current_room_id) = self.current_room.as_ref().map(|room| room.room_id) else {
+            let Some((current_room_id, current_room_speed)) = self
+                .current_room
+                .as_ref()
+                .map(|room| (room.room_id, room.speed))
+            else {
                 return;
             };
             let Some(mut instance) = self.instantiate_runtime_object(
@@ -353,6 +358,7 @@ impl RuntimeCore {
                 let pending_updates = RuntimeSparseInstanceOverlay::default();
                 let eval_context = RuntimeEvalContext {
                     current_room_id,
+                    room_speed: current_room_speed,
                     button_states: &button_states,
                     room_instances,
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,

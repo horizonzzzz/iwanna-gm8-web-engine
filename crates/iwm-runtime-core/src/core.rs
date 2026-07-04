@@ -1,6 +1,6 @@
 //! RuntimeCore state, package loading, tick orchestration, and snapshots.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 use iwm_runtime_model::RoomDefinition;
@@ -14,9 +14,10 @@ use crate::helpers::{as_number, collides_at, is_player_instance};
 use crate::logic::{RuntimeBinaryFileState, RuntimeSparseInstanceOverlay};
 use crate::tick_context::{RuntimeCollisionHit, RuntimeTickContext};
 use crate::{
-    LoweredLogicEntry, RuntimeCoreError, RuntimeInputTraceSnapshot, RuntimeInstance,
-    RuntimeJumpSnapshot, RuntimePackage, RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot,
-    RuntimeStatus, RuntimeTickPhaseSnapshot, RuntimeValue,
+    LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCoreError,
+    RuntimeInputTraceSnapshot, RuntimeInstance, RuntimeJumpSnapshot, RuntimePackage,
+    RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot, RuntimeStatus,
+    RuntimeTickPhaseSnapshot, RuntimeValue,
 };
 
 #[derive(Debug)]
@@ -61,6 +62,7 @@ pub struct RuntimeCore {
     pub(crate) last_input_trace: RuntimeInputTraceSnapshot,
     pub(crate) last_tick_phases: RuntimeTickPhaseSnapshot,
     pub(crate) death_waiting_for_restart: bool,
+    pub(crate) host_bootstrap_scripts_applied: bool,
     pub(crate) binary_files: RuntimeBinaryFileState,
     pub(crate) tick_context: RuntimeTickContext,
 }
@@ -157,6 +159,7 @@ impl RuntimeCore {
             },
             last_tick_phases: RuntimeTickPhaseSnapshot::default(),
             death_waiting_for_restart: false,
+            host_bootstrap_scripts_applied: false,
             binary_files: RuntimeBinaryFileState::default(),
             tick_context: RuntimeTickContext::default(),
         };
@@ -280,6 +283,77 @@ impl RuntimeCore {
             || self.pending_room_transition.is_some()
     }
 
+    fn apply_deferred_host_bootstrap_scripts<H: RuntimeHost>(&mut self, host: &mut H) {
+        if self.host_bootstrap_scripts_applied {
+            return;
+        }
+        self.host_bootstrap_scripts_applied = true;
+
+        let script_calls = self.deferred_host_bootstrap_script_entry_indices();
+        for (instance_idx, entry_index) in script_calls {
+            self.apply_event_entry_indices_to_instance(
+                host,
+                instance_idx,
+                &[entry_index],
+                None,
+                RuntimeEventSelector::Create,
+                "deferred-create-script".into(),
+                None,
+            );
+            if self.has_pending_scene_change() {
+                break;
+            }
+        }
+    }
+
+    fn deferred_host_bootstrap_script_entry_indices(&self) -> Vec<(usize, usize)> {
+        let Some(room) = self.current_room.as_ref() else {
+            return Vec::new();
+        };
+
+        let mut calls = Vec::new();
+        for (instance_idx, instance) in room.instances.iter().enumerate() {
+            if !instance.alive {
+                continue;
+            }
+            let Some(create_entries) = self.cached_create_event_entries.get(&instance.object_id)
+            else {
+                continue;
+            };
+            for create_entry in create_entries {
+                for statement in &create_entry.statements {
+                    let LoweredLogicStatement::FunctionCall { name, .. } = statement else {
+                        continue;
+                    };
+                    let Some(script_entry) = self.cached_script_entries.get(name) else {
+                        continue;
+                    };
+                    let mut seen_scripts = HashSet::new();
+                    if !statements_reference_host_file_functions(
+                        &script_entry.statements,
+                        &self.cached_script_entries,
+                        &mut seen_scripts,
+                    ) {
+                        continue;
+                    }
+                    let Some(script_entry_index) = self
+                        .lowered_logic_index
+                        .get(&script_entry.block_id)
+                        .copied()
+                    else {
+                        continue;
+                    };
+                    let call = (instance_idx, script_entry_index);
+                    if !calls.contains(&call) {
+                        calls.push(call);
+                    }
+                }
+            }
+        }
+
+        calls
+    }
+
     pub fn render<H: RuntimeHost>(&mut self, host: &mut H) -> Result<(), RuntimeCoreError> {
         self.settle_current_room_before_first_render(host)?;
         self.sync_current_room_views_from_globals();
@@ -320,6 +394,10 @@ impl RuntimeCore {
         tick_phases.input_diag_nanos += mark_phase_elapsed(host, &mut phase_start);
 
         self.apply_pending_room_change(host)?;
+        self.apply_deferred_host_bootstrap_scripts(host);
+        if self.has_pending_scene_change() {
+            self.apply_pending_room_change(host)?;
+        }
         self.room_needs_first_render_settle = false;
         tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
@@ -446,6 +524,12 @@ impl RuntimeCore {
             return Ok(());
         }
         self.room_needs_first_render_settle = false;
+
+        self.apply_deferred_host_bootstrap_scripts(host);
+        if self.has_pending_scene_change() {
+            self.apply_pending_room_change(host)?;
+            return Ok(());
+        }
 
         let Some(room) = self.current_room.as_ref() else {
             return Err(RuntimeCoreError::NoRooms);
@@ -869,11 +953,11 @@ impl RuntimeCore {
             .active_buttons()
             .into_iter()
             .collect::<std::collections::HashMap<_, _>>();
-        let current_room_id = {
+        let (current_room_id, current_room_speed) = {
             let Some(room) = self.current_room.as_ref() else {
                 return;
             };
-            room.room_id
+            (room.room_id, room.speed)
         };
         let room_order = &self.cached_room_order;
 
@@ -925,6 +1009,7 @@ impl RuntimeCore {
                 );
                 let eval_context = crate::logic::RuntimeEvalContext {
                     current_room_id,
+                    room_speed: current_room_speed,
                     button_states: &button_states,
                     room_instances: &room.instances,
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
@@ -1216,6 +1301,144 @@ impl RuntimeCore {
 
 fn parse_alarm_slot(key: &str) -> Option<u32> {
     key.strip_prefix("alarm[")?.strip_suffix(']')?.parse().ok()
+}
+
+fn statements_reference_host_file_functions(
+    statements: &[LoweredLogicStatement],
+    script_entries: &HashMap<String, LoweredLogicEntry>,
+    seen_scripts: &mut HashSet<String>,
+) -> bool {
+    statements.iter().any(|statement| {
+        statement_references_host_file_functions(statement, script_entries, seen_scripts)
+    })
+}
+
+fn statement_references_host_file_functions(
+    statement: &LoweredLogicStatement,
+    script_entries: &HashMap<String, LoweredLogicEntry>,
+    seen_scripts: &mut HashSet<String>,
+) -> bool {
+    match statement {
+        LoweredLogicStatement::Assignment { target, value } => {
+            expr_references_host_file_functions(target, script_entries, seen_scripts)
+                || expr_references_host_file_functions(value, script_entries, seen_scripts)
+        }
+        LoweredLogicStatement::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            expr_references_host_file_functions(condition, script_entries, seen_scripts)
+                || statements_reference_host_file_functions(
+                    then_branch,
+                    script_entries,
+                    seen_scripts,
+                )
+                || statements_reference_host_file_functions(
+                    else_branch,
+                    script_entries,
+                    seen_scripts,
+                )
+        }
+        LoweredLogicStatement::FunctionCall { name, args } => {
+            is_host_file_function(name)
+                || args.iter().any(|arg| {
+                    expr_references_host_file_functions(arg, script_entries, seen_scripts)
+                })
+                || script_entries.get(name).is_some_and(|entry| {
+                    if !seen_scripts.insert(name.clone()) {
+                        return false;
+                    }
+                    statements_reference_host_file_functions(
+                        &entry.statements,
+                        script_entries,
+                        seen_scripts,
+                    )
+                })
+        }
+        LoweredLogicStatement::With { target, body } => {
+            expr_references_host_file_functions(target, script_entries, seen_scripts)
+                || statements_reference_host_file_functions(body, script_entries, seen_scripts)
+        }
+        LoweredLogicStatement::For {
+            init,
+            condition,
+            step,
+            body,
+        } => {
+            expr_references_host_file_functions(init, script_entries, seen_scripts)
+                || expr_references_host_file_functions(condition, script_entries, seen_scripts)
+                || expr_references_host_file_functions(step, script_entries, seen_scripts)
+                || statements_reference_host_file_functions(body, script_entries, seen_scripts)
+        }
+        LoweredLogicStatement::Repeat { count, body } => {
+            expr_references_host_file_functions(count, script_entries, seen_scripts)
+                || statements_reference_host_file_functions(body, script_entries, seen_scripts)
+        }
+        LoweredLogicStatement::While { condition, body } => {
+            expr_references_host_file_functions(condition, script_entries, seen_scripts)
+                || statements_reference_host_file_functions(body, script_entries, seen_scripts)
+        }
+        LoweredLogicStatement::VariableDeclaration { .. }
+        | LoweredLogicStatement::Return { .. }
+        | LoweredLogicStatement::Raw { .. } => false,
+    }
+}
+
+fn expr_references_host_file_functions(
+    expr: &LoweredLogicExpr,
+    script_entries: &HashMap<String, LoweredLogicEntry>,
+    seen_scripts: &mut HashSet<String>,
+) -> bool {
+    match expr {
+        LoweredLogicExpr::Call { name, args } => {
+            is_host_file_function(name)
+                || args.iter().any(|arg| {
+                    expr_references_host_file_functions(arg, script_entries, seen_scripts)
+                })
+                || script_entries.get(name).is_some_and(|entry| {
+                    if !seen_scripts.insert(name.clone()) {
+                        return false;
+                    }
+                    statements_reference_host_file_functions(
+                        &entry.statements,
+                        script_entries,
+                        seen_scripts,
+                    )
+                })
+        }
+        LoweredLogicExpr::UnaryExpr { child, .. } => {
+            expr_references_host_file_functions(child, script_entries, seen_scripts)
+        }
+        LoweredLogicExpr::BinaryExpr { left, right, .. } => {
+            expr_references_host_file_functions(left, script_entries, seen_scripts)
+                || expr_references_host_file_functions(right, script_entries, seen_scripts)
+        }
+        LoweredLogicExpr::MemberAccess { target, .. } => {
+            expr_references_host_file_functions(target, script_entries, seen_scripts)
+        }
+        LoweredLogicExpr::IndexAccess { target, index } => {
+            expr_references_host_file_functions(target, script_entries, seen_scripts)
+                || expr_references_host_file_functions(index, script_entries, seen_scripts)
+        }
+        LoweredLogicExpr::Identifier(_)
+        | LoweredLogicExpr::LiteralNumber(_)
+        | LoweredLogicExpr::LiteralBool(_)
+        | LoweredLogicExpr::LiteralText(_)
+        | LoweredLogicExpr::Raw { .. } => false,
+    }
+}
+
+fn is_host_file_function(name: &str) -> bool {
+    matches!(
+        name,
+        "file_exists"
+            | "file_bin_open"
+            | "file_bin_read_byte"
+            | "file_bin_write_byte"
+            | "file_bin_close"
+            | "file_delete"
+    )
 }
 
 fn button_states_without_transitions<H: RuntimeHost>(

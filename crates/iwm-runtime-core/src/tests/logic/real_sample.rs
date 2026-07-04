@@ -337,6 +337,76 @@ fn real_sample_new_game_starts_at_stage_spawn_and_writes_initial_save() {
     );
 }
 
+#[test]
+fn real_sample_menu_uses_death_time_file_stats() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let title_room = real_sample_room_id(&core, "rTitle");
+    let menu_room = real_sample_room_id(&core, "rMenu");
+
+    host.files
+        .write_temp(
+            Path::new("DeathTime"),
+            &[
+                0, 0, 0, 12, 0, 0, 0, 65, 0, 0, 0, 3, 0, 0, 36, 61, 0, 0, 0, 7, 0, 0, 0, 9,
+            ],
+        )
+        .unwrap();
+
+    tick_real_sample_until_room(&mut core, &mut host, title_room, "rTitle");
+    tap_real_sample_jump(&mut core, &mut host);
+    tick_real_sample_until_room(&mut core, &mut host, menu_room, "rMenu");
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    let texts = frame
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            iwm_runtime_host::RuntimeDrawCommand::DrawText { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        texts.contains(&"death:12") && texts.contains(&"time:0:1:5"),
+        "rMenu should render persisted slot stats, got texts={texts:?}; globals={:?}",
+        core.globals
+    );
+}
+
+#[test]
+fn real_sample_stage_alarm_increments_selected_save_time() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    select_real_sample_medium_difficulty(&mut core, &mut host);
+    assert_eq!(
+        core.globals.get("global.time[1]"),
+        Some(&RuntimeValue::Number(0.0))
+    );
+    let room_speed = core
+        .current_room_speed()
+        .expect("stage room should expose room_speed") as usize;
+
+    for _ in 0..=room_speed {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+    }
+
+    assert_eq!(
+        core.globals.get("global.time[1]"),
+        Some(&RuntimeValue::Number(1.0)),
+        "player alarm should count one elapsed second using room_speed; diagnostics={:?}",
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+}
+
 fn release_real_sample_key(host: &mut HeadlessHost, key: u16) {
     host.input.set_button_state(
         RuntimeButton::Keyboard(key),

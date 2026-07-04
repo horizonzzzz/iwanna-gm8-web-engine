@@ -297,7 +297,7 @@ impl RuntimeCore {
             .unwrap_or(&[]);
         let room_order = &self.cached_room_order;
         let button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
-        let (current_room_id, dispatches, room_instance_indices_by_object_id) = {
+        let (current_room_id, current_room_speed, dispatches, room_instance_indices_by_object_id) = {
             let Some(room) = self.current_room.as_ref() else {
                 return Err(RuntimeCoreError::NoRooms);
             };
@@ -320,6 +320,7 @@ impl RuntimeCore {
                 .collect::<Vec<_>>();
             (
                 room.room_id,
+                room.speed,
                 dispatches,
                 runtime_instance_indices_by_object_id_from_instances(&room.instances),
             )
@@ -358,6 +359,7 @@ impl RuntimeCore {
                     );
                     let eval_context = crate::logic::RuntimeEvalContext {
                         current_room_id,
+                        room_speed: current_room_speed,
                         button_states: &button_states,
                         room_instances: &room.instances,
                         room_instance_indices_by_object_id: &room_instance_indices_by_object_id,

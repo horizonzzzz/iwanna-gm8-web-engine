@@ -24,6 +24,7 @@ impl RuntimeCore {
             self.pending_room_reset = false;
             self.pending_room_transition = None;
             self.globals.clear();
+            self.host_bootstrap_scripts_applied = false;
             self.current_room = Some(self.build_room(room_id)?);
             self.room_needs_first_render_settle = true;
             self.death_waiting_for_restart = false;
