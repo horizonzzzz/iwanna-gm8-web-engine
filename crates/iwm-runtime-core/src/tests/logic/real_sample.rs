@@ -125,11 +125,10 @@ fn tap_real_sample_jump(core: &mut RuntimeCore, host: &mut HeadlessHost) {
     host.input.clear_transitions();
 }
 
-fn select_real_sample_medium_difficulty(core: &mut RuntimeCore, host: &mut HeadlessHost) {
+fn enter_real_sample_difficulty_room(core: &mut RuntimeCore, host: &mut HeadlessHost) {
     let title_room = real_sample_room_id(core, "rTitle");
     let menu_room = real_sample_room_id(core, "rMenu");
     let difficulty_room = real_sample_room_id(core, "rSelectStage");
-    let stage_room = real_sample_room_id(core, "rStage01");
 
     if !matches!(
         core.snapshot().room_id,
@@ -178,6 +177,11 @@ fn select_real_sample_medium_difficulty(core: &mut RuntimeCore, host: &mut Headl
             .filter(|diagnostic| diagnostic.message.contains("world"))
             .collect::<Vec<_>>()
     );
+}
+
+fn select_real_sample_medium_difficulty(core: &mut RuntimeCore, host: &mut HeadlessHost) {
+    enter_real_sample_difficulty_room(core, host);
+    let stage_room = real_sample_room_id(core, "rStage01");
 
     move_real_sample_player_onto_target(
         core,
@@ -214,6 +218,48 @@ fn select_real_sample_medium_difficulty(core: &mut RuntimeCore, host: &mut Headl
         core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
     );
     assert_eq!(core.snapshot().room_id, Some(stage_room));
+}
+
+#[test]
+fn real_sample_r_select_stage_spike_reset_keeps_player_movable() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let difficulty_room = real_sample_room_id(&core, "rSelectStage");
+
+    enter_real_sample_difficulty_room(&mut core, &mut host);
+    move_real_sample_player_onto_target(
+        &mut core,
+        |instance| instance.hazard && instance.object_name.to_ascii_lowercase().contains("spike"),
+        "rSelectStage spike hazard",
+    );
+
+    core.tick(&mut host).unwrap();
+    host.input.clear_transitions();
+
+    assert_eq!(core.snapshot().room_id, Some(difficulty_room));
+    let x_before = core
+        .snapshot()
+        .player
+        .as_ref()
+        .map(|player| player.x)
+        .expect("spike reset should recreate a live player");
+
+    press_real_sample_key(&mut host, 0x27);
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .snapshot()
+        .player
+        .expect("player should remain live after reset movement");
+    assert!(
+        player.x > x_before,
+        "player should move right after rSelectStage spike reset; before={x_before}, after={}, diagnostics={:?}",
+        player.x,
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
 }
 
 #[test]

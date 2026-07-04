@@ -75,6 +75,7 @@ impl RuntimeCore {
             self.current_room = Some(room);
             self.apply_current_room_startup_events(host, &source_room)?;
             self.room_needs_first_render_settle = true;
+            self.death_waiting_for_restart = false;
             self.status = RuntimeStatus::Ready;
             self.record_diagnostic(
                 host,
