@@ -10,7 +10,7 @@ use crate::event_dispatch::{
     runtime_instance_indices_by_object_id_from_instances, RuntimeCollisionSpatialIndex,
     RuntimeEventDispatchTables, RuntimeEventSelector,
 };
-use crate::helpers::{as_number, collides_at, is_player_instance};
+use crate::helpers::{as_number, bounds_at, collides_at, is_player_instance};
 use crate::logic::{RuntimeBinaryFileState, RuntimeSparseInstanceOverlay};
 use crate::tick_context::{RuntimeCollisionHit, RuntimeTickContext};
 use crate::{
@@ -1225,7 +1225,8 @@ impl RuntimeCore {
                                 instance.y,
                                 std::slice::from_ref(other),
                                 Some(instance.runtime_id),
-                            ) {
+                            ) || swept_top_contact(instance, other)
+                            {
                                 tick_context.collision_hits.push(RuntimeCollisionHit {
                                     instance_idx: instance_index,
                                     target_object_id,
@@ -1301,6 +1302,18 @@ impl RuntimeCore {
 
 fn parse_alarm_slot(key: &str) -> Option<u32> {
     key.strip_prefix("alarm[")?.strip_suffix(']')?.parse().ok()
+}
+
+fn swept_top_contact(instance: &RuntimeInstance, other: &RuntimeInstance) -> bool {
+    if other.solid || instance.y <= instance.previous_y {
+        return false;
+    }
+
+    let (left, _, right, bottom) = bounds_at(instance, instance.x, instance.y);
+    let (_, _, _, previous_bottom) = bounds_at(instance, instance.previous_x, instance.previous_y);
+    let (other_left, other_top, other_right, _) = bounds_at(other, other.x, other.y);
+
+    left < other_right && right > other_left && previous_bottom <= other_top && bottom >= other_top
 }
 
 fn statements_reference_host_file_functions(

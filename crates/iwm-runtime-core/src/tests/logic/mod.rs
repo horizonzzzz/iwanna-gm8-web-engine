@@ -1,5 +1,7 @@
+#[cfg(feature = "local-sample-tests")]
+use iwm_runtime_host::HeadlessHost;
 use iwm_runtime_host::{
-    ButtonState, HeadlessHost, RuntimeAudioHost, RuntimeButton, RuntimeFileHost, RuntimeSoundMode,
+    ButtonState, RuntimeAudioHost, RuntimeButton, RuntimeFileHost, RuntimeSoundMode,
 };
 
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
