@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashMap};
 
 use iwm_runtime_model::RoomDefinition;
 
-use super::assignment::assign_instance_or_global;
+use super::assignment::{assign_instance_or_global, assign_room_speed};
 use super::context::RuntimeEvalContext;
 use super::eval::{assignable_key, evaluate_expr, is_truthy};
 use crate::helpers::as_number;
@@ -19,7 +19,7 @@ impl RuntimeCore {
         visible_instances: &[RuntimeInstance],
     ) {
         if let Some(block_id) = source_room.creation_block_id.as_deref() {
-            self.apply_lowered_block_to_globals(block_id);
+            self.apply_lowered_block_to_globals(block_id, Some(&mut room_state.speed));
         }
 
         let create_event_blocks = self.object_event_blocks_by_tag("create");
@@ -68,14 +68,19 @@ impl RuntimeCore {
             index += 1;
         }
     }
-    fn apply_lowered_block_to_globals(&mut self, block_id: &str) {
+    fn apply_lowered_block_to_globals(&mut self, block_id: &str, mut room_speed: Option<&mut u32>) {
         let Some(entry) = self.lowered_logic_entry(block_id).cloned() else {
             return;
         };
 
         let script_entries = self.lowered_script_entries();
         for statement in &entry.statements {
-            apply_statement_to_globals_map(statement, &script_entries, &mut self.globals);
+            apply_statement_to_globals_map(
+                statement,
+                &script_entries,
+                &mut self.globals,
+                room_speed.as_deref_mut(),
+            );
         }
     }
     fn collect_package_bootstrap_globals_until_room(
@@ -97,7 +102,7 @@ impl RuntimeCore {
                     continue;
                 }
                 for statement in &entry.statements {
-                    apply_statement_to_globals_map(statement, &script_entries, &mut globals);
+                    apply_statement_to_globals_map(statement, &script_entries, &mut globals, None);
                 }
             }
             if room.id == target_room_id {
@@ -163,7 +168,13 @@ impl RuntimeCore {
                         Some(&eval_context),
                     ) {
                         if let Some(instance) = room_state.instances.get_mut(instance_index) {
-                            assign_instance_or_global(key, value, instance, &mut self.globals);
+                            assign_instance_or_global(
+                                key,
+                                value,
+                                instance,
+                                &mut self.globals,
+                                Some(&mut room_state.speed),
+                            );
                         }
                     }
                 }
@@ -481,11 +492,15 @@ fn apply_statement_to_globals_map(
     statement: &LoweredLogicStatement,
     script_entries: &HashMap<String, LoweredLogicEntry>,
     globals: &mut HashMap<String, RuntimeValue>,
+    mut room_speed: Option<&mut u32>,
 ) {
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
             if let Some(key) = assignable_key(target, None, globals, None, None) {
                 if let Some(value) = evaluate_expr(value, None, globals, None, None) {
+                    if assign_room_speed(&key, &value, room_speed.as_deref_mut()) {
+                        return;
+                    }
                     globals.insert(key, value);
                 }
             }
@@ -502,7 +517,12 @@ fn apply_statement_to_globals_map(
                 else_branch
             };
             for nested in branch {
-                apply_statement_to_globals_map(nested, script_entries, globals);
+                apply_statement_to_globals_map(
+                    nested,
+                    script_entries,
+                    globals,
+                    room_speed.as_deref_mut(),
+                );
             }
         }
         LoweredLogicStatement::With { body, .. }
@@ -510,13 +530,23 @@ fn apply_statement_to_globals_map(
         | LoweredLogicStatement::While { body, .. }
         | LoweredLogicStatement::For { body, .. } => {
             for nested in body {
-                apply_statement_to_globals_map(nested, script_entries, globals);
+                apply_statement_to_globals_map(
+                    nested,
+                    script_entries,
+                    globals,
+                    room_speed.as_deref_mut(),
+                );
             }
         }
         LoweredLogicStatement::FunctionCall { name, .. } => {
             if let Some(entry) = script_entries.get(name) {
                 for nested in &entry.statements {
-                    apply_statement_to_globals_map(nested, script_entries, globals);
+                    apply_statement_to_globals_map(
+                        nested,
+                        script_entries,
+                        globals,
+                        room_speed.as_deref_mut(),
+                    );
                 }
             }
         }

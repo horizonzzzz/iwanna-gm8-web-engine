@@ -40,6 +40,18 @@ Current P1 implementation check after the runtime-core refactor batch:
 - room151 CLI runtime diagnostics ran for 240 ticks with no runtime blockers
 - static render caching remains deferred because the current recorded room151
   release `renderMs` p95 is `2.70ms`, below the `3.50ms` P1 gate
+- per-frame refresh diagnostics (`runtime-idle`, `runtime-jump-input`, and
+  `runtime-exec-block-trace`) are no longer recorded during normal ticks;
+  `inputTrace` and `tickPhases` remain available without pushing frame-level log
+  entries through the hot path
+- runtime `room_speed` assignments now update `RuntimeRoomState.speed` and the
+  browser auto-tick interval uses the runtime snapshot `roomSpeed` before
+  falling back to package room metadata. This keeps packages that set
+  `room_speed = 50` in room-start logic from running menu rooms at static 60 Hz
+  and stage rooms at static 30 Hz. Persistent instances are included in
+  room-start dispatch after they are carried into the destination room, matching
+  the OpenGMK/GM8 load order needed for persistent controller objects such as
+  `world`.
 
 ## Current Bottleneck Ranking
 
@@ -55,8 +67,12 @@ Current P1 implementation check after the runtime-core refactor batch:
    sparse same-tick instance update overlays.
 4. Browser canvas rendering is measurable but not the primary room151 bottleneck
    in release mode.
-5. The browser tick loop matters for perceived smoothness, but it does not
-   explain the earlier debug-WASM stalls by itself.
+5. Frame-refresh diagnostics are intentionally kept out of normal tick
+   diagnostics. Hot-path state should use snapshots or counters, not log entries.
+6. The browser tick loop matters for perceived smoothness, but it does not
+   explain the earlier debug-WASM stalls by itself. The loop must use runtime
+   room speed, not only static package metadata, because GM code can assign
+   `room_speed` after room load.
 
 ## Runtime-Core Refactors
 

@@ -52,6 +52,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) script_entries: &'a HashMap<String, LoweredLogicEntry>,
     pub(crate) sound_index: &'a HashMap<String, i32>,
     pub(crate) globals: &'a mut HashMap<String, RuntimeValue>,
+    pub(crate) room_speed: &'a mut u32,
     pub(crate) pending_room_transition: &'a mut Option<usize>,
     pub(crate) pending_room_reset: &'a mut bool,
     pub(crate) pending_game_restart: &'a mut bool,
@@ -155,7 +156,14 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     Some(scope),
                     eval_context,
                 ) {
-                    assign_runtime_value(key, value, instance, env.globals, scope);
+                    assign_runtime_value(
+                        key,
+                        value,
+                        instance,
+                        env.globals,
+                        scope,
+                        Some(&mut *env.room_speed),
+                    );
                 }
             }
         }
@@ -1021,7 +1029,14 @@ fn execute_assignment_expression<H: RuntimeHost>(
                     env,
                     instance,
                 ) {
-                    assign_runtime_value(key, value, instance, env.globals, scope);
+                    assign_runtime_value(
+                        key,
+                        value,
+                        instance,
+                        env.globals,
+                        scope,
+                        Some(&mut *env.room_speed),
+                    );
                 }
             }
         }
@@ -1051,6 +1066,13 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
     env: &mut RuntimeStatementEnvironment<'_, H>,
     trace_instance: &RuntimeInstance,
 ) -> Option<RuntimeValue> {
+    if let LoweredLogicExpr::Identifier(name) = expr {
+        if name.eq_ignore_ascii_case("room_speed")
+            && !scope.map(|scope| scope.is_local_key(name)).unwrap_or(false)
+        {
+            return Some(RuntimeValue::Number(*env.room_speed as f64));
+        }
+    }
     if let LoweredLogicExpr::UnaryExpr { op, child } = expr {
         let value =
             evaluate_runtime_expr(child, instance, scope, eval_context, env, trace_instance)?;

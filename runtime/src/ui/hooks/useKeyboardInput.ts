@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 export type KeyboardInputState = {
   left: boolean;
@@ -36,6 +36,7 @@ function keyToVirtualKey(key: string): number | null {
 }
 
 export function useKeyboardInput(): KeyboardInputState {
+  const heldRef = useRef<Set<number>>(new Set());
   const [held, setHeld] = useState<Set<number>>(new Set());
   const [pressed, setPressed] = useState<Set<number>>(new Set());
   const [released, setReleased] = useState<Set<number>>(new Set());
@@ -46,12 +47,17 @@ export function useKeyboardInput(): KeyboardInputState {
       if (vk == null) {
         return;
       }
-      setHeld((current) => {
-        const next = new Set(current);
-        next.add(vk);
-        return next;
-      });
+      if (event.repeat || heldRef.current.has(vk)) {
+        return;
+      }
+      const nextHeld = new Set(heldRef.current);
+      nextHeld.add(vk);
+      heldRef.current = nextHeld;
+      setHeld(nextHeld);
       setPressed((current) => {
+        if (current.has(vk)) {
+          return current;
+        }
         const next = new Set(current);
         next.add(vk);
         return next;
@@ -63,12 +69,17 @@ export function useKeyboardInput(): KeyboardInputState {
       if (vk == null) {
         return;
       }
-      setHeld((current) => {
-        const next = new Set(current);
-        next.delete(vk);
-        return next;
-      });
+      if (!heldRef.current.has(vk)) {
+        return;
+      }
+      const nextHeld = new Set(heldRef.current);
+      nextHeld.delete(vk);
+      heldRef.current = nextHeld;
+      setHeld(nextHeld);
       setReleased((current) => {
+        if (current.has(vk)) {
+          return current;
+        }
         const next = new Set(current);
         next.add(vk);
         return next;
@@ -94,8 +105,8 @@ export function useKeyboardInput(): KeyboardInputState {
       keysPressed: [...pressed],
       keysReleased: [...released],
       clearEdgeKeys: () => {
-        setPressed(new Set());
-        setReleased(new Set());
+        setPressed((current) => current.size === 0 ? current : new Set());
+        setReleased((current) => current.size === 0 ? current : new Set());
       },
     }),
     [held, pressed, released]

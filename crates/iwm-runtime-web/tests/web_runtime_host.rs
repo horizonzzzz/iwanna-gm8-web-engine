@@ -370,19 +370,22 @@ fn web_runtime_host_does_not_map_semantic_jump_to_space_without_raw_space_input(
 }
 
 #[test]
-fn web_runtime_host_formats_diagnostics_for_bridge_consumers() {
+fn web_runtime_host_omits_frame_refresh_diagnostics_for_bridge_consumers() {
     let mut host = WebRuntimeHost::new();
     host.boot(sample_package()).unwrap();
     host.tick(1).unwrap();
 
     let diagnostics = host.diagnostics();
 
-    assert!(diagnostics
+    assert!(!diagnostics
         .iter()
         .any(|entry| entry.contains("runtime-idle")));
-    assert!(diagnostics
+    assert!(!diagnostics
         .iter()
         .any(|entry| entry.contains("runtime-jump-input")));
+    assert!(!diagnostics
+        .iter()
+        .any(|entry| entry.contains("runtime-exec-block-trace")));
     assert!(json!(diagnostics).is_array());
 }
 

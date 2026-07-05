@@ -377,19 +377,10 @@ impl RuntimeCore {
         let right = self.bound_button_state(host, "global.rightbutton", 0x27);
         let mut jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
         let restart = self.bound_restart_button_state(host);
-        self.record_jump_input_diagnostic(host, jump);
+        self.update_jump_input_trace(host, jump);
 
         self.tick += 1;
         self.status = RuntimeStatus::Running;
-
-        if !left.pressed && !right.pressed && !jump.pressed && !restart.pressed {
-            self.record_diagnostic(
-                host,
-                iwm_runtime_host::RuntimeDiagnosticLevel::Info,
-                "runtime-idle",
-                format!("tick {} advanced without player input", self.tick),
-            );
-        }
 
         tick_phases.input_diag_nanos += mark_phase_elapsed(host, &mut phase_start);
 
@@ -727,9 +718,14 @@ impl RuntimeCore {
             .filter(|instance| !is_player_instance(instance))
             .collect::<Vec<_>>();
         self.hydrate_missing_package_bootstrap_globals(room_id);
-        let mut room =
-            self.build_room_with_create_visible_instances(room_id, &persistent_instances)?;
+        let (mut room, source_room) = self.build_room_layout(room_id)?;
+        self.apply_create_logic_with_visible_instances(
+            &mut room,
+            &source_room,
+            &persistent_instances,
+        );
         crate::room_transitions::add_persistent_instances(&mut room, persistent_instances);
+        self.apply_room_start_logic_with_visible_instances(&mut room, &[]);
         self.current_room = Some(room);
         self.room_needs_first_render_settle = true;
         self.death_waiting_for_restart = false;
@@ -742,12 +738,6 @@ impl RuntimeCore {
         host: &mut H,
         source_room: &RoomDefinition,
     ) -> Result<(), RuntimeCoreError> {
-        let pre_startup_len = self
-            .current_room
-            .as_ref()
-            .map(|room| room.instances.len())
-            .ok_or(RuntimeCoreError::NoRooms)?;
-
         for placement in &source_room.instances {
             let Some(instance_idx) = self.current_room.as_ref().and_then(|room| {
                 room.instances
@@ -800,12 +790,6 @@ impl RuntimeCore {
             }
         }
 
-        let source_instance_ids = source_room
-            .instances
-            .iter()
-            .map(|placement| placement.instance_id)
-            .collect::<Vec<_>>();
-
         let room_start_indices = self
             .current_room
             .as_ref()
@@ -813,11 +797,7 @@ impl RuntimeCore {
                 room.instances
                     .iter()
                     .enumerate()
-                    .filter_map(|(index, instance)| {
-                        (index >= pre_startup_len
-                            || source_instance_ids.contains(&instance.instance_id))
-                        .then_some(index)
-                    })
+                    .filter_map(|(index, instance)| instance.alive.then_some(index))
                     .collect::<Vec<_>>()
             })
             .ok_or(RuntimeCoreError::NoRooms)?;
@@ -963,7 +943,7 @@ impl RuntimeCore {
             .active_buttons()
             .into_iter()
             .collect::<std::collections::HashMap<_, _>>();
-        let (current_room_id, current_room_speed) = {
+        let (current_room_id, mut current_room_speed) = {
             let Some(room) = self.current_room.as_ref() else {
                 return;
             };
@@ -996,15 +976,6 @@ impl RuntimeCore {
             };
             let event_owner_id =
                 event_owner_id_for_block_id(objects, &entry.block_id).unwrap_or(instance.object_id);
-            crate::diagnostics::record_execution_trace(
-                host,
-                &mut self.diagnostics,
-                current_room_id,
-                self.tick,
-                &instance,
-                &entry.block_id,
-                &event_tag,
-            );
             let mut scope = crate::logic::RuntimeExecutionScope::default();
             let mut with_updates = RuntimeSparseInstanceOverlay::default();
             for statement in &entry.statements {
@@ -1037,6 +1008,7 @@ impl RuntimeCore {
                     script_entries,
                     sound_index: &self.sound_index,
                     globals: &mut self.globals,
+                    room_speed: &mut current_room_speed,
                     pending_room_transition: &mut self.pending_room_transition,
                     pending_room_reset: &mut self.pending_room_reset,
                     pending_game_restart: &mut self.pending_game_restart,
@@ -1090,6 +1062,7 @@ impl RuntimeCore {
         }
 
         if let Some(room) = self.current_room.as_mut() {
+            room.speed = current_room_speed;
             for (update_index, updated_instance) in instance_updates.drain_dirty_updates() {
                 if let Some(slot) = room.instances.get_mut(update_index) {
                     *slot = updated_instance;

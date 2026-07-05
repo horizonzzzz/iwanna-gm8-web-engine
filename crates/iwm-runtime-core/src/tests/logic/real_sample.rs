@@ -393,6 +393,25 @@ fn real_sample_bootstrap_sets_shift_jump_binding() {
 }
 
 #[test]
+fn real_sample_world_room_start_sets_shared_runtime_room_speed() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let title_room = real_sample_room_id(&core, "rTitle");
+
+    tick_real_sample_until_room(&mut core, &mut host, title_room, "rTitle");
+    assert_eq!(core.current_room_speed(), Some(50));
+
+    enter_real_sample_difficulty_room(&mut core, &mut host);
+    assert_eq!(core.current_room_speed(), Some(50));
+
+    select_real_sample_medium_difficulty(&mut core, &mut host);
+    assert_eq!(core.current_room_speed(), Some(50));
+}
+
+#[test]
 fn real_sample_title_shift_enters_save_menu() {
     let Some(package) = real_sample_package() else {
         return;

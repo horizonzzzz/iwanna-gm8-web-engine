@@ -106,7 +106,7 @@ fn core_reports_unsupported_expression_function_with_execution_context() {
 }
 
 #[test]
-fn core_reports_block_level_execution_trace() {
+fn core_keeps_block_level_execution_trace_out_of_normal_ticks() {
     let mut package = sample_package();
     add_step_block(
         &mut package,
@@ -121,16 +121,9 @@ fn core_reports_block_level_execution_trace() {
     core.tick(&mut host).unwrap();
 
     let diagnostics = core.diagnostics();
-    let trace = diagnostics
+    assert!(diagnostics
         .iter()
-        .find(|entry| entry.code == "runtime-exec-block-trace")
-        .expect("executed lowered block should be traced");
-    assert!(trace.message.contains("room=7"));
-    assert!(trace.message.contains("tick=1"));
-    assert!(trace.message.contains("block_id=object:0:event:3:0"));
-    assert!(trace.message.contains("object=obj_player"));
-    assert!(trace.message.contains("event_tag=step"));
-    assert!(trace.message.contains("runtime_id=0"));
+        .all(|entry| entry.code != "runtime-exec-block-trace"));
 }
 
 #[test]

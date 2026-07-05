@@ -24,31 +24,3 @@ impl RuntimeCore {
         self.diagnostics.push(diagnostic);
     }
 }
-
-pub(crate) fn record_execution_trace<H: RuntimeHost>(
-    host: &mut H,
-    diagnostics: &mut Vec<RuntimeDiagnostic>,
-    room_id: usize,
-    tick: u64,
-    instance: &crate::RuntimeInstance,
-    block_id: &str,
-    event_tag: &str,
-) {
-    if event_tag == "collision" {
-        return;
-    }
-
-    let diagnostic = RuntimeDiagnostic {
-        level: RuntimeDiagnosticLevel::Info,
-        code: "runtime-exec-block-trace".into(),
-        message: format!(
-            "room={} tick={} block_id={} object={} event_tag={} runtime_id={}",
-            room_id, tick, block_id, instance.object_name, event_tag, instance.runtime_id
-        ),
-    };
-    host.record(diagnostic.clone());
-    if diagnostics.len() >= MAX_DIAGNOSTICS {
-        diagnostics.remove(0);
-    }
-    diagnostics.push(diagnostic);
-}

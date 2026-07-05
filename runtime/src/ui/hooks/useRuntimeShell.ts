@@ -15,6 +15,7 @@ import type { RuntimePerformanceStats } from '../traceView';
 import type { KeyboardInputState } from './useKeyboardInput';
 
 const DEFAULT_ROOM_SPEED_HZ = 30;
+const SHELL_TELEMETRY_INTERVAL_MS = 1000;
 
 type ShellBackend =
   | {
@@ -29,6 +30,7 @@ type ShellBackend =
     };
 
 type KeyboardInputSource = KeyboardInputState | { current: KeyboardInputState };
+type RuntimeTelemetryMode = 'immediate' | 'throttled';
 
 function currentKeyboardInput(source: KeyboardInputSource): KeyboardInputState {
   return 'current' in source ? source.current : source;
@@ -60,21 +62,49 @@ function clearCanvas(canvas: HTMLCanvasElement, width = 800, height = 600): void
   context.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-function roomTickRateHz(pkg: RuntimePackage | null, roomId: number | null): number {
+function validRoomSpeedHz(speed: number | null | undefined): number | null {
+  return Number.isFinite(speed) && speed != null && speed > 0
+    ? speed
+    : null;
+}
+
+function snapshotRoomSpeedHz(snapshot: WasmRuntimeBridgeSnapshot): number | null {
+  return validRoomSpeedHz(snapshot.roomSpeed);
+}
+
+function roomTickRateHz(
+  pkg: RuntimePackage | null,
+  roomId: number | null,
+  runtimeRoomSpeed: number | null
+): number {
+  const runtimeSpeed = validRoomSpeedHz(runtimeRoomSpeed);
+  if (runtimeSpeed != null) {
+    return runtimeSpeed;
+  }
   const speed = roomId == null
     ? undefined
     : pkg?.rooms.find((room) => room.id === roomId)?.speed;
-  return Number.isFinite(speed) && speed != null && speed > 0
-    ? speed
-    : DEFAULT_ROOM_SPEED_HZ;
+  return validRoomSpeedHz(speed) ?? DEFAULT_ROOM_SPEED_HZ;
 }
 
-function autoTickIntervalMs(pkg: RuntimePackage | null, roomId: number | null): number {
-  return 1000 / roomTickRateHz(pkg, roomId);
+function autoTickIntervalMs(
+  pkg: RuntimePackage | null,
+  roomId: number | null,
+  runtimeRoomSpeed: number | null
+): number {
+  return 1000 / roomTickRateHz(pkg, roomId, runtimeRoomSpeed);
 }
 
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function minimalRuntimeSnapshot(snapshot: WasmRuntimeBridgeSnapshot): WasmRuntimeBridgeSnapshot {
+  return {
+    ...snapshot,
+    tickPhases: undefined,
+    diagnostics: [],
+  };
 }
 
 async function renderRuntimeRoom(
@@ -114,6 +144,7 @@ export function useRuntimeShell() {
   const loadedPackageRef = useRef<RuntimePackage | null>(null);
   const packagePathRef = useRef(packagePath);
   const currentRoomIdRef = useRef<number | null>(null);
+  const currentRoomSpeedRef = useRef<number | null>(null);
   const backendRef = useRef<ShellBackend>({
     kind: 'viewer',
     roomId: null,
@@ -128,6 +159,10 @@ export function useRuntimeShell() {
   const exclusiveOpRef = useRef(false);
   const skippedAutoTickIntervalsRef = useRef(0);
   const mountedRef = useRef(true);
+  const lastTelemetryCommitMsRef = useRef<number | null>(null);
+  const pendingSnapshotRef = useRef<WasmRuntimeBridgeSnapshot | null>(null);
+  const pendingPerformanceRef = useRef<RuntimePerformanceStats | null>(null);
+  const pendingRoomIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     packagePathRef.current = packagePath;
@@ -156,6 +191,7 @@ export function useRuntimeShell() {
         await renderWasmFrame(canvas, frame, pkg.resources, currentPath, renderCacheRef.current);
         const nextRoomId = nextSnapshot.roomId ?? null;
         currentRoomIdRef.current = nextRoomId;
+        currentRoomSpeedRef.current = snapshotRoomSpeedHz(nextSnapshot);
         setSnapshot(nextSnapshot);
         setMode('wasm');
         setViewerDiagnostics([]);
@@ -173,6 +209,7 @@ export function useRuntimeShell() {
         ? pkg.rooms.find((candidate) => candidate.id === backend.roomId)
         : null;
       currentRoomIdRef.current = backend.roomId;
+      currentRoomSpeedRef.current = validRoomSpeedHz(room?.speed);
       setSnapshot({
         tick: 0,
         roomId: backend.roomId,
@@ -192,6 +229,73 @@ export function useRuntimeShell() {
     []
   );
 
+  const commitRuntimeTelemetry = useCallback((
+    nextSnapshot: WasmRuntimeBridgeSnapshot,
+    nextPerformance: RuntimePerformanceStats | null,
+    nextRoomId: number | null,
+    commitTimeMs = nowMs(),
+    clearPending = true
+  ) => {
+    if (clearPending) {
+      pendingSnapshotRef.current = null;
+      pendingPerformanceRef.current = null;
+      pendingRoomIdRef.current = null;
+    }
+    lastTelemetryCommitMsRef.current = commitTimeMs;
+    setSnapshot(nextSnapshot);
+    setPerformanceStats(nextPerformance);
+    currentRoomIdRef.current = nextRoomId;
+    currentRoomSpeedRef.current = snapshotRoomSpeedHz(nextSnapshot);
+    setSelectedRoomId(nextRoomId);
+  }, []);
+
+  const flushPendingRuntimeTelemetry = useCallback(() => {
+    if (!pendingSnapshotRef.current) {
+      return;
+    }
+    commitRuntimeTelemetry(
+      pendingSnapshotRef.current,
+      pendingPerformanceRef.current,
+      pendingRoomIdRef.current,
+    );
+  }, [commitRuntimeTelemetry]);
+
+  const publishRuntimeTelemetry = useCallback((
+    nextSnapshot: WasmRuntimeBridgeSnapshot,
+    nextPerformance: RuntimePerformanceStats | null,
+    nextRoomId: number | null,
+    mode: RuntimeTelemetryMode
+  ) => {
+    const previousRoomId = currentRoomIdRef.current;
+    currentRoomIdRef.current = nextRoomId;
+    currentRoomSpeedRef.current = snapshotRoomSpeedHz(nextSnapshot);
+
+    if (mode === 'immediate') {
+      commitRuntimeTelemetry(nextSnapshot, nextPerformance, nextRoomId);
+      return;
+    }
+
+    pendingSnapshotRef.current = nextSnapshot;
+    pendingPerformanceRef.current = nextPerformance;
+    pendingRoomIdRef.current = nextRoomId;
+
+    const commitTimeMs = nowMs();
+    const lastCommitMs = lastTelemetryCommitMsRef.current;
+    const shouldCommit = lastCommitMs == null
+      || commitTimeMs - lastCommitMs >= SHELL_TELEMETRY_INTERVAL_MS
+      || previousRoomId !== nextRoomId;
+
+    if (shouldCommit) {
+      commitRuntimeTelemetry(
+        minimalRuntimeSnapshot(nextSnapshot),
+        null,
+        nextRoomId,
+        commitTimeMs,
+        false
+      );
+    }
+  }, [commitRuntimeTelemetry]);
+
   const stopAutoTick = useCallback(() => {
     if (autoTickHandleRef.current != null) {
       globalThis.clearInterval(autoTickHandleRef.current);
@@ -201,12 +305,13 @@ export function useRuntimeShell() {
     autoTickKeyboardSourceRef.current = null;
     autoTickDelayMsRef.current = null;
     if (mountedRef.current) {
+      flushPendingRuntimeTelemetry();
       setAutoTickRunning(false);
     }
-  }, []);
+  }, [flushPendingRuntimeTelemetry]);
 
   const tickRuntimeOnce = useCallback(
-    async (keyboard: KeyboardInputState) => {
+    async (keyboard: KeyboardInputState, telemetryMode: RuntimeTelemetryMode = 'immediate') => {
       const currentPackage = loadedPackageRef.current;
       if (!currentPackage || backendRef.current.kind !== 'wasm') {
         return;
@@ -222,10 +327,11 @@ export function useRuntimeShell() {
         keysPressed: keyboard.keysPressed,
         keysReleased: keyboard.keysReleased,
       });
-      const frameStart = nowMs();
+      const collectPerformance = telemetryMode === 'immediate';
+      const frameStart = collectPerformance ? nowMs() : 0;
       const { snapshot: nextSnapshot, frame, timings } = await backend.session.stepOnce();
       keyboard.clearEdgeKeys();
-      const renderStart = nowMs();
+      const renderStart = collectPerformance ? nowMs() : 0;
       const canvas = canvasRef.current;
       if (canvas) {
         await renderWasmFrame(canvas, frame, currentPackage.resources, packagePathRef.current, renderCacheRef.current);
@@ -233,25 +339,23 @@ export function useRuntimeShell() {
       if (!mountedRef.current) {
         return;
       }
-      const renderMs = nowMs() - renderStart;
-      const nextPerformance: RuntimePerformanceStats = {
-        inputMs: timings.inputMs,
-        tickMs: timings.tickMs,
-        snapshotMs: timings.snapshotMs,
-        frameMs: timings.frameMs,
-        runtimeMs: timings.runtimeMs,
-        renderMs,
-        totalMs: nowMs() - frameStart,
-        commandCount: frame.commands.length,
-        skippedIntervals: skippedAutoTickIntervalsRef.current,
-      };
-      setSnapshot(nextSnapshot);
-      setPerformanceStats(nextPerformance);
+      const nextPerformance: RuntimePerformanceStats | null = collectPerformance
+        ? {
+            inputMs: timings.inputMs,
+            tickMs: timings.tickMs,
+            snapshotMs: timings.snapshotMs,
+            frameMs: timings.frameMs,
+            runtimeMs: timings.runtimeMs,
+            renderMs: nowMs() - renderStart,
+            totalMs: nowMs() - frameStart,
+            commandCount: frame.commands.length,
+            skippedIntervals: skippedAutoTickIntervalsRef.current,
+          }
+        : null;
       const nextRoomId = nextSnapshot.roomId ?? null;
-      currentRoomIdRef.current = nextRoomId;
-      setSelectedRoomId(nextRoomId);
+      publishRuntimeTelemetry(nextSnapshot, nextPerformance, nextRoomId, telemetryMode);
     },
-    []
+    [publishRuntimeTelemetry]
   );
 
   const scheduleAutoTickInterval = useCallback(
@@ -263,7 +367,11 @@ export function useRuntimeShell() {
       if (autoTickHandleRef.current != null) {
         globalThis.clearInterval(autoTickHandleRef.current);
       }
-      const delayMs = autoTickIntervalMs(loadedPackageRef.current, currentRoomIdRef.current);
+      const delayMs = autoTickIntervalMs(
+        loadedPackageRef.current,
+        currentRoomIdRef.current,
+        currentRoomSpeedRef.current
+      );
       autoTickDelayMsRef.current = delayMs;
       autoTickHandleRef.current = globalThis.setInterval(() => {
         if (exclusiveOpRef.current || autoTickInFlightRef.current) {
@@ -272,7 +380,7 @@ export function useRuntimeShell() {
         }
 
         autoTickInFlightRef.current = true;
-        autoTickInFlightPromiseRef.current = tickRuntimeOnce(currentKeyboardInput(keyboardSource))
+        autoTickInFlightPromiseRef.current = tickRuntimeOnce(currentKeyboardInput(keyboardSource), 'throttled')
           .catch((tickError) => {
             stopAutoTick();
             if (mountedRef.current) {
@@ -306,15 +414,24 @@ export function useRuntimeShell() {
     if (!autoTickRunning || !autoTickKeyboardSourceRef.current || backendRef.current.kind !== 'wasm') {
       return;
     }
-    const nextDelayMs = autoTickIntervalMs(loadedPackageRef.current, currentRoomIdRef.current);
+    const nextDelayMs = autoTickIntervalMs(
+      loadedPackageRef.current,
+      currentRoomIdRef.current,
+      currentRoomSpeedRef.current
+    );
     if (autoTickDelayMsRef.current == null || Math.abs(autoTickDelayMsRef.current - nextDelayMs) > 0.001) {
       scheduleAutoTickInterval(autoTickKeyboardSourceRef.current);
     }
-  }, [autoTickRunning, scheduleAutoTickInterval, selectedRoomId]);
+  }, [autoTickRunning, scheduleAutoTickInterval, selectedRoomId, snapshot?.roomSpeed]);
 
   const loadCurrentPackage = useCallback(async (keyboardSource?: KeyboardInputSource) => {
     setError(null);
     stopAutoTick();
+    pendingSnapshotRef.current = null;
+    pendingPerformanceRef.current = null;
+    pendingRoomIdRef.current = null;
+    currentRoomSpeedRef.current = null;
+    lastTelemetryCommitMsRef.current = null;
     skippedAutoTickIntervalsRef.current = 0;
     packagePathRef.current = packagePath;
 
@@ -370,6 +487,7 @@ export function useRuntimeShell() {
       return pkg;
     } catch (loadError) {
       loadedPackageRef.current = null;
+      currentRoomSpeedRef.current = null;
       setLoadedPackage(null);
       setRuntimeReady(false);
       backendRef.current = {

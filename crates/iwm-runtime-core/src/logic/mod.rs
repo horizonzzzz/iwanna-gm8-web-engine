@@ -67,7 +67,7 @@ impl RuntimeCore {
         let destroy_event_entries = &self.cached_destroy_event_entries;
         let mut tick_context = std::mem::take(&mut self.tick_context);
         let room_instance_indices_by_object_id = HashMap::new();
-        let (current_room_id, current_room_speed) = {
+        let (current_room_id, mut current_room_speed) = {
             let Some(room) = self.current_room.as_ref() else {
                 return Err(RuntimeCoreError::NoRooms);
             };
@@ -128,15 +128,6 @@ impl RuntimeCore {
                 };
                 let event_owner_id = event_owner_id_for_block_id(objects, &entry.block_id)
                     .unwrap_or(instance.object_id);
-                crate::diagnostics::record_execution_trace(
-                    host,
-                    &mut self.diagnostics,
-                    current_room_id,
-                    self.tick,
-                    &instance,
-                    &entry.block_id,
-                    "step",
-                );
                 let mut scope = RuntimeExecutionScope::default();
                 let mut with_updates = RuntimeSparseInstanceOverlay::default();
                 for statement in &entry.statements {
@@ -169,6 +160,7 @@ impl RuntimeCore {
                         script_entries,
                         sound_index: &self.sound_index,
                         globals: &mut self.globals,
+                        room_speed: &mut current_room_speed,
                         pending_room_transition: &mut self.pending_room_transition,
                         pending_room_reset: &mut self.pending_room_reset,
                         pending_game_restart: &mut self.pending_game_restart,
@@ -211,6 +203,7 @@ impl RuntimeCore {
                         instance_updates.set(index, instance);
                         commit_instance_updates(&mut instance_updates, &mut with_updates);
                         if let Some(room) = self.current_room.as_mut() {
+                            room.speed = current_room_speed;
                             for (update_index, updated_instance) in
                                 instance_updates.drain_dirty_updates()
                             {
@@ -240,6 +233,7 @@ impl RuntimeCore {
         }
 
         if let Some(room) = self.current_room.as_mut() {
+            room.speed = current_room_speed;
             for (index, instance) in instance_updates.drain_dirty_updates() {
                 if let Some(slot) = room.instances.get_mut(index) {
                     *slot = instance;
@@ -309,7 +303,7 @@ impl RuntimeCore {
             .map(|room| runtime_instance_indices_by_object_id_from_instances(&room.instances));
         while let Some(create) = pending_creates.pop_front() {
             let scene_change_before_create = self.pending_scene_change_state();
-            let Some((current_room_id, current_room_speed)) = self
+            let Some((current_room_id, mut current_room_speed)) = self
                 .current_room
                 .as_ref()
                 .map(|room| (room.room_id, room.speed))
@@ -382,21 +376,13 @@ impl RuntimeCore {
                 for entry in &entries {
                     let event_owner_id = event_owner_id_for_block_id(objects, &entry.block_id)
                         .unwrap_or(instance.object_id);
-                    crate::diagnostics::record_execution_trace(
-                        host,
-                        &mut self.diagnostics,
-                        current_room_id,
-                        self.tick,
-                        &instance,
-                        &entry.block_id,
-                        "create",
-                    );
                     let mut scope = RuntimeExecutionScope::default();
                     for statement in &entry.statements {
                         let mut statement_env = RuntimeStatementEnvironment {
                             script_entries,
                             sound_index: &self.sound_index,
                             globals: &mut self.globals,
+                            room_speed: &mut current_room_speed,
                             pending_room_transition: &mut self.pending_room_transition,
                             pending_room_reset: &mut self.pending_room_reset,
                             pending_game_restart: &mut self.pending_game_restart,
@@ -443,6 +429,7 @@ impl RuntimeCore {
                     }
                 }
                 if let Some(room) = self.current_room.as_mut() {
+                    room.speed = current_room_speed;
                     for (update_index, updated_instance) in
                         room_instance_updates.drain_dirty_updates()
                     {

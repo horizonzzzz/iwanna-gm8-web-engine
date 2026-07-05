@@ -10,11 +10,12 @@ pub(super) fn assign_runtime_value(
     instance: &mut RuntimeInstance,
     globals: &mut HashMap<String, RuntimeValue>,
     scope: &mut RuntimeExecutionScope,
+    room_speed: Option<&mut u32>,
 ) {
     if scope.assign(&key, value.clone()) {
         return;
     }
-    assign_instance_or_global(key, value, instance, globals);
+    assign_instance_or_global(key, value, instance, globals, room_speed);
 }
 
 pub(super) fn assign_instance_or_global(
@@ -22,7 +23,12 @@ pub(super) fn assign_instance_or_global(
     value: RuntimeValue,
     instance: &mut RuntimeInstance,
     globals: &mut HashMap<String, RuntimeValue>,
+    room_speed: Option<&mut u32>,
 ) {
+    if assign_room_speed(&key, &value, room_speed) {
+        return;
+    }
+
     if key.starts_with("global.") || is_view_variable_key(&key) {
         globals.insert(key, value);
         return;
@@ -79,6 +85,23 @@ pub(super) fn assign_instance_field_or_var(
     }
 }
 
+pub(super) fn assign_room_speed(
+    key: &str,
+    value: &RuntimeValue,
+    room_speed: Option<&mut u32>,
+) -> bool {
+    if !key.eq_ignore_ascii_case("room_speed") {
+        return false;
+    }
+
+    if let Some(room_speed) = room_speed {
+        if let Some(speed) = runtime_value_to_room_speed(value) {
+            *room_speed = speed;
+        }
+    }
+    true
+}
+
 pub(super) fn runtime_value_to_room_id(value: &RuntimeValue) -> Option<usize> {
     match value {
         RuntimeValue::Number(number) => {
@@ -90,6 +113,19 @@ pub(super) fn runtime_value_to_room_id(value: &RuntimeValue) -> Option<usize> {
         }
         RuntimeValue::Bool(flag) => Some(if *flag { 1 } else { 0 }),
         RuntimeValue::Text(text) => parse_room_id(text),
+    }
+}
+
+fn runtime_value_to_room_speed(value: &RuntimeValue) -> Option<u32> {
+    let number = as_number(value)?;
+    if !number.is_finite() {
+        return None;
+    }
+    let speed = number.trunc();
+    if speed >= 1.0 && speed <= i32::MAX as f64 {
+        Some(speed as u32)
+    } else {
+        None
     }
 }
 

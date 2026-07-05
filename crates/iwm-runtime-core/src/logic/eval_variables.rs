@@ -39,6 +39,16 @@ pub(super) fn evaluate_identifier(
             return scope.get(name);
         }
     }
+
+    if let Some(context) = eval_context {
+        if name.eq_ignore_ascii_case("room") {
+            return Some(RuntimeValue::Number(context.current_room_id as f64));
+        }
+        if name.eq_ignore_ascii_case("room_speed") {
+            return Some(RuntimeValue::Number(context.room_speed as f64));
+        }
+    }
+
     if let Some(instance) = instance {
         if let Some(value) = instance.vars.get(name) {
             return Some(value.clone());
@@ -61,12 +71,6 @@ pub(super) fn evaluate_identifier(
     }
 
     if let Some(context) = eval_context {
-        if name.eq_ignore_ascii_case("room") {
-            return Some(RuntimeValue::Number(context.current_room_id as f64));
-        }
-        if name.eq_ignore_ascii_case("room_speed") {
-            return Some(RuntimeValue::Number(context.room_speed as f64));
-        }
         if let Some(room_id) = context.room_ids_by_name.get(&name.to_ascii_lowercase()) {
             return Some(RuntimeValue::Number(*room_id as f64));
         }

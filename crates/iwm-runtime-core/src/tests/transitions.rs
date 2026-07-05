@@ -1,7 +1,10 @@
 use iwm_runtime_host::{ButtonState, RuntimeButton};
-use iwm_runtime_model::RoomInstancePlacement;
+use iwm_runtime_model::{ObjectEventEntry, RoomInstancePlacement};
 
-use crate::{RuntimeCore, RuntimeStatus, RuntimeValue};
+use crate::{
+    LoweredLogicEntry, LoweredLogicExpr, LoweredLogicFile, LoweredLogicStatement, RuntimeCore,
+    RuntimeStatus, RuntimeValue,
+};
 
 use super::support::{capture_jump_trace, host, sample_package};
 
@@ -22,7 +25,7 @@ fn core_ticks_and_submits_a_frame() {
 }
 
 #[test]
-fn core_emits_idle_diagnostic_when_no_input_is_active() {
+fn core_keeps_quiet_ticks_out_of_diagnostics() {
     let mut core = RuntimeCore::load(sample_package()).unwrap();
     let mut host = host();
 
@@ -31,15 +34,12 @@ fn core_emits_idle_diagnostic_when_no_input_is_active() {
     assert!(core
         .diagnostics()
         .iter()
-        .any(|diagnostic| diagnostic.code == "runtime-idle"
-            && matches!(
-                diagnostic.level,
-                iwm_runtime_host::RuntimeDiagnosticLevel::Info
-            )));
+        .all(|diagnostic| diagnostic.code != "runtime-idle"
+            && diagnostic.code != "runtime-jump-input"));
 }
 
 #[test]
-fn core_records_idle_diagnostics_in_the_host_sink() {
+fn core_keeps_quiet_ticks_out_of_host_diagnostics() {
     let mut core = RuntimeCore::load(sample_package()).unwrap();
     let mut host = host();
 
@@ -49,15 +49,12 @@ fn core_records_idle_diagnostics_in_the_host_sink() {
         .diagnostics
         .diagnostics
         .iter()
-        .any(|diagnostic| diagnostic.code == "runtime-idle"
-            && matches!(
-                diagnostic.level,
-                iwm_runtime_host::RuntimeDiagnosticLevel::Info
-            )));
+        .all(|diagnostic| diagnostic.code != "runtime-idle"
+            && diagnostic.code != "runtime-jump-input"));
 }
 
 #[test]
-fn core_keeps_runtime_diagnostics_bounded_over_many_idle_ticks() {
+fn core_does_not_accumulate_refresh_diagnostics_over_many_idle_ticks() {
     let mut core = RuntimeCore::load(sample_package()).unwrap();
     let mut host = host();
 
@@ -65,13 +62,17 @@ fn core_keeps_runtime_diagnostics_bounded_over_many_idle_ticks() {
         core.tick(&mut host).unwrap();
     }
 
-    assert!(core.diagnostics().len() <= 64);
-    assert!(host.diagnostics.diagnostics.len() <= 64);
     assert!(core
         .diagnostics()
-        .last()
-        .map(|diagnostic| diagnostic.message.contains("tick 300"))
-        .unwrap_or(false));
+        .iter()
+        .all(|diagnostic| diagnostic.code != "runtime-idle"
+            && diagnostic.code != "runtime-jump-input"));
+    assert!(host
+        .diagnostics
+        .diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.code != "runtime-idle"
+            && diagnostic.code != "runtime-jump-input"));
 }
 
 #[test]
@@ -197,6 +198,80 @@ fn core_replaces_room_player_with_persistent_player_on_transition() {
     assert_eq!(players.len(), 1, "room should have a single live player");
     assert_eq!(players[0].instance_id, 11);
     assert_eq!((players[0].x, players[0].y), (72.0, 80.0));
+}
+
+#[test]
+fn persistent_instances_receive_room_start_events_on_transition() {
+    let mut package = sample_package();
+    package.rooms[1].speed = 30;
+    package.objects[1].persistent = true;
+    package.objects[1].events.push(ObjectEventEntry {
+        event_type: 7,
+        sub_event: 4,
+        event_tag: "other:room-start".into(),
+        block_id: "object:1:event:7:4".into(),
+        action_count: 1,
+    });
+    package.lowered_logic = Some(LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![LoweredLogicEntry {
+            block_id: "object:1:event:7:4".into(),
+            statements: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("room_speed".into()),
+                value: LoweredLogicExpr::LiteralNumber(50.0),
+            }],
+        }],
+    });
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.request_room_transition(9);
+    core.apply_pending_room_change(&mut host).unwrap();
+
+    assert_eq!(core.snapshot().room_id, Some(9));
+    assert_eq!(core.current_room_speed(), Some(50));
+    assert!(core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .any(|instance| instance.object_name == "obj_marker" && instance.persistent));
+}
+
+#[test]
+fn persistent_instances_receive_room_start_events_on_manual_reload() {
+    let mut package = sample_package();
+    package.rooms[1].speed = 30;
+    package.objects[1].persistent = true;
+    package.objects[1].events.push(ObjectEventEntry {
+        event_type: 7,
+        sub_event: 4,
+        event_tag: "other:room-start".into(),
+        block_id: "object:1:event:7:4".into(),
+        action_count: 1,
+    });
+    package.lowered_logic = Some(LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![LoweredLogicEntry {
+            block_id: "object:1:event:7:4".into(),
+            statements: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("room_speed".into()),
+                value: LoweredLogicExpr::LiteralNumber(50.0),
+            }],
+        }],
+    });
+    let mut core = RuntimeCore::load(package).unwrap();
+
+    core.reload_room(9).unwrap();
+
+    assert_eq!(core.snapshot().room_id, Some(9));
+    assert_eq!(core.current_room_speed(), Some(50));
+    assert!(core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .any(|instance| instance.object_name == "obj_marker" && instance.persistent));
 }
 
 #[test]

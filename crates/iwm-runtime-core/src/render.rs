@@ -297,7 +297,12 @@ impl RuntimeCore {
             .unwrap_or(&[]);
         let room_order = &self.cached_room_order;
         let button_states = host.active_buttons().into_iter().collect::<HashMap<_, _>>();
-        let (current_room_id, current_room_speed, dispatches, room_instance_indices_by_object_id) = {
+        let (
+            current_room_id,
+            mut current_room_speed,
+            dispatches,
+            room_instance_indices_by_object_id,
+        ) = {
             let Some(room) = self.current_room.as_ref() else {
                 return Err(RuntimeCoreError::NoRooms);
             };
@@ -377,6 +382,7 @@ impl RuntimeCore {
                         script_entries,
                         sound_index: &self.sound_index,
                         globals: &mut self.globals,
+                        room_speed: &mut current_room_speed,
                         pending_room_transition: &mut self.pending_room_transition,
                         pending_room_reset: &mut self.pending_room_reset,
                         pending_game_restart: &mut self.pending_game_restart,
@@ -430,6 +436,7 @@ impl RuntimeCore {
         }
 
         if let Some(room) = self.current_room.as_mut() {
+            room.speed = current_room_speed;
             for (index, updated_instance) in instance_updates.drain_dirty_updates() {
                 if let Some(slot) = room.instances.get_mut(index) {
                     *slot = updated_instance;

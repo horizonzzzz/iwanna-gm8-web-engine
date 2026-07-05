@@ -8,7 +8,7 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 
 ## Current Baseline
 
-- The browser shell can load packages, boot the WASM bridge, auto-run it at the active room's GM `speed` tick rate, pause/resume that loop, reset, select rooms, and show telemetry.
+- The browser shell can load packages, boot the WASM bridge, auto-run it at the active runtime room speed, pause/resume that loop, reset, select rooms, and show telemetry. Runtime `room_speed` assignments override static room metadata for both snapshots and browser auto-tick scheduling.
 - The parser now preserves raw logic in `logic.raw.json` and emits a structured lowered contract in `logic.lowered.json` for the current IWanna-critical subset.
 - The parser now also emits sprite collision bounds in `resources/index.json` as `bbox_left`, `bbox_right`, `bbox_top`, and `bbox_bottom`, plus optional `collision_masks` sourced from OpenGMK collision metadata. Parser sprite PNG export now converts gm8exe BGRA frame data to browser RGBA order, matching the existing background conversion path; this fixes Dife blood sprites that previously exported blue instead of red.
 - The lowered parser contract now covers common comment stripping, `var` declarations, assignments, returns, calls, member/index access, unary expressions, and common control-flow heads on the current critical path.

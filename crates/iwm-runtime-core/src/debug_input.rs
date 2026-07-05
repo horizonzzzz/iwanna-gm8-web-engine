@@ -1,10 +1,10 @@
-use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeDiagnosticLevel, RuntimeHost};
+use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 
 use crate::helpers::as_number;
 use crate::{RuntimeCore, RuntimeInputTraceSnapshot};
 
 impl RuntimeCore {
-    pub(crate) fn record_jump_input_diagnostic<H: RuntimeHost>(
+    pub(crate) fn update_jump_input_trace<H: RuntimeHost>(
         &mut self,
         host: &mut H,
         jump_state: ButtonState,
@@ -43,18 +43,5 @@ impl RuntimeCore {
                 .map(ToString::to_string)
                 .collect(),
         };
-
-        self.record_diagnostic(
-            host,
-            RuntimeDiagnosticLevel::Info,
-            "runtime-jump-input",
-            format!(
-                "jumpbutton=0x{jump_key:02x} jump=p{}jp{}jr{} active_keys=[{}]",
-                jump_state.pressed as u8,
-                jump_state.just_pressed as u8,
-                jump_state.just_released as u8,
-                active_keys
-            ),
-        );
     }
 }
