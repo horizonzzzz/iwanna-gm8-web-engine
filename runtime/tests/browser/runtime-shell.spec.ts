@@ -141,6 +141,90 @@ test('sample package creates and renders a bullet from the browser wasm bridge o
   expect(result.afterCommandCount).toBeGreaterThan(result.beforeCommandCount);
 });
 
+test('sample package ignores raw R save-load input on the difficulty room', async ({ page }) => {
+  await page.goto('/');
+
+  const result = await page.evaluate(async () => {
+    const { loadPackage } = await import('/src/loadPackage.ts');
+    const { instantiateWasmRuntimeBridge } = await import('/src/runtime/wasmBridge.ts');
+
+    function saveBytes(roomId: number, x: number, y: number): Uint8Array {
+      const bytes: number[] = [];
+      for (const value of [roomId, x, y]) {
+        bytes.push(Math.trunc(value / 10000));
+        bytes.push(Math.trunc((value % 10000) / 100));
+        bytes.push(value % 100);
+      }
+      bytes.push(0);
+      bytes.push(0);
+      bytes.push(...Array.from({ length: 16 }, () => 0));
+      bytes.push(0);
+      bytes.push(...Array.from({ length: 8 }, () => 0));
+      bytes.push(0);
+      bytes.push(0);
+      return Uint8Array.from(bytes);
+    }
+
+    const files = new Map<string, Uint8Array>();
+    const pkg = await loadPackage('/packages/sample');
+    const difficultyRoom = pkg.rooms.find((room) => room.name === 'rSelectStage')?.id;
+    if (difficultyRoom == null) {
+      throw new Error('sample package is missing rSelectStage');
+    }
+
+    const bridge = await instantiateWasmRuntimeBridge('/wasm/iwm_runtime_web.wasm', {}, {
+      audioHost: {
+        playSound: () => undefined,
+        stopSound: () => undefined,
+        stopAllSounds: () => undefined,
+        isSoundPlaying: () => false,
+      },
+      fileHost: {
+        readFile: (path) => files.get(path) ?? null,
+        writeFile: (path, bytes) => {
+          files.set(path, new Uint8Array(bytes));
+        },
+        removeFile: (path) => files.delete(path),
+      },
+    });
+
+    await bridge.boot(pkg);
+    files.set('save1', saveBytes(143, 321, 654));
+    await bridge.selectRoom(difficultyRoom);
+    const before = await bridge.snapshot();
+
+    await bridge.setInput({
+      left: false,
+      right: false,
+      jump: false,
+      jumpPressed: false,
+      jumpReleased: false,
+      restart: false,
+      keysHeld: [0x52],
+      keysPressed: [0x52],
+      keysReleased: [],
+    });
+    const afterPress = await bridge.tick(1);
+    const diagnostics = await bridge.diagnostics();
+
+    return {
+      activeKeys: afterPress.inputTrace.activeKeys,
+      afterPlayer: afterPress.player,
+      afterRoomId: afterPress.roomId,
+      beforePlayer: before.player,
+      beforeRoomId: before.roomId,
+      diagnostics,
+      difficultyRoom,
+    };
+  });
+
+  expect(result.beforeRoomId).toBe(result.difficultyRoom);
+  expect(result.afterRoomId).toBe(result.difficultyRoom);
+  expect(result.activeKeys).toContain('0x52:p1jp1jr0');
+  expect(result.afterPlayer ? [result.afterPlayer.x, result.afterPlayer.y] : null).not.toEqual([321, 654]);
+  expect(result.diagnostics.some((item) => item.includes('runtime-room-restart-requested'))).toBe(false);
+});
+
 const room143MovementBaselines = [
   {
     name: 'tap jump',

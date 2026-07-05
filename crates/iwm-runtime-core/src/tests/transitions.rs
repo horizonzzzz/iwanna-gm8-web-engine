@@ -90,7 +90,7 @@ fn core_resets_player_back_to_spawn() {
     core.tick(&mut host).unwrap();
 
     host.input.replace_button_states([(
-        RuntimeButton::Keyboard(0x52),
+        RuntimeButton::Restart,
         ButtonState {
             pressed: true,
             just_pressed: true,
@@ -205,7 +205,7 @@ fn core_only_restarts_on_restart_press_edge() {
     let mut host = host();
 
     host.input.replace_button_states([(
-        RuntimeButton::Keyboard(0x52),
+        RuntimeButton::Restart,
         ButtonState {
             pressed: true,
             just_pressed: true,
@@ -232,7 +232,7 @@ fn core_only_restarts_on_restart_press_edge() {
             },
         ),
         (
-            RuntimeButton::Keyboard(0x52),
+            RuntimeButton::Restart,
             ButtonState {
                 pressed: true,
                 just_pressed: false,
@@ -257,7 +257,7 @@ fn core_emits_restart_request_diagnostic_on_restart_press_edge() {
     let mut host = host();
 
     host.input.replace_button_states([(
-        RuntimeButton::Keyboard(0x52),
+        RuntimeButton::Restart,
         ButtonState {
             pressed: true,
             just_pressed: true,
@@ -273,7 +273,46 @@ fn core_emits_restart_request_diagnostic_on_restart_press_edge() {
 }
 
 #[test]
-fn core_uses_runtime_bound_restart_key_before_default_r() {
+fn raw_r_does_not_restart_without_runtime_binding() {
+    let mut core = RuntimeCore::load(sample_package()).unwrap();
+    let player = core
+        .current_room
+        .as_mut()
+        .unwrap()
+        .instances
+        .iter_mut()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    player.x = 72.0;
+    player.previous_x = 72.0;
+    let mut host = host();
+
+    host.input.replace_button_states([(
+        RuntimeButton::Keyboard(0x52),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    )]);
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.x, 72.0);
+    assert!(core
+        .diagnostics()
+        .iter()
+        .all(|diagnostic| diagnostic.code != "runtime-room-restart-requested"));
+}
+
+#[test]
+fn core_uses_runtime_bound_restart_key_without_default_r() {
     let mut core = RuntimeCore::load(sample_package()).unwrap();
     core.globals.insert(
         "global.restartbutton".into(),
@@ -310,7 +349,7 @@ fn core_uses_runtime_bound_restart_key_before_default_r() {
         .unwrap();
     assert!(
         player_after_r.x > 12.0,
-        "default R should not reset when global.restartbutton is bound elsewhere"
+        "raw R should not reset when global.restartbutton is bound elsewhere"
     );
 
     host.input.replace_button_states([(
@@ -352,7 +391,7 @@ fn core_reset_clears_previous_movement_and_input_effects() {
     core.tick(&mut host).unwrap();
 
     host.input.replace_button_states([(
-        RuntimeButton::Keyboard(0x52),
+        RuntimeButton::Restart,
         ButtonState {
             pressed: true,
             just_pressed: true,
@@ -389,7 +428,7 @@ fn core_restart_resets_jump_state_before_the_next_jump() {
     core.tick(&mut host).unwrap();
 
     host.input.replace_button_states([(
-        RuntimeButton::Keyboard(0x52),
+        RuntimeButton::Restart,
         ButtonState {
             pressed: true,
             just_pressed: true,

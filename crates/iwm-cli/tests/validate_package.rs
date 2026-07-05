@@ -200,8 +200,7 @@ fn runtime_diagnostics_outputs_runtime_events() {
         .arg(&temp_root)
         .arg("--ticks")
         .arg("2")
-        .arg("--press-keys")
-        .arg("82")
+        .arg("--press-restart")
         .output()
         .expect("cli should run");
 

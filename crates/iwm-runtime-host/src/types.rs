@@ -7,6 +7,7 @@ pub const DEFAULT_TICK_RATE_HZ: u32 = 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RuntimeButton {
+    Restart,
     Keyboard(u16),
     Mouse(u8),
 }

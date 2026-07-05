@@ -39,6 +39,8 @@ enum Commands {
         ticks: u32,
         #[arg(long, value_delimiter = ',')]
         press_keys: Vec<u16>,
+        #[arg(long, default_value_t = false)]
+        press_restart: bool,
         #[arg(long, value_delimiter = ',')]
         hold_keys: Vec<u16>,
         #[arg(long)]
@@ -122,6 +124,7 @@ fn main() {
             input,
             ticks,
             press_keys,
+            press_restart,
             hold_keys,
             input_script,
             select_room,
@@ -186,6 +189,7 @@ fn main() {
                     &mut host,
                     u64::MAX,
                     &[],
+                    false,
                     &[],
                     input_script.as_ref(),
                     &mut scripted_input_state,
@@ -227,6 +231,7 @@ fn main() {
                     &mut host,
                     u64::from(run_tick),
                     &press_keys,
+                    press_restart,
                     &hold_keys,
                     input_script.as_ref(),
                     &mut scripted_input_state,
@@ -286,6 +291,7 @@ fn apply_cli_input(
     host: &mut HeadlessHost,
     run_tick: u64,
     press_keys: &[u16],
+    press_restart: bool,
     hold_keys: &[u16],
     input_script: Option<&RuntimeInputScript>,
     scripted_input_state: &mut RuntimeInputScriptState,
@@ -332,6 +338,16 @@ fn apply_cli_input(
     }
 
     if run_tick == 0 {
+        if press_restart {
+            states.insert(
+                RuntimeButton::Restart,
+                ButtonState {
+                    pressed: true,
+                    just_pressed: true,
+                    just_released: false,
+                },
+            );
+        }
         for key in press_keys {
             set_button_state(
                 &mut states,

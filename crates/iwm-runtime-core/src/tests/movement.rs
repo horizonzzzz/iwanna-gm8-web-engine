@@ -231,7 +231,7 @@ fn core_hazard_death_waits_for_restart_button_before_room_reset() {
         .any(|diagnostic| diagnostic.code == "runtime-room-changed"));
 
     host.input.replace_button_states([(
-        RuntimeButton::Keyboard(0x52),
+        RuntimeButton::Restart,
         ButtonState {
             pressed: true,
             just_pressed: true,

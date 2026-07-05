@@ -263,6 +263,119 @@ fn real_sample_r_select_stage_spike_reset_keeps_player_movable() {
 }
 
 #[test]
+fn real_sample_r_key_does_not_load_save_on_difficulty_room() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let difficulty_room = real_sample_room_id(&core, "rSelectStage");
+
+    core.reload_room(difficulty_room).unwrap();
+    assert_eq!(
+        core.pending_room_transition, None,
+        "manual rSelectStage reload should not leave a pending transition"
+    );
+    move_real_sample_player_away_from_warp_starts(&mut core);
+    for instance in &mut core.current_room.as_mut().unwrap().instances {
+        if !instance.object_name.eq_ignore_ascii_case("world")
+            && !crate::helpers::is_player_instance(instance)
+        {
+            instance.alive = false;
+        }
+    }
+    let live_non_input_instances = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .filter(|instance| {
+            instance.alive
+                && !instance.object_name.eq_ignore_ascii_case("world")
+                && !crate::helpers::is_player_instance(instance)
+        })
+        .map(|instance| {
+            (
+                instance.object_name.clone(),
+                instance.object_id,
+                instance.runtime_id,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        live_non_input_instances.is_empty(),
+        "test setup should leave only world/player alive, got {live_non_input_instances:?}"
+    );
+    core.globals
+        .insert("global.savenum".into(), RuntimeValue::Number(1.0));
+    let saved_position = (321.0, 654.0);
+    host.files
+        .write_temp(Path::new("save1"), &sample_save_bytes(143, 321, 654))
+        .unwrap();
+
+    press_real_sample_key(&mut host, 0x52);
+    core.tick(&mut host).unwrap();
+    release_real_sample_key(&mut host, 0x52);
+
+    let snapshot = core.snapshot();
+    assert_eq!(
+        snapshot.room_id,
+        Some(difficulty_room),
+        "R on rSelectStage should be ignored by package load logic; diagnostics={:?}",
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+    assert_ne!(
+        snapshot.player.as_ref().map(|player| (player.x, player.y)),
+        Some(saved_position),
+        "R on rSelectStage should not restore save coordinates"
+    );
+    assert!(core
+        .diagnostics()
+        .iter()
+        .all(|diagnostic| diagnostic.code != "runtime-room-restart-requested"));
+}
+
+fn move_real_sample_player_away_from_warp_starts(core: &mut RuntimeCore) {
+    let room = core.current_room.as_mut().unwrap();
+    let player_indices = room
+        .instances
+        .iter()
+        .enumerate()
+        .filter_map(|(index, instance)| {
+            (crate::helpers::is_player_instance(instance) && instance.alive).then_some(index)
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !player_indices.is_empty(),
+        "room should include a live player"
+    );
+    let warp_starts = room
+        .instances
+        .iter()
+        .filter(|instance| instance.object_name.eq_ignore_ascii_case("warpStart") && instance.alive)
+        .cloned()
+        .collect::<Vec<_>>();
+    for (x, y) in [(0.0, 0.0), (32.0, 32.0), (400.0, 300.0), (760.0, 520.0)] {
+        if player_indices.iter().all(|player_index| {
+            let player = &room.instances[*player_index];
+            warp_starts.iter().all(|warp| {
+                !crate::helpers::collides_with_instance_at(player, x, y, warp, None, |_| true)
+            })
+        }) {
+            for player_index in &player_indices {
+                let player = &mut room.instances[*player_index];
+                player.x = x;
+                player.y = y;
+                player.previous_x = x;
+                player.previous_y = y;
+            }
+            return;
+        }
+    }
+    panic!("test setup should find a player position away from warpStart");
+}
+
+#[test]
 fn real_sample_bootstrap_sets_shift_jump_binding() {
     let Some(package) = real_sample_package() else {
         return;
@@ -427,6 +540,23 @@ fn press_real_sample_key(host: &mut HeadlessHost, key: u16) {
             just_released: false,
         },
     );
+}
+
+fn sample_save_bytes(room_id: u16, x: u16, y: u16) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    for value in [room_id, x, y] {
+        bytes.push((value / 10000) as u8);
+        bytes.push(((value % 10000) / 100) as u8);
+        bytes.push((value % 100) as u8);
+    }
+    bytes.push(0); // difficulty
+    bytes.push(0); // grav
+    bytes.extend(std::iter::repeat(0).take(16)); // boss flags
+    bytes.push(0); // clear
+    bytes.extend(std::iter::repeat(0).take(8)); // item flags
+    bytes.push(0); // ble
+    bytes.push(0); // music
+    bytes
 }
 
 #[test]

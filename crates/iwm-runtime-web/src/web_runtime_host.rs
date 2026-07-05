@@ -117,7 +117,7 @@ impl WebRuntimeHost {
 
         merge_semantic_button_state(
             &mut states,
-            0x25,
+            RuntimeButton::Keyboard(0x25),
             ButtonState {
                 pressed: input.left,
                 just_pressed: left_just_pressed,
@@ -126,7 +126,7 @@ impl WebRuntimeHost {
         );
         merge_semantic_button_state(
             &mut states,
-            0x27,
+            RuntimeButton::Keyboard(0x27),
             ButtonState {
                 pressed: input.right,
                 just_pressed: right_just_pressed,
@@ -135,7 +135,7 @@ impl WebRuntimeHost {
         );
         merge_semantic_button_state(
             &mut states,
-            0x52,
+            RuntimeButton::Restart,
             ButtonState {
                 pressed: input.restart,
                 just_pressed: restart_just_pressed,
@@ -357,11 +357,11 @@ impl RuntimeDiagnosticsHost for WebRuntimeHostBoundary {
 
 fn merge_semantic_button_state(
     states: &mut std::collections::HashMap<RuntimeButton, ButtonState>,
-    key: u16,
+    button: RuntimeButton,
     semantic: ButtonState,
 ) {
     states
-        .entry(RuntimeButton::Keyboard(key))
+        .entry(button)
         .and_modify(|state| {
             state.pressed |= semantic.pressed;
             state.just_pressed |= semantic.just_pressed;

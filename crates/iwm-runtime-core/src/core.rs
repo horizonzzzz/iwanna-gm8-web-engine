@@ -700,13 +700,23 @@ impl RuntimeCore {
     }
 
     fn bound_restart_button_state<H: RuntimeHost>(&self, host: &H) -> ButtonState {
-        let key_code = self
+        let semantic_restart = host.button_state(RuntimeButton::Restart);
+        if semantic_restart.pressed
+            || semantic_restart.just_pressed
+            || semantic_restart.just_released
+        {
+            return semantic_restart;
+        }
+
+        let Some(key_code) = self
             .globals
             .get("global.restartbutton")
             .or_else(|| self.globals.get("global.resetbutton"))
             .and_then(as_number)
             .map(|value| value.round() as u16)
-            .unwrap_or(0x52);
+        else {
+            return ButtonState::default();
+        };
         host.button_state(RuntimeButton::Keyboard(key_code))
     }
 

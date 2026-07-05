@@ -25,9 +25,11 @@ Current Dife scenarios:
 - `dife-room143-move-right.json`
 - `dife-room143-shoot.json`
 - `dife-room151-death-right.json`
-- `dife-room151-r-reset.json` (historical fallback-host check)
+- `dife-room151-r-reset.json` (historical raw-key reference)
 
 The room 151 raw-`R` reset scripts predate the browser keyboard change that
 treats physical `R` as package-owned raw keyboard input. They are useful only as
-historical fallback-host references; current browser and real-sample checks
-should let package `keypress R` logic run without adding a second shell reset.
+historical raw-key references; current browser and real-sample checks should let
+package `keypress R` logic run without adding a second shell reset. Use
+`iwm-cli runtime-diagnostics --press-restart` for explicit semantic host restart
+checks.
