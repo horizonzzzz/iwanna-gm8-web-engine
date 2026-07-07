@@ -1,11 +1,11 @@
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
 use iwm_runtime_host::{ButtonState, RuntimeButton};
-use iwm_runtime_model::ObjectEventEntry;
+use iwm_runtime_model::{ObjectEventEntry, SpriteCollisionMask};
 
 use super::support::{
     add_alarm_block, add_collision_block, add_create_block, add_keyboard_block,
-    add_keyboard_press_block, add_keyboard_release_block, append_lowered_entry, host,
-    sample_package,
+    add_keyboard_press_block, add_keyboard_release_block, add_step_block, append_lowered_entry,
+    host, sample_package,
 };
 use crate::event_dispatch::{
     collision_event_target_object_ids, object_event_block_ids,
@@ -642,6 +642,73 @@ fn core_dispatches_collision_event_blocks_when_player_overlaps_target() {
 }
 
 #[test]
+fn hazard_collision_event_does_not_fire_when_swept_bbox_top_misses_precise_mask() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[2].name = "spike".into();
+    package.objects[2].solid = false;
+    package.objects[2].sprite_index = 1;
+    package.objects[2].is_hazard = Some(true);
+    package.resources.sprites[0].width = 4;
+    package.resources.sprites[0].height = 4;
+    package.resources.sprites[0].bbox_right = 3;
+    package.resources.sprites[0].bbox_bottom = 3;
+    package.resources.sprites[0].collision_masks = vec![filled_mask(4, 4)];
+    package.resources.sprites[1].width = 16;
+    package.resources.sprites[1].height = 16;
+    package.resources.sprites[1].bbox_right = 15;
+    package.resources.sprites[1].bbox_bottom = 15;
+    package.resources.sprites[1].collision_masks = vec![top_spike_mask(16)];
+    package.rooms[0].instances[2].x = 100;
+    package.rooms[0].instances[2].y = 100;
+    package.rooms[0].instances[2].is_solid = false;
+    package.rooms[0].instances[2].is_hazard = true;
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("previous_x".into()),
+                value: LoweredLogicExpr::LiteralNumber(97.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("previous_y".into()),
+                value: LoweredLogicExpr::LiteralNumber(93.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("x".into()),
+                value: LoweredLogicExpr::LiteralNumber(97.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("y".into()),
+                value: LoweredLogicExpr::LiteralNumber(97.0),
+            },
+        ],
+    );
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("collision_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("collision_hit"), None);
+}
+
+#[test]
 fn collision_event_execution_does_not_emit_hot_path_trace_diagnostics() {
     let mut package = sample_package();
     package.objects[0].name = "player".into();
@@ -672,6 +739,41 @@ fn collision_event_execution_does_not_emit_hot_path_trace_diagnostics() {
     assert!(core.diagnostics().iter().all(|entry| {
         entry.code != "runtime-exec-block-trace" || !entry.message.contains("event_tag=collision")
     }));
+}
+
+fn filled_mask(width: u32, height: u32) -> SpriteCollisionMask {
+    SpriteCollisionMask {
+        width,
+        height,
+        bbox_left: 0,
+        bbox_right: width - 1,
+        bbox_top: 0,
+        bbox_bottom: height - 1,
+        data: vec![true; (width * height) as usize],
+    }
+}
+
+fn top_spike_mask(size: u32) -> SpriteCollisionMask {
+    let mut data = vec![false; (size * size) as usize];
+    for y in 0..size {
+        let half_width = (y / 2) + 1;
+        let center_left = size / 2 - 1;
+        let left = center_left.saturating_sub(half_width - 1);
+        let right = (center_left + half_width).min(size - 1);
+        for x in left..=right {
+            data[(y * size + x) as usize] = true;
+        }
+    }
+
+    SpriteCollisionMask {
+        width: size,
+        height: size,
+        bbox_left: 0,
+        bbox_right: size - 1,
+        bbox_top: 0,
+        bbox_bottom: size - 1,
+        data,
+    }
 }
 
 #[test]

@@ -1208,7 +1208,7 @@ impl RuntimeCore {
                                 instance.y,
                                 std::slice::from_ref(other),
                                 Some(instance.runtime_id),
-                            ) || swept_top_contact(instance, other)
+                            ) || (!other.hazard && swept_top_contact(instance, other))
                             {
                                 tick_context.collision_hits.push(RuntimeCollisionHit {
                                     instance_idx: instance_index,
