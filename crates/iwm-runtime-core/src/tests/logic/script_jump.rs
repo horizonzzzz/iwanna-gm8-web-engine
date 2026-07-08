@@ -265,7 +265,10 @@ fn script_owned_jump_can_retrigger_after_collision_restores_djump() {
             player.vars.get("jump_count"),
             Some(&RuntimeValue::Number(1.0))
         );
-        assert_eq!(player.vars.get("djump"), Some(&RuntimeValue::Bool(false)));
+        // GM8 free motion presses the resting player into the block on the same
+        // tick, so the collision event refires and restores djump right after the
+        // jump consumed it (jump_count above proves the consume happened).
+        assert_eq!(player.vars.get("djump"), Some(&RuntimeValue::Bool(true)));
     }
 
     {
@@ -758,5 +761,135 @@ fn non_solid_platform_top_contact_preserves_walkoff_double_jump() {
     assert_ne!(
         player.vars.get("missed_air_jump"),
         Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn swept_platform_contact_runs_event_at_contact_height_after_spent_double_jump() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects.push(ObjectDefinition {
+        id: 4,
+        name: "platform".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: false,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![],
+    });
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 16,
+        object_id: 4,
+        x: 12,
+        y: 40,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    add_create_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("djump".into()),
+                value: LoweredLogicExpr::LiteralBool(false),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("onPlatform".into()),
+                value: LoweredLogicExpr::LiteralBool(false),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("gravity".into()),
+                value: LoweredLogicExpr::LiteralNumber(0.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("maxFallSpeed".into()),
+                value: LoweredLogicExpr::LiteralNumber(128.0),
+            },
+        ],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("y".into()),
+            value: LoweredLogicExpr::BinaryExpr {
+                op: "+".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                right: Box::new(LoweredLogicExpr::Identifier("vspeed".into())),
+            },
+        }],
+    );
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type: 4,
+        sub_event: 4,
+        event_tag: "collision".into(),
+        block_id: "object:0:event:4:4".into(),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:0:event:4:4".into(),
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: "<=".into(),
+                left: Box::new(LoweredLogicExpr::BinaryExpr {
+                    op: "-".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                    right: Box::new(LoweredLogicExpr::BinaryExpr {
+                        op: "/".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("vspeed".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(2.0)),
+                    }),
+                }),
+                right: Box::new(LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("other".into())),
+                    member: "y".into(),
+                }),
+            },
+            then_branch: vec![
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("onPlatform".into()),
+                    value: LoweredLogicExpr::LiteralNumber(1.0),
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("djump".into()),
+                    value: LoweredLogicExpr::LiteralBool(true),
+                },
+            ],
+            else_branch: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let player = player_mut(&mut core);
+        player.y = 20.0;
+        player.previous_y = 20.0;
+        player.vspeed = 48.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = player(&core);
+    assert_eq!(
+        player.vars.get("djump"),
+        Some(&RuntimeValue::Bool(true)),
+        "swept platform contact should run platform logic at the contact height; vars={:?}",
+        player.vars
+    );
+    assert_eq!(
+        player.vars.get("onPlatform"),
+        Some(&RuntimeValue::Number(1.0))
     );
 }

@@ -309,6 +309,21 @@ impl RuntimeCollisionSpatialIndex {
         candidate_indices_from_cells(cells, instance, x, y, scratch);
     }
 
+    pub(crate) fn motion_candidate_indices_into(
+        &self,
+        object_id: usize,
+        instance: &RuntimeInstance,
+        x: f64,
+        y: f64,
+        scratch: &mut RuntimeCollisionScratch,
+    ) {
+        let Some(cells) = self.cells_by_object_id.get(&object_id) else {
+            scratch.clear_candidates();
+            return;
+        };
+        candidate_indices_from_motion_cells(cells, instance, x, y, scratch);
+    }
+
     pub(crate) fn solid_candidate_indices(
         &self,
         instance: &RuntimeInstance,
@@ -391,6 +406,35 @@ fn candidate_indices_from_cells(
             }
         }
     });
+}
+
+fn candidate_indices_from_motion_cells(
+    cells: &HashMap<i64, Vec<usize>>,
+    instance: &RuntimeInstance,
+    x: f64,
+    y: f64,
+    scratch: &mut RuntimeCollisionScratch,
+) {
+    scratch.begin_query();
+    let (left, top, right, bottom) = bounds_at(instance, x, y);
+    let (previous_left, previous_top, previous_right, previous_bottom) =
+        bounds_at(instance, instance.previous_x, instance.previous_y);
+    for_each_cell_for_bounds(
+        left.min(previous_left),
+        top.min(previous_top),
+        right.max(previous_right),
+        bottom.max(previous_bottom),
+        |cell| {
+            let Some(indices) = cells.get(&cell) else {
+                return;
+            };
+            for index in indices {
+                if scratch.mark_candidate(*index) {
+                    scratch.candidates.push(*index);
+                }
+            }
+        },
+    );
 }
 
 fn for_each_cell_for_bounds(

@@ -188,38 +188,47 @@ impl RuntimeCore {
 
         player.vspeed = (player.vspeed + gravity).min(max_fall_speed);
 
-        move_instance_axis(
-            player,
-            &solids,
-            Some(player.runtime_id),
-            Axis::Horizontal,
-            player.hspeed,
-        );
-        let vertical_blocked = move_instance_axis(
-            player,
-            &solids,
-            Some(player.runtime_id),
-            Axis::Vertical,
-            player.vspeed,
-        );
-        if vertical_blocked {
-            player.jump.active = false;
-            player.jump.cut_applied = true;
-        }
+        if enable_builtin_jump {
+            move_instance_axis(
+                player,
+                &solids,
+                Some(player.runtime_id),
+                Axis::Horizontal,
+                player.hspeed,
+            );
+            let vertical_blocked = move_instance_axis(
+                player,
+                &solids,
+                Some(player.runtime_id),
+                Axis::Vertical,
+                player.vspeed,
+            );
+            if vertical_blocked {
+                player.jump.active = false;
+                player.jump.cut_applied = true;
+            }
 
-        let grounded_after = collides_at(
-            player,
-            player.x,
-            player.y + 1.0,
-            &solids,
-            Some(player.runtime_id),
-        );
-        if grounded_after {
-            player.jump.active = false;
-            player.jump.hold_frames = 0;
-            player.jump.cut_applied = false;
+            let grounded_after = collides_at(
+                player,
+                player.x,
+                player.y + 1.0,
+                &solids,
+                Some(player.runtime_id),
+            );
+            if grounded_after {
+                player.jump.active = false;
+                player.jump.hold_frames = 0;
+                player.jump.cut_applied = false;
+            }
+            player.jump.grounded_last_tick = grounded_after;
+        } else {
+            // GM8 never clamps motion against solids: the collision event pipeline
+            // (previous-position rollback + the game's own move_contact_solid GML)
+            // resolves them, and it must keep firing while gravity presses a resting
+            // player into the floor so per-frame GML like `djump = 1` stays live.
+            player.x += player.hspeed;
+            player.y += player.vspeed;
         }
-        player.jump.grounded_last_tick = grounded_after;
 
         if collides_at(
             player,

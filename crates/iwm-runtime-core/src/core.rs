@@ -1188,13 +1188,15 @@ impl RuntimeCore {
                         continue;
                     };
                     for matching_object_id in matching_object_ids {
-                        tick_context.collision_spatial_index.candidate_indices_into(
-                            *matching_object_id,
-                            instance,
-                            instance.x,
-                            instance.y,
-                            &mut tick_context.collision_scratch,
-                        );
+                        tick_context
+                            .collision_spatial_index
+                            .motion_candidate_indices_into(
+                                *matching_object_id,
+                                instance,
+                                instance.x,
+                                instance.y,
+                                &mut tick_context.collision_scratch,
+                            );
                         for &other_index in tick_context.collision_scratch.candidates() {
                             let Some(other) = room.instances.get(other_index) else {
                                 continue;
@@ -1202,19 +1204,23 @@ impl RuntimeCore {
                             if instance.runtime_id == other.runtime_id {
                                 continue;
                             }
+                            let swept_contact_y = (!other.hazard)
+                                .then(|| swept_top_contact_y(instance, other))
+                                .flatten();
                             if collides_at(
                                 instance,
                                 instance.x,
                                 instance.y,
                                 std::slice::from_ref(other),
                                 Some(instance.runtime_id),
-                            ) || (!other.hazard && swept_top_contact(instance, other))
+                            ) || swept_contact_y.is_some()
                             {
                                 tick_context.collision_hits.push(RuntimeCollisionHit {
                                     instance_idx: instance_index,
                                     target_object_id,
                                     other_idx: other_index,
                                     solid_collision: instance.solid || other.solid,
+                                    contact_y: swept_contact_y,
                                 });
                             }
                         }
@@ -1235,6 +1241,24 @@ impl RuntimeCore {
                 if !room.instances[hit.instance_idx].alive || !room.instances[hit.other_idx].alive {
                     continue;
                 }
+                {
+                    // GM8 re-checks each pair live: an earlier hit's event may have
+                    // already separated the instances (e.g. move_contact_solid), and
+                    // rolling back on a stale hit would teleport the mover into the air.
+                    let instance = &room.instances[hit.instance_idx];
+                    let other = &room.instances[hit.other_idx];
+                    let still_touching = hit.contact_y.is_some()
+                        || collides_at(
+                            instance,
+                            instance.x,
+                            instance.y,
+                            std::slice::from_ref(other),
+                            Some(instance.runtime_id),
+                        );
+                    if !still_touching {
+                        continue;
+                    }
+                }
                 if hit.solid_collision {
                     if let Some(instance) = room.instances.get_mut(hit.instance_idx) {
                         instance.x = instance.previous_x;
@@ -1243,6 +1267,10 @@ impl RuntimeCore {
                     if let Some(other) = room.instances.get_mut(hit.other_idx) {
                         other.x = other.previous_x;
                         other.y = other.previous_y;
+                    }
+                } else if let Some(contact_y) = hit.contact_y {
+                    if let Some(instance) = room.instances.get_mut(hit.instance_idx) {
+                        instance.y = contact_y as f64;
                     }
                 }
                 room.instances.get(hit.other_idx).cloned()
@@ -1276,6 +1304,50 @@ impl RuntimeCore {
                 "collision".into(),
                 Some(&tick_context.collision_spatial_index),
             );
+            if hit.solid_collision {
+                // GM8 re-applies both instances' speeds after the event and only
+                // rolls back again if they still overlap; this is how horizontal
+                // motion survives a vertical solid collision.
+                if let Some(room) = self.current_room.as_mut() {
+                    if let Some(instance) = room.instances.get_mut(hit.instance_idx) {
+                        if instance.alive {
+                            instance.x += instance.hspeed;
+                            instance.y += instance.vspeed;
+                        }
+                    }
+                    if let Some(other) = room.instances.get_mut(hit.other_idx) {
+                        if other.alive {
+                            other.x += other.hspeed;
+                            other.y += other.vspeed;
+                        }
+                    }
+                    let still_overlapping = match (
+                        room.instances.get(hit.instance_idx),
+                        room.instances.get(hit.other_idx),
+                    ) {
+                        (Some(instance), Some(other)) if instance.alive && other.alive => {
+                            collides_at(
+                                instance,
+                                instance.x,
+                                instance.y,
+                                std::slice::from_ref(other),
+                                Some(instance.runtime_id),
+                            )
+                        }
+                        _ => false,
+                    };
+                    if still_overlapping {
+                        if let Some(instance) = room.instances.get_mut(hit.instance_idx) {
+                            instance.x = instance.previous_x;
+                            instance.y = instance.previous_y;
+                        }
+                        if let Some(other) = room.instances.get_mut(hit.other_idx) {
+                            other.x = other.previous_x;
+                            other.y = other.previous_y;
+                        }
+                    }
+                }
+            }
         }
 
         self.tick_context = tick_context;
@@ -1287,16 +1359,20 @@ fn parse_alarm_slot(key: &str) -> Option<u32> {
     key.strip_prefix("alarm[")?.strip_suffix(']')?.parse().ok()
 }
 
-fn swept_top_contact(instance: &RuntimeInstance, other: &RuntimeInstance) -> bool {
+fn swept_top_contact_y(instance: &RuntimeInstance, other: &RuntimeInstance) -> Option<i32> {
     if other.solid || instance.y <= instance.previous_y {
-        return false;
+        return None;
     }
 
     let (left, _, right, bottom) = bounds_at(instance, instance.x, instance.y);
     let (_, _, _, previous_bottom) = bounds_at(instance, instance.previous_x, instance.previous_y);
     let (other_left, other_top, other_right, _) = bounds_at(other, other.x, other.y);
 
-    left < other_right && right > other_left && previous_bottom <= other_top && bottom >= other_top
+    (left < other_right
+        && right > other_left
+        && previous_bottom <= other_top
+        && bottom >= other_top)
+        .then_some(other_top + instance.origin_y - instance.bbox_bottom - 1)
 }
 
 fn statements_reference_host_file_functions(

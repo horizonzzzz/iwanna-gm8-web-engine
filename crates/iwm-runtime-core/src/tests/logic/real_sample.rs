@@ -539,6 +539,409 @@ fn real_sample_stage_alarm_increments_selected_save_time() {
     );
 }
 
+fn runtime_value_is_true(value: &RuntimeValue) -> bool {
+    match value {
+        RuntimeValue::Bool(flag) => *flag,
+        RuntimeValue::Number(number) => *number >= 0.5,
+        RuntimeValue::Text(text) => !text.is_empty(),
+    }
+}
+
+#[test]
+fn real_sample_spent_double_jump_landing_restores_djump_on_both_platform_kinds() {
+    let Some(_) = real_sample_package() else {
+        return;
+    };
+
+    for platform_name in ["platform", "movingPlatform"] {
+        let package = real_sample_package().unwrap();
+        let mut core = RuntimeCore::load(package).unwrap();
+        let mut host = host();
+        let platform_room = real_sample_room_id(&core, "rMegaman01");
+        core.reload_room(platform_room).unwrap();
+
+        // Let creation codes / first step settle so moving platforms pick up speed.
+        for _ in 0..2 {
+            core.tick(&mut host).unwrap();
+            host.input.clear_transitions();
+        }
+
+        {
+            let room = core.current_room.as_mut().unwrap();
+            let platform = room
+                .instances
+                .iter()
+                .find(|instance| {
+                    instance.object_name.eq_ignore_ascii_case(platform_name)
+                        && instance.alive
+                        && (platform_name != "movingPlatform"
+                            || ((instance.x - 1888.0).abs() < 64.0
+                                && (instance.y - 767.0).abs() < 64.0))
+                })
+                .cloned()
+                .unwrap_or_else(|| panic!("rMegaman01 should include a live {platform_name}"));
+            let player = room
+                .instances
+                .iter_mut()
+                .find(|instance| {
+                    instance.object_name.eq_ignore_ascii_case("player") && instance.alive
+                })
+                .expect("rMegaman01 should include a live player");
+
+            player.x = platform.x + 8.0;
+            player.y = platform.y - 16.0;
+            player.previous_x = player.x;
+            player.previous_y = player.y;
+            player.hspeed = 0.0;
+            player.vspeed = 0.0;
+            player
+                .vars
+                .insert("djump".into(), RuntimeValue::Bool(false));
+            player
+                .vars
+                .insert("onPlatform".into(), RuntimeValue::Bool(false));
+            eprintln!(
+                "[{platform_name}] probe start: player=({}, {}), platform=({}, {}), vars(jump={:?}, gravity={:?}, maxFallSpeed={:?}, maxVspeed={:?})",
+                player.x,
+                player.y,
+                platform.x,
+                platform.y,
+                player.vars.get("jump"),
+                player.vars.get("gravity"),
+                player.vars.get("maxFallSpeed"),
+                player.vars.get("maxVspeed"),
+            );
+        }
+
+        let mut djump_restored_tick: Option<usize> = None;
+        for tick in 0..90 {
+            core.tick(&mut host).unwrap();
+            host.input.clear_transitions();
+            let room = core.current_room().unwrap();
+            let player = room
+                .instances
+                .iter()
+                .find(|instance| {
+                    instance.object_name.eq_ignore_ascii_case("player") && instance.alive
+                })
+                .cloned();
+            let platform = room
+                .instances
+                .iter()
+                .find(|instance| {
+                    instance.object_name.eq_ignore_ascii_case(platform_name) && instance.alive
+                })
+                .cloned();
+            let (Some(player), Some(platform)) = (player, platform) else {
+                eprintln!("[{platform_name}] tick {tick}: player or platform gone");
+                break;
+            };
+            let djump = player.vars.get("djump").is_some_and(runtime_value_is_true);
+            let on_platform = player
+                .vars
+                .get("onPlatform")
+                .is_some_and(runtime_value_is_true);
+            eprintln!(
+                "[{platform_name}] tick {tick:>2}: player(y={:>8.3} vy={:>6.3} x={:>8.3}) plat(x={:>8.3} y={:>8.3} vy={:>5.2} yspeed={:?}) djump={djump} onPlatform={on_platform}",
+                player.y,
+                player.vspeed,
+                player.x,
+                platform.x,
+                platform.y,
+                platform.vspeed,
+                platform.vars.get("yspeed"),
+            );
+            if djump && djump_restored_tick.is_none() {
+                djump_restored_tick = Some(tick);
+            }
+        }
+
+        assert!(
+            djump_restored_tick.is_some(),
+            "[{platform_name}] landing with spent djump should restore djump within 90 ticks; diagnostics={:?}",
+            core.diagnostics().iter().rev().take(15).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn real_sample_spent_double_jump_landing_on_platform_restores_air_jump() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let platform_room = real_sample_room_id(&core, "rMegaman01");
+    core.reload_room(platform_room).unwrap();
+    core.globals.insert(
+        "global.jumpbutton".into(),
+        RuntimeValue::Number(0x10 as f64),
+    );
+
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let platform = room
+            .instances
+            .iter()
+            .find(|instance| {
+                instance.object_name.eq_ignore_ascii_case("platform") && instance.alive
+            })
+            .cloned()
+            .expect("rMegaman01 should include a live platform");
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .expect("rMegaman01 should include a live player");
+
+        player.x = platform.x + 8.0;
+        player.y = platform.y - 48.0;
+        player.previous_x = player.x;
+        player.previous_y = player.y;
+        player.hspeed = 0.0;
+        player.vspeed = 12.0;
+        player
+            .vars
+            .insert("djump".into(), RuntimeValue::Bool(false));
+        player
+            .vars
+            .insert("onPlatform".into(), RuntimeValue::Bool(false));
+        player
+            .vars
+            .insert("gravity".into(), RuntimeValue::Number(0.0));
+        player
+            .vars
+            .insert("maxFallSpeed".into(), RuntimeValue::Number(64.0));
+    }
+
+    for _ in 0..10 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+        let player = core
+            .current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .unwrap();
+        if player
+            .vars
+            .get("onPlatform")
+            .is_some_and(runtime_value_is_true)
+        {
+            break;
+        }
+    }
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+        .unwrap();
+    assert!(
+        player
+            .vars
+            .get("onPlatform")
+            .is_some_and(runtime_value_is_true),
+        "landing on the real Dife platform should set onPlatform; player={:?}, diagnostics={:?}",
+        player,
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+    assert!(
+        player.vars.get("djump").is_some_and(runtime_value_is_true),
+        "landing on the real Dife platform after spending double jump should restore djump; player={:?}, diagnostics={:?}",
+        player,
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+
+    let jump_key = match core.globals.get("global.jumpbutton") {
+        Some(RuntimeValue::Number(value)) => *value as u16,
+        _ => 0x10,
+    };
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .unwrap();
+        player.x = 160.0;
+        player.previous_x = 160.0;
+        player.hspeed = 0.0;
+        player.vspeed = 0.0;
+    }
+
+    press_real_sample_key(&mut host, jump_key);
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+        .unwrap();
+    assert!(
+        player.vspeed < 0.0,
+        "walking off the platform after restored djump should allow the next air jump; player={:?}, diagnostics={:?}",
+        player,
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn real_sample_block_landing_restores_spent_djump_for_walkoff_air_jump() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let platform_room = real_sample_room_id(&core, "rMegaman01");
+    core.reload_room(platform_room).unwrap();
+    core.globals.insert(
+        "global.jumpbutton".into(),
+        RuntimeValue::Number(0x10 as f64),
+    );
+    core.globals.insert(
+        "global.leftbutton".into(),
+        RuntimeValue::Number(0x25 as f64),
+    );
+
+    for _ in 0..2 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+    }
+
+    // Ledge: blocks at (224..255, 192) between the wall columns at x=192/256.
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .expect("rMegaman01 should include a live player");
+        player.x = 232.0;
+        player.y = 176.0;
+        player.previous_x = player.x;
+        player.previous_y = player.y;
+        player.hspeed = 0.0;
+        player.vspeed = 0.0;
+        player
+            .vars
+            .insert("djump".into(), RuntimeValue::Bool(false));
+        player
+            .vars
+            .insert("onPlatform".into(), RuntimeValue::Bool(false));
+    }
+
+    // Land on the block ledge and stand for a while.
+    for tick in 0..12 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+        let player = real_sample_player(&core);
+        eprintln!(
+            "[block-land] tick {tick:>2}: y={:>8.3} vy={:>6.3} x={:>7.3} djump={} onPlatform={}",
+            player.y,
+            player.vspeed,
+            player.x,
+            player.vars.get("djump").is_some_and(runtime_value_is_true),
+            player
+                .vars
+                .get("onPlatform")
+                .is_some_and(runtime_value_is_true),
+        );
+    }
+    let after_landing = real_sample_player(&core);
+    let djump_after_block_landing = after_landing
+        .vars
+        .get("djump")
+        .is_some_and(runtime_value_is_true);
+    eprintln!(
+        "[block-land] after standing: djump={djump_after_block_landing} y={} vy={}",
+        after_landing.y, after_landing.vspeed
+    );
+
+    assert!(
+        djump_after_block_landing,
+        "landing on a solid block after spending the double jump must re-run the \
+         block collision event and restore djump (GM8 refire while standing)"
+    );
+
+    // Leave the ground the way a walkoff does: airborne with djump untouched.
+    // (rMegaman01's start ledges are boxed in by wall columns, so the probe
+    // hops straight to the open shaft at x[96..127], y[320..415].)
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .expect("player should still be alive");
+        player.x = 112.0;
+        player.y = 340.0;
+        player.previous_x = player.x;
+        player.previous_y = player.y;
+        player.hspeed = 0.0;
+        player.vspeed = 0.5;
+    }
+    core.tick(&mut host).unwrap();
+    host.input.clear_transitions();
+    let before_jump = real_sample_player(&core);
+    let djump_before_air_jump = before_jump
+        .vars
+        .get("djump")
+        .is_some_and(runtime_value_is_true);
+    eprintln!(
+        "[airborne] y={:>8.3} vy={:>6.3} djump={djump_before_air_jump}",
+        before_jump.y, before_jump.vspeed
+    );
+    assert!(
+        before_jump.vspeed > 0.0,
+        "player should be falling in the shaft; player=({}, {}, vy={})",
+        before_jump.x,
+        before_jump.y,
+        before_jump.vspeed
+    );
+    assert!(
+        djump_before_air_jump,
+        "djump restored on the block must survive walking off into the air"
+    );
+
+    press_real_sample_key(&mut host, 0x10);
+    core.tick(&mut host).unwrap();
+    host.input.clear_transitions();
+    let player = real_sample_player(&core);
+    eprintln!(
+        "[air-jump] after jump press: y={:>8.3} vy={:>6.3} djump_now={}",
+        player.y,
+        player.vspeed,
+        player.vars.get("djump").is_some_and(runtime_value_is_true),
+    );
+    assert!(
+        player.vspeed < 0.0,
+        "air jump after block-landing djump restore should fire; player=({}, {}, vy={})",
+        player.x,
+        player.y,
+        player.vspeed
+    );
+    assert!(
+        !player.vars.get("djump").is_some_and(runtime_value_is_true),
+        "the air jump should consume djump"
+    );
+}
+
+fn real_sample_player(core: &RuntimeCore) -> crate::RuntimeInstance {
+    core.current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+        .cloned()
+        .expect("live player should exist")
+}
+
 fn release_real_sample_key(host: &mut HeadlessHost, key: u16) {
     host.input.set_button_state(
         RuntimeButton::Keyboard(key),

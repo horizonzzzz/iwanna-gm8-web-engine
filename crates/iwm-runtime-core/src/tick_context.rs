@@ -20,6 +20,7 @@ pub(crate) struct RuntimeCollisionHit {
     pub(crate) target_object_id: usize,
     pub(crate) other_idx: usize,
     pub(crate) solid_collision: bool,
+    pub(crate) contact_y: Option<i32>,
 }
 
 impl RuntimeTickContext {
