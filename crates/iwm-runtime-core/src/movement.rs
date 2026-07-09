@@ -188,22 +188,29 @@ impl RuntimeCore {
 
         player.vspeed = (player.vspeed + gravity).min(max_fall_speed);
 
+        let mut horizontal_blocked_delta = None;
+        let mut vertical_blocked_delta = None;
         if enable_builtin_jump {
-            move_instance_axis(
+            let horizontal_delta = player.hspeed;
+            if move_instance_axis(
                 player,
                 &solids,
                 Some(player.runtime_id),
                 Axis::Horizontal,
-                player.hspeed,
-            );
+                horizontal_delta,
+            ) {
+                horizontal_blocked_delta = Some(horizontal_delta);
+            }
+            let vertical_delta = player.vspeed;
             let vertical_blocked = move_instance_axis(
                 player,
                 &solids,
                 Some(player.runtime_id),
                 Axis::Vertical,
-                player.vspeed,
+                vertical_delta,
             );
             if vertical_blocked {
+                vertical_blocked_delta = Some(vertical_delta);
                 player.jump.active = false;
                 player.jump.cut_applied = true;
             }
@@ -230,13 +237,23 @@ impl RuntimeCore {
             player.y += player.vspeed;
         }
 
-        if collides_at(
+        let hit_hazard = collides_at(
             player,
             player.x,
             player.y,
             &hazards,
             Some(player.runtime_id),
-        ) {
+        );
+        let hazard_shadowed_by_solid_contact = hit_hazard
+            && solid_contact_shadows_hazard(
+                player,
+                &hazards,
+                &solids,
+                horizontal_blocked_delta,
+                vertical_blocked_delta,
+                !enable_builtin_jump,
+            );
+        if hit_hazard && !hazard_shadowed_by_solid_contact {
             let death_message = format!(
                 "room={} tick={} object={} runtime_id={} x={} y={} reason=hazard message=player-hit-hazard-in-{}",
                 room.room_id,
@@ -262,6 +279,141 @@ impl RuntimeCore {
 
         Ok(())
     }
+}
+
+fn solid_contact_shadows_hazard(
+    player: &crate::RuntimeInstance,
+    hazards: &[crate::RuntimeInstance],
+    solids: &[crate::RuntimeInstance],
+    horizontal_blocked_delta: Option<f64>,
+    vertical_blocked_delta: Option<f64>,
+    allow_motion_contact_shadow: bool,
+) -> bool {
+    let ignore_runtime_id = Some(player.runtime_id);
+    if collides_at(
+        player,
+        player.previous_x,
+        player.previous_y,
+        hazards,
+        ignore_runtime_id,
+    ) {
+        return false;
+    }
+
+    if let Some(delta) = horizontal_blocked_delta {
+        if blocked_axis_separates_hazard(player, hazards, solids, Axis::Horizontal, delta) {
+            return true;
+        }
+    }
+
+    if let Some(delta) = vertical_blocked_delta {
+        if blocked_axis_separates_hazard(player, hazards, solids, Axis::Vertical, delta) {
+            return true;
+        }
+    }
+
+    if allow_motion_contact_shadow {
+        let horizontal_delta = player.x - player.previous_x;
+        if movement_contact_separates_hazard(
+            player,
+            hazards,
+            solids,
+            Axis::Horizontal,
+            horizontal_delta,
+        ) {
+            return true;
+        }
+
+        let vertical_delta = player.y - player.previous_y;
+        if movement_contact_separates_hazard(
+            player,
+            hazards,
+            solids,
+            Axis::Vertical,
+            vertical_delta,
+        ) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn blocked_axis_separates_hazard(
+    player: &crate::RuntimeInstance,
+    hazards: &[crate::RuntimeInstance],
+    solids: &[crate::RuntimeInstance],
+    axis: Axis,
+    delta: f64,
+) -> bool {
+    let step = delta.signum();
+    if step == 0.0 {
+        return false;
+    }
+
+    let ignore_runtime_id = Some(player.runtime_id);
+    let separated_x = match axis {
+        Axis::Horizontal => player.x - step,
+        Axis::Vertical => player.x,
+    };
+    let separated_y = match axis {
+        Axis::Horizontal => player.y,
+        Axis::Vertical => player.y - step,
+    };
+    if collides_at(player, separated_x, separated_y, hazards, ignore_runtime_id) {
+        return false;
+    }
+
+    let contact_x = match axis {
+        Axis::Horizontal => player.x + step,
+        Axis::Vertical => player.x,
+    };
+    let contact_y = match axis {
+        Axis::Horizontal => player.y,
+        Axis::Vertical => player.y + step,
+    };
+    collides_at(player, contact_x, contact_y, solids, ignore_runtime_id)
+}
+
+fn movement_contact_separates_hazard(
+    player: &crate::RuntimeInstance,
+    hazards: &[crate::RuntimeInstance],
+    solids: &[crate::RuntimeInstance],
+    axis: Axis,
+    delta: f64,
+) -> bool {
+    let step = delta.signum();
+    if step == 0.0 {
+        return false;
+    }
+
+    let max_distance = delta.abs().round().clamp(0.0, 1000.0) as usize;
+    if max_distance == 0 {
+        return false;
+    }
+
+    let ignore_runtime_id = Some(player.runtime_id);
+    let mut contact_x = player.previous_x;
+    let mut contact_y = player.previous_y;
+    let mut found_solid_contact = false;
+    for _ in 0..max_distance {
+        let next_x = match axis {
+            Axis::Horizontal => contact_x + step,
+            Axis::Vertical => contact_x,
+        };
+        let next_y = match axis {
+            Axis::Horizontal => contact_y,
+            Axis::Vertical => contact_y + step,
+        };
+        if collides_at(player, next_x, next_y, solids, ignore_runtime_id) {
+            found_solid_contact = true;
+            break;
+        }
+        contact_x = next_x;
+        contact_y = next_y;
+    }
+
+    found_solid_contact && !collides_at(player, contact_x, contact_y, hazards, ignore_runtime_id)
 }
 
 pub(crate) fn apply_gm_motion_vars(instance: &mut crate::RuntimeInstance) {

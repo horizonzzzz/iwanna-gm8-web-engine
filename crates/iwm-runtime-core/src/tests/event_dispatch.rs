@@ -642,6 +642,231 @@ fn core_dispatches_collision_event_blocks_when_player_overlaps_target() {
 }
 
 #[test]
+fn solid_collision_resolves_before_same_frame_hazard_hit() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[1].name = "playerKiller".into();
+    package.objects[1].is_hazard = Some(true);
+    package.objects[2].name = "block".into();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("previous_y".into()),
+                value: LoweredLogicExpr::LiteralNumber(24.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("y".into()),
+                value: LoweredLogicExpr::LiteralNumber(40.0),
+            },
+        ],
+    );
+    add_collision_block(
+        &mut package,
+        1,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("hazard_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("solid_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.previous_y = 24.0;
+
+        let hazard = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "playerKiller")
+            .unwrap();
+        hazard.x = 12.0;
+        hazard.y = 40.0;
+
+        let block = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "block")
+            .unwrap();
+        block.x = 12.0;
+        block.y = 40.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.y, 24.0);
+    assert_eq!(player.vars.get("hazard_hit"), None);
+    assert_eq!(
+        player.vars.get("solid_hit"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn solid_ceiling_collision_event_clears_upward_speed_before_reapply() {
+    let mut package = sample_package();
+    package.objects[0].name = "mover".into();
+    package.objects[2].name = "solid".into();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("vspeed".into()),
+            value: LoweredLogicExpr::LiteralNumber(-17.0),
+        }],
+    );
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: "==".into(),
+                left: Box::new(LoweredLogicExpr::Call {
+                    name: "place_free".into(),
+                    args: vec![
+                        LoweredLogicExpr::Identifier("x".into()),
+                        LoweredLogicExpr::BinaryExpr {
+                            op: "+".into(),
+                            left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                            right: Box::new(LoweredLogicExpr::Identifier("vspeed".into())),
+                        },
+                    ],
+                }),
+                right: Box::new(LoweredLogicExpr::LiteralBool(false)),
+            },
+            then_branch: vec![
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("y_before_contact".into()),
+                    value: LoweredLogicExpr::Identifier("y".into()),
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("other_object_seen".into()),
+                    value: LoweredLogicExpr::MemberAccess {
+                        target: Box::new(LoweredLogicExpr::Identifier("other".into())),
+                        member: "object_index".into(),
+                    },
+                },
+                LoweredLogicStatement::FunctionCall {
+                    name: "move_contact_solid".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralNumber(90.0),
+                        LoweredLogicExpr::Call {
+                            name: "abs".into(),
+                            args: vec![LoweredLogicExpr::Identifier("vspeed".into())],
+                        },
+                    ],
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("y_after_contact".into()),
+                    value: LoweredLogicExpr::Identifier("y".into()),
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("vspeed".into()),
+                    value: LoweredLogicExpr::LiteralNumber(0.0),
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("ceiling_hit".into()),
+                    value: LoweredLogicExpr::LiteralBool(true),
+                },
+            ],
+            else_branch: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let mover = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        mover.x = 12.0;
+        mover.y = 56.0;
+        mover.previous_x = 12.0;
+        mover.previous_y = 56.0;
+
+        let solid = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "solid")
+            .unwrap();
+        assert!(solid.solid);
+        solid.x = 12.0;
+        solid.y = 24.0;
+        solid.previous_x = 12.0;
+        solid.previous_y = 24.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let mover = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        mover.vars.get("ceiling_hit"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert_eq!(
+        mover.vars.get("other_object_seen"),
+        Some(&RuntimeValue::Number(2.0))
+    );
+    assert_eq!(
+        mover.vars.get("y_before_contact"),
+        Some(&RuntimeValue::Number(56.0))
+    );
+    assert_eq!(
+        mover.vars.get("y_after_contact"),
+        Some(&RuntimeValue::Number(40.0))
+    );
+    assert_eq!(mover.vspeed, 0.0);
+    assert_eq!(mover.y, 40.0);
+    let collision_traces = core
+        .diagnostics()
+        .iter()
+        .filter(|entry| entry.code == "runtime-collision-trace")
+        .map(|entry| entry.message.as_str())
+        .collect::<Vec<_>>();
+    assert!(collision_traces
+        .iter()
+        .any(|message| message.contains("phase=pre")));
+    assert!(collision_traces
+        .iter()
+        .any(|message| message.contains("phase=after-rollback")));
+    assert!(collision_traces
+        .iter()
+        .any(|message| message.contains("phase=after-event")));
+    assert!(collision_traces
+        .iter()
+        .any(|message| message.contains("phase=after-reapply")));
+}
+
+#[test]
 fn hazard_collision_event_does_not_fire_when_swept_bbox_top_misses_precise_mask() {
     let mut package = sample_package();
     package.objects[0].name = "player".into();

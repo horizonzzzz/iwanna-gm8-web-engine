@@ -312,6 +312,259 @@ fn core_hazard_collision_triggers_when_sprite_mask_pixels_overlap() {
 }
 
 #[test]
+fn core_solid_ceiling_contact_shadows_same_plane_hazard() {
+    let mut package = sample_package();
+    package.objects[1].sprite_index = 1;
+    package.objects[1].is_hazard = Some(true);
+    package.resources.sprites[0].collision_masks = vec![filled_mask(16, 16)];
+    package.resources.sprites[1].collision_masks = vec![single_pixel_mask(16, 16, 8, 15)];
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 16,
+        object_id: 2,
+        x: 12,
+        y: 2,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: true,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 17,
+        object_id: 1,
+        x: 12,
+        y: 3,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: true,
+        is_checkpoint: false,
+    });
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x20),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(player(&core).y, 18.0);
+    assert!(!core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-player-died"));
+}
+
+#[test]
+fn core_hazard_still_kills_when_solid_separation_keeps_overlap() {
+    let mut package = sample_package();
+    package.objects[1].sprite_index = 1;
+    package.objects[1].is_hazard = Some(true);
+    package.resources.sprites[0].collision_masks = vec![filled_mask(16, 16)];
+    package.resources.sprites[1].collision_masks = vec![single_pixel_mask(16, 16, 8, 15)];
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 16,
+        object_id: 2,
+        x: 12,
+        y: 2,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: true,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 17,
+        object_id: 1,
+        x: 12,
+        y: 8,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: true,
+        is_checkpoint: false,
+    });
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x20),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+
+    core.tick(&mut host).unwrap();
+
+    assert!(core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-player-died"));
+}
+
+#[test]
+fn core_script_owned_ceiling_contact_shadows_same_plane_hazard() {
+    let mut package = sample_package();
+    package.objects[1].sprite_index = 1;
+    package.objects[1].is_hazard = Some(true);
+    package.resources.sprites[0].collision_masks = vec![filled_mask(16, 16)];
+    package.resources.sprites[1].collision_masks = vec![single_pixel_mask(16, 16, 8, 15)];
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 16,
+        object_id: 2,
+        x: 80,
+        y: 2,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: true,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 17,
+        object_id: 1,
+        x: 80,
+        y: 2,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: true,
+        is_checkpoint: false,
+    });
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let player = core
+            .current_room
+            .as_mut()
+            .unwrap()
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.y = 26.0;
+        player.x = 80.0;
+        player.vspeed = -10.0;
+    }
+
+    core.step_player(
+        &mut host,
+        false,
+        false,
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: false,
+        },
+        false,
+    )
+    .unwrap();
+
+    assert!(!core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-player-died"));
+}
+
+#[test]
+fn core_script_owned_hazard_still_kills_when_contact_point_remains_hazardous() {
+    let mut package = sample_package();
+    package.objects[1].sprite_index = 1;
+    package.objects[1].is_hazard = Some(true);
+    package.resources.sprites[0].collision_masks = vec![filled_mask(16, 16)];
+    package.resources.sprites[1].collision_masks = vec![filled_mask(16, 16)];
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 16,
+        object_id: 2,
+        x: 80,
+        y: 2,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: true,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 17,
+        object_id: 1,
+        x: 80,
+        y: 8,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: true,
+        is_checkpoint: false,
+    });
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let player = core
+            .current_room
+            .as_mut()
+            .unwrap()
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.y = 26.0;
+        player.x = 80.0;
+        player.vspeed = -10.0;
+    }
+
+    core.step_player(
+        &mut host,
+        false,
+        false,
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: false,
+        },
+        false,
+    )
+    .unwrap();
+
+    assert!(core
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.code == "runtime-player-died"));
+}
+
+#[test]
 fn core_updates_previous_position_before_moving_player() {
     let mut core = RuntimeCore::load(sample_package()).unwrap();
     let mut host = host();

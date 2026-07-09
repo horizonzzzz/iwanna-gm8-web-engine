@@ -1229,7 +1229,12 @@ impl RuntimeCore {
             }
         };
 
+        tick_context
+            .collision_hits
+            .sort_by_key(|hit| !hit.solid_collision);
+
         for hit in tick_context.collision_hits.iter().copied() {
+            let mut collision_trace = Vec::new();
             let other_instance = {
                 let Some(room) = self.current_room.as_mut() else {
                     continue;
@@ -1259,7 +1264,21 @@ impl RuntimeCore {
                         continue;
                     }
                 }
-                if hit.solid_collision {
+                // Resolve solidness from the live instances at dispatch time; earlier
+                // collision events may have changed state since this hit was collected.
+                let solid_collision =
+                    room.instances[hit.instance_idx].solid || room.instances[hit.other_idx].solid;
+                record_player_collision_trace(
+                    &mut collision_trace,
+                    self.tick,
+                    "pre",
+                    hit,
+                    &room.instances[hit.instance_idx],
+                    &room.instances[hit.other_idx],
+                    solid_collision,
+                    hit.contact_y,
+                );
+                if solid_collision {
                     if let Some(instance) = room.instances.get_mut(hit.instance_idx) {
                         instance.x = instance.previous_x;
                         instance.y = instance.previous_y;
@@ -1273,6 +1292,20 @@ impl RuntimeCore {
                         instance.y = contact_y as f64;
                     }
                 }
+                record_player_collision_trace(
+                    &mut collision_trace,
+                    self.tick,
+                    if solid_collision {
+                        "after-rollback"
+                    } else {
+                        "after-contact"
+                    },
+                    hit,
+                    &room.instances[hit.instance_idx],
+                    &room.instances[hit.other_idx],
+                    solid_collision,
+                    hit.contact_y,
+                );
                 room.instances.get(hit.other_idx).cloned()
             };
             let Some(other_instance) = other_instance else {
@@ -1304,10 +1337,38 @@ impl RuntimeCore {
                 "collision".into(),
                 Some(&tick_context.collision_spatial_index),
             );
-            if hit.solid_collision {
+            let solid_collision = {
+                let Some(room) = self.current_room.as_ref() else {
+                    continue;
+                };
+                let solid_collision = room
+                    .instances
+                    .get(hit.instance_idx)
+                    .zip(room.instances.get(hit.other_idx))
+                    .map(|(instance, other)| instance.solid || other.solid)
+                    .unwrap_or(hit.solid_collision);
+                if let (Some(instance), Some(other)) = (
+                    room.instances.get(hit.instance_idx),
+                    room.instances.get(hit.other_idx),
+                ) {
+                    record_player_collision_trace(
+                        &mut collision_trace,
+                        self.tick,
+                        "after-event",
+                        hit,
+                        instance,
+                        other,
+                        solid_collision,
+                        hit.contact_y,
+                    );
+                }
+                solid_collision
+            };
+            if solid_collision {
                 // GM8 re-applies both instances' speeds after the event and only
                 // rolls back again if they still overlap; this is how horizontal
                 // motion survives a vertical solid collision.
+                let mut still_overlapping = false;
                 if let Some(room) = self.current_room.as_mut() {
                     if let Some(instance) = room.instances.get_mut(hit.instance_idx) {
                         if instance.alive {
@@ -1321,7 +1382,7 @@ impl RuntimeCore {
                             other.y += other.vspeed;
                         }
                     }
-                    let still_overlapping = match (
+                    still_overlapping = match (
                         room.instances.get(hit.instance_idx),
                         room.instances.get(hit.other_idx),
                     ) {
@@ -1336,6 +1397,21 @@ impl RuntimeCore {
                         }
                         _ => false,
                     };
+                    if let (Some(instance), Some(other)) = (
+                        room.instances.get(hit.instance_idx),
+                        room.instances.get(hit.other_idx),
+                    ) {
+                        record_player_collision_trace(
+                            &mut collision_trace,
+                            self.tick,
+                            "after-reapply",
+                            hit,
+                            instance,
+                            other,
+                            solid_collision,
+                            hit.contact_y,
+                        );
+                    }
                     if still_overlapping {
                         if let Some(instance) = room.instances.get_mut(hit.instance_idx) {
                             instance.x = instance.previous_x;
@@ -1347,12 +1423,84 @@ impl RuntimeCore {
                         }
                     }
                 }
+                if still_overlapping {
+                    if let Some(room) = self.current_room.as_ref() {
+                        if let (Some(instance), Some(other)) = (
+                            room.instances.get(hit.instance_idx),
+                            room.instances.get(hit.other_idx),
+                        ) {
+                            record_player_collision_trace(
+                                &mut collision_trace,
+                                self.tick,
+                                "after-final-rollback",
+                                hit,
+                                instance,
+                                other,
+                                solid_collision,
+                                hit.contact_y,
+                            );
+                        }
+                    }
+                }
+            }
+            for message in collision_trace {
+                self.record_diagnostic(
+                    host,
+                    iwm_runtime_host::RuntimeDiagnosticLevel::Info,
+                    "runtime-collision-trace",
+                    message,
+                );
             }
         }
 
         self.tick_context = tick_context;
         Ok(())
     }
+}
+
+fn record_player_collision_trace(
+    messages: &mut Vec<String>,
+    tick: u64,
+    phase: &'static str,
+    hit: RuntimeCollisionHit,
+    instance: &RuntimeInstance,
+    other: &RuntimeInstance,
+    solid_collision: bool,
+    contact_y: Option<i32>,
+) {
+    let relevant = (instance.player_candidate || other.player_candidate)
+        && (solid_collision || instance.hazard || other.hazard)
+        && (instance.vspeed < 0.0 || other.vspeed < 0.0 || instance.hazard || other.hazard);
+    if messages.is_empty() && !relevant {
+        return;
+    }
+
+    messages.push(format!(
+        "tick={tick} phase={phase} owner={}#{} target={} other={}#{} solid={} contact_y={} pos=({:.3},{:.3}) prev=({:.3},{:.3}) speed=({:.3},{:.3}) other_pos=({:.3},{:.3}) other_speed=({:.3},{:.3}) flags=inst_solid:{} inst_hazard:{} other_solid:{} other_hazard:{}",
+        instance.object_name,
+        instance.runtime_id,
+        hit.target_object_id,
+        other.object_name,
+        other.runtime_id,
+        solid_collision,
+        contact_y
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "none".into()),
+        instance.x,
+        instance.y,
+        instance.previous_x,
+        instance.previous_y,
+        instance.hspeed,
+        instance.vspeed,
+        other.x,
+        other.y,
+        other.hspeed,
+        other.vspeed,
+        instance.solid,
+        instance.hazard,
+        other.solid,
+        other.hazard,
+    ));
 }
 
 fn parse_alarm_slot(key: &str) -> Option<u32> {
