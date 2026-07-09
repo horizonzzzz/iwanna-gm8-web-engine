@@ -665,6 +665,141 @@ fn real_sample_spent_double_jump_landing_restores_djump_on_both_platform_kinds()
 }
 
 #[test]
+fn real_sample_player_standing_on_moving_platform_follows_platform() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let platform_room = real_sample_room_id(&core, "rMegaman01");
+    core.reload_room(platform_room).unwrap();
+
+    // Let room creation code assign the platform speed before placing the probe.
+    for _ in 0..2 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+    }
+
+    let platform_runtime_id = {
+        let room = core.current_room.as_mut().unwrap();
+        let platform = room
+            .instances
+            .iter()
+            .find(|instance| instance.instance_id == 116826 && instance.alive)
+            .cloned()
+            .expect("rMegaman01 should include movingPlatform instance 116826");
+        let player_template = room
+            .instances
+            .iter()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .cloned()
+            .expect("rMegaman01 should include a live player");
+        let solids = room
+            .instances
+            .iter()
+            .filter(|instance| instance.alive && instance.solid)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut player_position = None;
+        let mut best_score = i32::MAX;
+        for dy in -64i32..=64 {
+            for dx in -64i32..=64 {
+                let mut probe = player_template.clone();
+                probe.x = platform.x + f64::from(dx);
+                probe.y = platform.y + f64::from(dy);
+                if !crate::helpers::collides_with_instance_at(
+                    &platform,
+                    platform.x,
+                    platform.y - 2.0,
+                    &probe,
+                    Some(platform.runtime_id),
+                    |_| true,
+                ) {
+                    continue;
+                }
+                if crate::helpers::collides_at(
+                    &probe,
+                    probe.x + platform.hspeed,
+                    probe.y,
+                    &solids,
+                    Some(probe.runtime_id),
+                ) {
+                    continue;
+                }
+                let score = (dx - 8).abs() + (dy + 16).abs();
+                if score < best_score {
+                    best_score = score;
+                    player_position = Some((probe.x, probe.y));
+                }
+            }
+        }
+        let (player_x, player_y) =
+            player_position.expect("test setup should find a player position above movingPlatform");
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .expect("rMegaman01 should include a live player");
+
+        player.x = player_x;
+        player.y = player_y;
+        player.previous_x = player.x;
+        player.previous_y = player.y;
+        player.hspeed = 0.0;
+        player.vspeed = 0.0;
+        player
+            .vars
+            .insert("onPlatform".into(), RuntimeValue::Bool(false));
+
+        platform.runtime_id
+    };
+
+    let before_player = real_sample_player(&core);
+    let before_platform = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.runtime_id == platform_runtime_id && instance.alive)
+        .cloned()
+        .expect("tracked moving platform should still exist");
+    let before_offset = before_player.x - before_platform.x;
+
+    for _ in 0..6 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+    }
+
+    let after_player = real_sample_player(&core);
+    let after_platform = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.runtime_id == platform_runtime_id && instance.alive)
+        .cloned()
+        .expect("tracked moving platform should still exist after ticking");
+    let platform_delta = after_platform.x - before_platform.x;
+    let player_delta = after_player.x - before_player.x;
+    let after_offset = after_player.x - after_platform.x;
+
+    assert!(
+        platform_delta > 0.0,
+        "tracked moving platform should move right from its parsed creation hspeed; before={before_platform:?}, after={after_platform:?}, diagnostics={:?}",
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+    assert!(
+        player_delta > 0.0,
+        "player standing on the moving platform should be carried by the parsed movingPlatform Step GML; before={before_player:?}, after={after_player:?}, platform_delta={platform_delta}, diagnostics={:?}",
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+    assert!(
+        (after_offset - before_offset).abs() <= 1.0,
+        "player should keep roughly the same horizontal offset on the tracked moving platform; before_offset={before_offset}, after_offset={after_offset}, player_delta={player_delta}, platform_delta={platform_delta}"
+    );
+}
+
+#[test]
 fn real_sample_spent_double_jump_landing_on_platform_restores_air_jump() {
     let Some(package) = real_sample_package() else {
         return;

@@ -508,7 +508,15 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             let Some(context) = eval_context else {
                 return;
             };
-            write_with_target_indices(target, instance_index, context, env.with_target_indices);
+            write_with_target_indices(
+                target,
+                instance_index,
+                instance,
+                scope,
+                context,
+                env.globals,
+                env.with_target_indices,
+            );
             let target_indices = std::mem::take(env.with_target_indices);
             let other_snapshot = instance.clone();
             for &target_index in &target_indices {
@@ -548,6 +556,11 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 let Some(mut target_instance) = context.room_instance(target_index).cloned() else {
                     continue;
                 };
+                sync_instance_from_updates(
+                    target_index,
+                    &mut target_instance,
+                    env.room_instance_updates,
+                );
                 if !target_instance.alive {
                     continue;
                 }

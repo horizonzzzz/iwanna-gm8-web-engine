@@ -1,9 +1,13 @@
+use std::collections::HashMap;
+
 use iwm_runtime_host::RuntimeHost;
 
-use super::context::{RuntimeEvalContext, RuntimeRoomInstanceOverlay};
+use super::context::{RuntimeEvalContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay};
+use super::eval::evaluate_expr;
 use super::overlay::RuntimeSparseInstanceOverlay;
 use super::statement::RuntimeStatementEnvironment;
-use crate::{LoweredLogicExpr, RuntimeInstance};
+use crate::helpers::as_number;
+use crate::{LoweredLogicExpr, RuntimeInstance, RuntimeValue};
 
 pub(super) fn env_has_pending_scene_change<H: RuntimeHost>(
     env: &RuntimeStatementEnvironment<'_, H>,
@@ -33,13 +37,17 @@ pub(super) fn sync_instance_from_updates(
 pub(super) fn write_with_target_indices(
     target: &LoweredLogicExpr,
     instance_index: usize,
+    instance: &RuntimeInstance,
+    scope: &RuntimeExecutionScope,
     context: &RuntimeEvalContext<'_>,
+    globals: &HashMap<String, RuntimeValue>,
     output: &mut Vec<usize>,
 ) {
     output.clear();
     match target {
         LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("self") => {
             output.push(instance_index);
+            return;
         }
         LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("other") => {
             if let Some(index) = context.other_instance().and_then(|other| {
@@ -50,6 +58,7 @@ pub(super) fn write_with_target_indices(
             }) {
                 output.push(index);
             }
+            return;
         }
         LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("all") => {
             output.extend(
@@ -58,6 +67,7 @@ pub(super) fn write_with_target_indices(
                     .filter(|(_, instance)| instance.alive)
                     .map(|(index, _)| index),
             );
+            return;
         }
         LoweredLogicExpr::Identifier(name) => {
             let wanted_object_ids = context
@@ -65,6 +75,10 @@ pub(super) fn write_with_target_indices(
                 .get(&name.to_ascii_lowercase())
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
+            if wanted_object_ids.is_empty() {
+                push_with_instance_ref_target(target, instance, scope, context, globals, output);
+                return;
+            }
 
             if let Some(object_index) = context.object_index {
                 for object_id in wanted_object_ids {
@@ -102,6 +116,35 @@ pub(super) fn write_with_target_indices(
                 }
             }
         }
-        _ => {}
+        _ => push_with_instance_ref_target(target, instance, scope, context, globals, output),
     }
+}
+
+fn push_with_instance_ref_target(
+    target: &LoweredLogicExpr,
+    instance: &RuntimeInstance,
+    scope: &RuntimeExecutionScope,
+    context: &RuntimeEvalContext<'_>,
+    globals: &HashMap<String, RuntimeValue>,
+    output: &mut Vec<usize>,
+) {
+    let Some(instance_ref) =
+        evaluate_expr(target, Some(instance), globals, Some(scope), Some(context))
+            .and_then(|value| as_number(&value))
+            .filter(|value| value.is_finite())
+            .map(|value| value.round())
+    else {
+        return;
+    };
+
+    output.extend(
+        context
+            .room_instances_iter()
+            .filter_map(|(index, candidate)| {
+                (candidate.alive
+                    && (candidate.instance_id as f64 == instance_ref
+                        || candidate.runtime_id as f64 == instance_ref))
+                    .then_some(index)
+            }),
+    );
 }

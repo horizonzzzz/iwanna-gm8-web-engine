@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::logic::RuntimeSparseInstanceOverlay;
-use iwm_runtime_model::RoomInstancePlacement;
+use iwm_runtime_model::{ObjectEventEntry, RoomInstancePlacement};
 
 #[test]
 fn sparse_instance_overlay_reads_latest_update_and_clears_dirty_slots() {
@@ -445,6 +445,253 @@ fn with_other_member_reads_see_updates_made_through_other_handle() {
         block.vars.get("updated_other_x"),
         Some(&RuntimeValue::Number(99.0))
     );
+}
+
+#[test]
+fn lowered_with_executes_against_instance_reference_stored_in_variable() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("target_ref".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "instance_place".into(),
+                    args: vec![
+                        LoweredLogicExpr::Identifier("x".into()),
+                        LoweredLogicExpr::Identifier("y".into()),
+                        LoweredLogicExpr::Identifier("obj_block".into()),
+                    ],
+                },
+            },
+            LoweredLogicStatement::With {
+                target: LoweredLogicExpr::Identifier("target_ref".into()),
+                body: vec![LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("x".into()),
+                    value: LoweredLogicExpr::BinaryExpr {
+                        op: "+".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("x".into())),
+                        right: Box::new(LoweredLogicExpr::MemberAccess {
+                            target: Box::new(LoweredLogicExpr::Identifier("other".into())),
+                            member: "hspeed".into(),
+                        }),
+                    },
+                }],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.x = 40.0;
+        player.y = 40.0;
+        player.hspeed = 2.0;
+        let block = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "obj_block")
+            .unwrap();
+        block.x = 40.0;
+        block.y = 40.0;
+    }
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let block = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "obj_block")
+        .unwrap();
+    assert_eq!(block.x, 42.0);
+}
+
+#[test]
+fn lowered_platform_step_carries_instance_found_by_instance_place() {
+    let mut package = sample_package();
+    package.objects[2].events.push(ObjectEventEntry {
+        event_type: 3,
+        sub_event: 0,
+        event_tag: "step".into(),
+        block_id: "object:2:event:3:0".into(),
+        action_count: 1,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:2:event:3:0".into(),
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::Call {
+                name: "place_meeting".into(),
+                args: vec![
+                    LoweredLogicExpr::Identifier("x".into()),
+                    LoweredLogicExpr::BinaryExpr {
+                        op: "-".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(2.0)),
+                    },
+                    LoweredLogicExpr::Identifier("obj_player".into()),
+                ],
+            },
+            then_branch: vec![
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("a".into()),
+                    value: LoweredLogicExpr::Call {
+                        name: "instance_place".into(),
+                        args: vec![
+                            LoweredLogicExpr::Identifier("x".into()),
+                            LoweredLogicExpr::BinaryExpr {
+                                op: "-".into(),
+                                left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                                right: Box::new(LoweredLogicExpr::LiteralNumber(2.0)),
+                            },
+                            LoweredLogicExpr::Identifier("obj_player".into()),
+                        ],
+                    },
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::MemberAccess {
+                        target: Box::new(LoweredLogicExpr::Identifier("a".into())),
+                        member: "y".into(),
+                    },
+                    value: LoweredLogicExpr::BinaryExpr {
+                        op: "+".into(),
+                        left: Box::new(LoweredLogicExpr::MemberAccess {
+                            target: Box::new(LoweredLogicExpr::Identifier("a".into())),
+                            member: "y".into(),
+                        }),
+                        right: Box::new(LoweredLogicExpr::BinaryExpr {
+                            op: "+".into(),
+                            left: Box::new(LoweredLogicExpr::Identifier("vspeed".into())),
+                            right: Box::new(LoweredLogicExpr::Identifier("yspeed".into())),
+                        }),
+                    },
+                },
+                LoweredLogicStatement::With {
+                    target: LoweredLogicExpr::Identifier("a".into()),
+                    body: vec![LoweredLogicStatement::Conditional {
+                        condition: LoweredLogicExpr::Call {
+                            name: "place_free".into(),
+                            args: vec![
+                                LoweredLogicExpr::BinaryExpr {
+                                    op: "+".into(),
+                                    left: Box::new(LoweredLogicExpr::Identifier("x".into())),
+                                    right: Box::new(LoweredLogicExpr::MemberAccess {
+                                        target: Box::new(LoweredLogicExpr::Identifier(
+                                            "other".into(),
+                                        )),
+                                        member: "hspeed".into(),
+                                    }),
+                                },
+                                LoweredLogicExpr::Identifier("y".into()),
+                            ],
+                        },
+                        then_branch: vec![LoweredLogicStatement::Assignment {
+                            target: LoweredLogicExpr::Identifier("x".into()),
+                            value: LoweredLogicExpr::BinaryExpr {
+                                op: "+".into(),
+                                left: Box::new(LoweredLogicExpr::Identifier("x".into())),
+                                right: Box::new(LoweredLogicExpr::MemberAccess {
+                                    target: Box::new(LoweredLogicExpr::Identifier("other".into())),
+                                    member: "hspeed".into(),
+                                }),
+                            },
+                        }],
+                        else_branch: vec![],
+                    }],
+                },
+            ],
+            else_branch: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let expected_player_x: f64;
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let platform = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "obj_block")
+            .unwrap();
+        platform.x = 12.0;
+        platform.y = 40.0;
+        platform.hspeed = 2.0;
+        let platform = platform.clone();
+        let solids = room
+            .instances
+            .iter()
+            .filter(|instance| instance.alive && instance.solid)
+            .cloned()
+            .collect::<Vec<_>>();
+        let player_template = room
+            .instances
+            .iter()
+            .find(|instance| instance.player_candidate)
+            .cloned()
+            .unwrap();
+        let mut player_position = None;
+        for dy in -32i32..=32 {
+            for dx in -32i32..=32 {
+                let mut probe = player_template.clone();
+                probe.x = platform.x + f64::from(dx);
+                probe.y = platform.y + f64::from(dy);
+                if !crate::helpers::collides_with_instance_at(
+                    &platform,
+                    platform.x,
+                    platform.y - 2.0,
+                    &probe,
+                    Some(platform.runtime_id),
+                    |_| true,
+                ) {
+                    continue;
+                }
+                if crate::helpers::collides_at(
+                    &probe,
+                    probe.x + platform.hspeed,
+                    probe.y,
+                    &solids,
+                    Some(probe.runtime_id),
+                ) {
+                    continue;
+                }
+                player_position = Some((probe.x, probe.y));
+                break;
+            }
+            if player_position.is_some() {
+                break;
+            }
+        }
+        let (player_x, player_y) =
+            player_position.expect("test setup should find player-platform contact");
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.x = player_x;
+        player.y = player_y;
+        expected_player_x = player_x + platform.hspeed;
+    }
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.x, expected_player_x);
 }
 
 #[test]
