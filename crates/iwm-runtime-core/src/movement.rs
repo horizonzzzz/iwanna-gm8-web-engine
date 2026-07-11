@@ -34,7 +34,7 @@ impl RuntimeCore {
 
     pub(crate) fn step_player<H: RuntimeHost>(
         &mut self,
-        host: &mut H,
+        _host: &mut H,
         left_pressed: bool,
         right_pressed: bool,
         jump: ButtonState,
@@ -55,7 +55,6 @@ impl RuntimeCore {
 
         let room_width = room.width;
         let room_height = room.height;
-        let room_name = room.room_name.clone();
         let player_snapshot = room
             .instances
             .get(player_index)
@@ -116,16 +115,6 @@ impl RuntimeCore {
             movement_padding,
             |instance| instance.alive && instance.solid,
         );
-        let hazards = collision_candidates_near(
-            &player_snapshot,
-            player_snapshot.x,
-            player_snapshot.y,
-            &room.instances,
-            Some(player_snapshot.runtime_id),
-            movement_padding,
-            |instance| instance.alive && instance.hazard,
-        );
-
         let room = self
             .current_room
             .as_mut()
@@ -188,19 +177,15 @@ impl RuntimeCore {
 
         player.vspeed = (player.vspeed + gravity).min(max_fall_speed);
 
-        let mut horizontal_blocked_delta = None;
-        let mut vertical_blocked_delta = None;
         if enable_builtin_jump {
             let horizontal_delta = player.hspeed;
-            if move_instance_axis(
+            move_instance_axis(
                 player,
                 &solids,
                 Some(player.runtime_id),
                 Axis::Horizontal,
                 horizontal_delta,
-            ) {
-                horizontal_blocked_delta = Some(horizontal_delta);
-            }
+            );
             let vertical_delta = player.vspeed;
             let vertical_blocked = move_instance_axis(
                 player,
@@ -210,7 +195,6 @@ impl RuntimeCore {
                 vertical_delta,
             );
             if vertical_blocked {
-                vertical_blocked_delta = Some(vertical_delta);
                 player.jump.active = false;
                 player.jump.cut_applied = true;
             }
@@ -237,41 +221,7 @@ impl RuntimeCore {
             player.y += player.vspeed;
         }
 
-        let hit_hazard = collides_at(
-            player,
-            player.x,
-            player.y,
-            &hazards,
-            Some(player.runtime_id),
-        );
-        let hazard_shadowed_by_solid_contact = hit_hazard
-            && solid_contact_shadows_hazard(
-                player,
-                &hazards,
-                &solids,
-                horizontal_blocked_delta,
-                vertical_blocked_delta,
-                !enable_builtin_jump,
-            );
-        if hit_hazard && !hazard_shadowed_by_solid_contact {
-            let death_message = format!(
-                "room={} tick={} object={} runtime_id={} x={} y={} reason=hazard message=player-hit-hazard-in-{}",
-                room.room_id,
-                self.tick,
-                player.object_name,
-                player.runtime_id,
-                player.x,
-                player.y,
-                room_name
-            );
-            self.record_diagnostic(
-                host,
-                iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
-                "runtime-player-died",
-                death_message,
-            );
-            self.death_waiting_for_restart = true;
-        } else if player_out_of_bounds(player, room_width, room_height)
+        if player_out_of_bounds(player, room_width, room_height)
             && !room.transition_targets.is_empty()
         {
             self.pending_room_transition = room.transition_targets.first().copied();
@@ -279,141 +229,120 @@ impl RuntimeCore {
 
         Ok(())
     }
-}
 
-fn solid_contact_shadows_hazard(
-    player: &crate::RuntimeInstance,
-    hazards: &[crate::RuntimeInstance],
-    solids: &[crate::RuntimeInstance],
-    horizontal_blocked_delta: Option<f64>,
-    vertical_blocked_delta: Option<f64>,
-    allow_motion_contact_shadow: bool,
-) -> bool {
-    let ignore_runtime_id = Some(player.runtime_id);
-    if collides_at(
-        player,
-        player.previous_x,
-        player.previous_y,
-        hazards,
-        ignore_runtime_id,
-    ) {
-        return false;
-    }
-
-    if let Some(delta) = horizontal_blocked_delta {
-        if blocked_axis_separates_hazard(player, hazards, solids, Axis::Horizontal, delta) {
-            return true;
+    pub(crate) fn detect_player_hazard_after_collision_events<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+    ) -> Result<(), RuntimeCoreError> {
+        if self.death_waiting_for_restart {
+            return Ok(());
         }
-    }
-
-    if let Some(delta) = vertical_blocked_delta {
-        if blocked_axis_separates_hazard(player, hazards, solids, Axis::Vertical, delta) {
-            return true;
-        }
-    }
-
-    if allow_motion_contact_shadow {
-        let horizontal_delta = player.x - player.previous_x;
-        if movement_contact_separates_hazard(
-            player,
-            hazards,
-            solids,
-            Axis::Horizontal,
-            horizontal_delta,
-        ) {
-            return true;
-        }
-
-        let vertical_delta = player.y - player.previous_y;
-        if movement_contact_separates_hazard(
-            player,
-            hazards,
-            solids,
-            Axis::Vertical,
-            vertical_delta,
-        ) {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn blocked_axis_separates_hazard(
-    player: &crate::RuntimeInstance,
-    hazards: &[crate::RuntimeInstance],
-    solids: &[crate::RuntimeInstance],
-    axis: Axis,
-    delta: f64,
-) -> bool {
-    let step = delta.signum();
-    if step == 0.0 {
-        return false;
-    }
-
-    let ignore_runtime_id = Some(player.runtime_id);
-    let separated_x = match axis {
-        Axis::Horizontal => player.x - step,
-        Axis::Vertical => player.x,
-    };
-    let separated_y = match axis {
-        Axis::Horizontal => player.y,
-        Axis::Vertical => player.y - step,
-    };
-    if collides_at(player, separated_x, separated_y, hazards, ignore_runtime_id) {
-        return false;
-    }
-
-    let contact_x = match axis {
-        Axis::Horizontal => player.x + step,
-        Axis::Vertical => player.x,
-    };
-    let contact_y = match axis {
-        Axis::Horizontal => player.y,
-        Axis::Vertical => player.y + step,
-    };
-    collides_at(player, contact_x, contact_y, solids, ignore_runtime_id)
-}
-
-fn movement_contact_separates_hazard(
-    player: &crate::RuntimeInstance,
-    hazards: &[crate::RuntimeInstance],
-    solids: &[crate::RuntimeInstance],
-    axis: Axis,
-    delta: f64,
-) -> bool {
-    let step = delta.signum();
-    if step == 0.0 {
-        return false;
-    }
-
-    let max_distance = delta.abs().round().clamp(0.0, 1000.0) as usize;
-    if max_distance == 0 {
-        return false;
-    }
-
-    let ignore_runtime_id = Some(player.runtime_id);
-    let mut contact_x = player.previous_x;
-    let mut contact_y = player.previous_y;
-    let mut found_solid_contact = false;
-    for _ in 0..max_distance {
-        let next_x = match axis {
-            Axis::Horizontal => contact_x + step,
-            Axis::Vertical => contact_x,
+        let Some(room) = self.current_room.as_ref() else {
+            return Err(RuntimeCoreError::NoRooms);
         };
-        let next_y = match axis {
-            Axis::Horizontal => contact_y,
-            Axis::Vertical => contact_y + step,
+        let Some(player) = room
+            .instances
+            .iter()
+            .find(|instance| instance.alive && is_player_instance(instance))
+        else {
+            return Ok(());
         };
-        if collides_at(player, next_x, next_y, solids, ignore_runtime_id) {
-            found_solid_contact = true;
-            break;
+        let hazards = collision_candidates_near(
+            player,
+            player.x,
+            player.y,
+            &room.instances,
+            Some(player.runtime_id),
+            2.0,
+            |instance| instance.alive && instance.hazard,
+        );
+        if !collides_at(
+            player,
+            player.x,
+            player.y,
+            &hazards,
+            Some(player.runtime_id),
+        ) {
+            return Ok(());
         }
-        contact_x = next_x;
-        contact_y = next_y;
-    }
+        let solids = collision_candidates_near(
+            player,
+            player.x,
+            player.y,
+            &room.instances,
+            Some(player.runtime_id),
+            2.0,
+            |instance| instance.alive && instance.solid,
+        );
+        if final_solid_contact_shadows_hazard(player, &hazards, &solids) {
+            return Ok(());
+        }
 
-    found_solid_contact && !collides_at(player, contact_x, contact_y, hazards, ignore_runtime_id)
+        let death_message = format!(
+            "room={} tick={} object={} runtime_id={} x={} y={} reason=hazard message=player-hit-hazard-in-{}",
+            room.room_id,
+            self.tick,
+            player.object_name,
+            player.runtime_id,
+            player.x,
+            player.y,
+            room.room_name
+        );
+        self.record_diagnostic(
+            host,
+            iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+            "runtime-player-died",
+            death_message,
+        );
+        self.death_waiting_for_restart = true;
+        Ok(())
+    }
+}
+
+fn final_solid_contact_shadows_hazard(
+    player: &crate::RuntimeInstance,
+    hazards: &[crate::RuntimeInstance],
+    solids: &[crate::RuntimeInstance],
+) -> bool {
+    let ignore_runtime_id = Some(player.runtime_id);
+    let related_contact_planes = hazards.iter().any(|hazard| {
+        solids.iter().any(|solid| {
+            let (hazard_left, _, hazard_right, _) =
+                crate::helpers::bounds_at(hazard, hazard.x, hazard.y);
+            let (solid_left, _, solid_right, _) =
+                crate::helpers::bounds_at(solid, solid.x, solid.y);
+            hazard_left == solid_right
+                || hazard_right == solid_left
+                || crate::helpers::collides_with_instance_at(
+                    hazard,
+                    hazard.x,
+                    hazard.y,
+                    solid,
+                    Some(hazard.runtime_id),
+                    |_| true,
+                )
+        })
+    });
+    if !related_contact_planes {
+        return false;
+    }
+    [(0.0, -1.0), (0.0, 1.0), (-1.0, 0.0), (1.0, 0.0)]
+        .into_iter()
+        .any(|(separate_x, separate_y)| {
+            !collides_at(
+                player,
+                player.x + separate_x,
+                player.y + separate_y,
+                hazards,
+                ignore_runtime_id,
+            ) && collides_at(
+                player,
+                player.x - separate_x,
+                player.y - separate_y,
+                solids,
+                ignore_runtime_id,
+            )
+        })
 }
 
 pub(crate) fn apply_gm_motion_vars(instance: &mut crate::RuntimeInstance) {

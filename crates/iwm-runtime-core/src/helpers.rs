@@ -66,12 +66,35 @@ pub(crate) fn collides_with_instance_at<F>(
 where
     F: Fn(&RuntimeInstance) -> bool,
 {
+    collides_with_instances_at(
+        instance,
+        (x, y),
+        other,
+        (other.x, other.y),
+        ignore_runtime_id,
+        predicate,
+    )
+}
+
+pub(crate) fn collides_with_instances_at<F>(
+    instance: &RuntimeInstance,
+    position: (f64, f64),
+    other: &RuntimeInstance,
+    other_position: (f64, f64),
+    ignore_runtime_id: Option<usize>,
+    predicate: F,
+) -> bool
+where
+    F: Fn(&RuntimeInstance) -> bool,
+{
+    let (x, y) = position;
+    let (other_x, other_y) = other_position;
     if !other.alive || ignore_runtime_id == Some(other.runtime_id) || !predicate(other) {
         return false;
     }
 
     let (left, top, right, bottom) = bounds_at(instance, x, y);
-    let (other_left, other_top, other_right, other_bottom) = bounds_at(other, other.x, other.y);
+    let (other_left, other_top, other_right, other_bottom) = bounds_at(other, other_x, other_y);
     if !(left < other_right && right > other_left && top < other_bottom && bottom > other_top) {
         return false;
     }
@@ -83,10 +106,10 @@ where
         (Some(mask), Some(other_mask)) => masks_overlap(
             instance,
             mask,
-            x,
-            y,
+            position,
             other,
             other_mask,
+            other_position,
             (
                 left.max(other_left),
                 top.max(other_top),
@@ -170,17 +193,19 @@ fn active_collision_mask(instance: &RuntimeInstance) -> Option<&RuntimeCollision
 fn masks_overlap(
     instance: &RuntimeInstance,
     mask: &RuntimeCollisionMask,
-    x: f64,
-    y: f64,
+    position: (f64, f64),
     other: &RuntimeInstance,
     other_mask: &RuntimeCollisionMask,
+    other_position: (f64, f64),
     intersection: (i32, i32, i32, i32),
 ) -> bool {
+    let (x, y) = position;
+    let (other_x, other_y) = other_position;
     let (left, top, right, bottom) = intersection;
     for world_y in top..bottom {
         for world_x in left..right {
             if mask_contains_world_pixel(instance, mask, x, y, world_x, world_y)
-                && mask_contains_world_pixel(other, other_mask, other.x, other.y, world_x, world_y)
+                && mask_contains_world_pixel(other, other_mask, other_x, other_y, world_x, world_y)
             {
                 return true;
             }

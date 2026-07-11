@@ -10,7 +10,9 @@ use crate::event_dispatch::{
     runtime_instance_indices_by_object_id_from_instances, RuntimeCollisionSpatialIndex,
     RuntimeEventDispatchTables, RuntimeEventSelector,
 };
-use crate::helpers::{as_number, bounds_at, collides_at, is_player_instance};
+use crate::helpers::{
+    as_number, bounds_at, collides_at, collides_with_instances_at, is_player_instance,
+};
 use crate::logic::{RuntimeBinaryFileState, RuntimeSparseInstanceOverlay};
 use crate::tick_context::{RuntimeCollisionHit, RuntimeTickContext};
 use crate::{
@@ -441,6 +443,8 @@ impl RuntimeCore {
 
         self.dispatch_collision_events(host)?;
         tick_phases.collision_events_nanos += mark_phase_elapsed(host, &mut phase_start);
+
+        self.detect_player_hazard_after_collision_events(host)?;
 
         // Dispatch alarm events (countdown alarm state)
         self.process_alarm_countdowns(host)?;
@@ -1311,6 +1315,7 @@ impl RuntimeCore {
             let Some(other_instance) = other_instance else {
                 continue;
             };
+            let other_was_hazard = other_instance.hazard;
             let block_ids = {
                 let Some(room) = self.current_room.as_ref() else {
                     continue;
@@ -1337,6 +1342,29 @@ impl RuntimeCore {
                 "collision".into(),
                 Some(&tick_context.collision_spatial_index),
             );
+            let scripted_hazard_death = self.current_room.as_ref().and_then(|room| {
+                let instance = room.instances.get(hit.instance_idx)?;
+                (other_was_hazard && instance.player_candidate && !instance.alive).then(|| {
+                    format!(
+                        "room={} tick={} object={} runtime_id={} x={} y={} reason=hazard message=player-hit-hazard-in-{}",
+                        room.room_id,
+                        self.tick,
+                        instance.object_name,
+                        instance.runtime_id,
+                        instance.x,
+                        instance.y,
+                        room.room_name
+                    )
+                })
+            });
+            if let Some(message) = scripted_hazard_death {
+                self.record_diagnostic(
+                    host,
+                    iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                    "runtime-player-died",
+                    message,
+                );
+            }
             let solid_collision = {
                 let Some(room) = self.current_room.as_ref() else {
                     continue;
@@ -1413,13 +1441,43 @@ impl RuntimeCore {
                         );
                     }
                     if still_overlapping {
+                        let resolution = room
+                            .instances
+                            .get(hit.instance_idx)
+                            .zip(room.instances.get(hit.other_idx))
+                            .map(|(instance, other)| {
+                                final_solid_overlap_resolution(instance, other)
+                            })
+                            .unwrap_or(FinalSolidOverlapResolution::FullRollback);
                         if let Some(instance) = room.instances.get_mut(hit.instance_idx) {
-                            instance.x = instance.previous_x;
-                            instance.y = instance.previous_y;
+                            match resolution {
+                                FinalSolidOverlapResolution::KeepMotion => {}
+                                FinalSolidOverlapResolution::PreserveHorizontal => {
+                                    instance.y = instance.previous_y;
+                                }
+                                FinalSolidOverlapResolution::PreserveVertical => {
+                                    instance.x = instance.previous_x;
+                                }
+                                FinalSolidOverlapResolution::FullRollback => {
+                                    instance.x = instance.previous_x;
+                                    instance.y = instance.previous_y;
+                                }
+                            }
                         }
                         if let Some(other) = room.instances.get_mut(hit.other_idx) {
-                            other.x = other.previous_x;
-                            other.y = other.previous_y;
+                            match resolution {
+                                FinalSolidOverlapResolution::KeepMotion => {}
+                                FinalSolidOverlapResolution::PreserveHorizontal => {
+                                    other.y = other.previous_y;
+                                }
+                                FinalSolidOverlapResolution::PreserveVertical => {
+                                    other.x = other.previous_x;
+                                }
+                                FinalSolidOverlapResolution::FullRollback => {
+                                    other.x = other.previous_x;
+                                    other.y = other.previous_y;
+                                }
+                            }
                         }
                     }
                 }
@@ -1456,6 +1514,68 @@ impl RuntimeCore {
         self.tick_context = tick_context;
         Ok(())
     }
+}
+
+#[derive(Clone, Copy)]
+enum FinalSolidOverlapResolution {
+    KeepMotion,
+    PreserveHorizontal,
+    PreserveVertical,
+    FullRollback,
+}
+
+fn final_solid_overlap_resolution(
+    instance: &RuntimeInstance,
+    other: &RuntimeInstance,
+) -> FinalSolidOverlapResolution {
+    let ignore_runtime_id = Some(instance.runtime_id);
+    let (_, _, _, instance_bottom) = bounds_at(instance, instance.x, instance.y);
+    let (_, other_top, _, _) = bounds_at(other, other.x, other.y);
+    if instance.vspeed <= 0.0
+        && instance_bottom - other_top == 1
+        && !collides_with_instances_at(
+            instance,
+            (instance.previous_x, instance.previous_y),
+            other,
+            (other.previous_x, other.previous_y),
+            ignore_runtime_id,
+            |_| true,
+        )
+        && !collides_with_instances_at(
+            instance,
+            (instance.x, instance.y - 1.0),
+            other,
+            (other.x, other.y),
+            ignore_runtime_id,
+            |_| true,
+        )
+    {
+        return FinalSolidOverlapResolution::KeepMotion;
+    }
+
+    if !collides_with_instances_at(
+        instance,
+        (instance.x, instance.previous_y),
+        other,
+        (other.x, other.previous_y),
+        ignore_runtime_id,
+        |_| true,
+    ) {
+        return FinalSolidOverlapResolution::PreserveHorizontal;
+    }
+
+    if !collides_with_instances_at(
+        instance,
+        (instance.previous_x, instance.y),
+        other,
+        (other.previous_x, other.y),
+        ignore_runtime_id,
+        |_| true,
+    ) {
+        return FinalSolidOverlapResolution::PreserveVertical;
+    }
+
+    FinalSolidOverlapResolution::FullRollback
 }
 
 fn record_player_collision_trace(

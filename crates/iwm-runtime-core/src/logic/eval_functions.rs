@@ -120,18 +120,14 @@ pub(super) fn evaluate_place_query(
 ) -> Option<RuntimeValue> {
     let context = eval_context?;
     let instance = instance?;
-    let x = args
+    let query_x = args
         .first()
         .and_then(|arg| evaluate_expr(arg, Some(instance), globals, scope, eval_context))
-        .and_then(|value| as_number(&value))
-        .map(|value| value.round() as i32)?;
-    let y = args
+        .and_then(|value| as_number(&value))?;
+    let query_y = args
         .get(1)
         .and_then(|arg| evaluate_expr(arg, Some(instance), globals, scope, eval_context))
-        .and_then(|value| as_number(&value))
-        .map(|value| value.round() as i32)?;
-    let query_x = x as f64;
-    let query_y = y as f64;
+        .and_then(|value| as_number(&value))?;
     let collides = if let Some(target_expr) = args.get(2) {
         let target_object_ids = instance_target_object_ids(target_expr, context)?;
         context
@@ -147,17 +143,24 @@ pub(super) fn evaluate_place_query(
                 )
             })
     } else if !want_meeting {
+        let horizontal_query = (query_x - instance.x).abs() > f64::EPSILON
+            && (query_y - instance.y).abs() <= f64::EPSILON;
         context
             .solid_room_instances_near(instance, query_x, query_y)
             .any(|(_, candidate)| {
-                crate::helpers::collides_with_instance_at(
+                let collides = crate::helpers::collides_with_instance_at(
                     instance,
                     query_x,
                     query_y,
                     candidate,
                     Some(instance.runtime_id),
                     |candidate| candidate.solid,
-                )
+                );
+                collides
+                    && !(horizontal_query
+                        && horizontal_query_only_touches_supporting_top(
+                            instance, query_x, query_y, candidate,
+                        ))
             })
     } else {
         return None;
@@ -222,6 +225,36 @@ pub(super) fn evaluate_instance_number(
 ) -> Option<RuntimeValue> {
     let mut scratch = RuntimeObjectQueryScratch::default();
     evaluate_instance_number_with_scratch(args, eval_context, &mut scratch)
+}
+
+fn horizontal_query_only_touches_supporting_top(
+    instance: &RuntimeInstance,
+    query_x: f64,
+    query_y: f64,
+    candidate: &RuntimeInstance,
+) -> bool {
+    if crate::helpers::collides_with_instance_at(
+        instance,
+        instance.x,
+        instance.y,
+        candidate,
+        Some(instance.runtime_id),
+        |candidate| candidate.solid,
+    ) {
+        return false;
+    }
+
+    let (_, _, _, query_bottom) = crate::helpers::bounds_at(instance, query_x, query_y);
+    let (_, candidate_top, _, _) = crate::helpers::bounds_at(candidate, candidate.x, candidate.y);
+    query_bottom - candidate_top == 1
+        && !crate::helpers::collides_with_instance_at(
+            instance,
+            query_x,
+            query_y - 1.0,
+            candidate,
+            Some(instance.runtime_id),
+            |candidate| candidate.solid,
+        )
 }
 
 pub(super) fn evaluate_instance_number_with_scratch(

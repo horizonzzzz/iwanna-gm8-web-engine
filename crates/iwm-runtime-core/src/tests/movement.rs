@@ -557,6 +557,8 @@ fn core_script_owned_hazard_still_kills_when_contact_point_remains_hazardous() {
         false,
     )
     .unwrap();
+    core.detect_player_hazard_after_collision_events(&mut host)
+        .unwrap();
 
     assert!(core
         .diagnostics()

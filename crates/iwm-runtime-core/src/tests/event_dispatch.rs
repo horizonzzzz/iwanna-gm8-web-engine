@@ -724,6 +724,331 @@ fn solid_collision_resolves_before_same_frame_hazard_hit() {
 }
 
 #[test]
+fn resolved_block_spike_seam_contact_does_not_leave_player_in_frozen_death_state() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[1].name = "spikeRight".into();
+    package.objects[1].sprite_index = 1;
+    package.objects[1].solid = false;
+    package.objects[1].is_hazard = Some(true);
+    package.objects[2].name = "block".into();
+    package.resources.sprites[0].width = 32;
+    package.resources.sprites[0].height = 32;
+    package.resources.sprites[0].origin_x = 17;
+    package.resources.sprites[0].origin_y = 23;
+    package.resources.sprites[0].bbox_left = 12;
+    package.resources.sprites[0].bbox_right = 22;
+    package.resources.sprites[0].bbox_top = 11;
+    package.resources.sprites[0].bbox_bottom = 31;
+    package.resources.sprites[0].collision_masks = vec![rect_mask(32, 32, 12, 22, 11, 31)];
+    package.resources.sprites[1].width = 32;
+    package.resources.sprites[1].height = 32;
+    package.resources.sprites[1].bbox_right = 31;
+    package.resources.sprites[1].bbox_bottom = 31;
+    package.resources.sprites[1].collision_masks = vec![right_spike_mask(32)];
+    let mut block_sprite = package.resources.sprites[1].clone();
+    block_sprite.id = 2;
+    block_sprite.width = 32;
+    block_sprite.height = 32;
+    block_sprite.bbox_right = 31;
+    block_sprite.bbox_bottom = 31;
+    block_sprite.collision_masks = vec![filled_mask(32, 32)];
+    package.resources.sprites.push(block_sprite);
+    package.objects[2].sprite_index = 2;
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("previous_x".into()),
+                value: LoweredLogicExpr::LiteralNumber(888.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("previous_y".into()),
+                value: LoweredLogicExpr::LiteralNumber(919.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("x".into()),
+                value: LoweredLogicExpr::LiteralNumber(891.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("y".into()),
+                value: LoweredLogicExpr::LiteralNumber(919.81),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("hspeed".into()),
+                value: LoweredLogicExpr::LiteralNumber(3.0),
+            },
+        ],
+    );
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("hspeed".into()),
+            value: LoweredLogicExpr::LiteralNumber(0.0),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let spike = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "spikeRight")
+            .unwrap();
+        spike.x = 896.0;
+        spike.y = 928.0;
+        let block = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "block")
+            .unwrap();
+        block.x = 864.0;
+        block.y = 928.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    assert!(core.diagnostics().iter().all(|entry| {
+        entry.code != "runtime-player-died"
+    }), "solid resolution separated the spike seam, so movement must not remain frozen; diagnostics={:?}", core.diagnostics());
+}
+
+#[test]
+fn script_owned_floor_contact_preserves_safe_horizontal_motion_at_block_spike_boundary() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[1].name = "spike".into();
+    package.objects[1].sprite_index = 1;
+    package.objects[1].solid = false;
+    package.objects[1].is_hazard = Some(true);
+    package.objects[2].name = "block".into();
+    package.resources.sprites[0].width = 32;
+    package.resources.sprites[0].height = 32;
+    package.resources.sprites[0].origin_x = 17;
+    package.resources.sprites[0].origin_y = 23;
+    package.resources.sprites[0].bbox_left = 12;
+    package.resources.sprites[0].bbox_right = 22;
+    package.resources.sprites[0].bbox_top = 11;
+    package.resources.sprites[0].bbox_bottom = 31;
+    package.resources.sprites[0].collision_masks = vec![rect_mask(32, 32, 12, 22, 11, 31)];
+    package.resources.sprites[1].collision_masks = vec![filled_mask(16, 16)];
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("previous_x".into()),
+                value: LoweredLogicExpr::LiteralNumber(856.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("previous_y".into()),
+                value: LoweredLogicExpr::LiteralNumber(920.4),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("x".into()),
+                value: LoweredLogicExpr::LiteralNumber(859.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("y".into()),
+                value: LoweredLogicExpr::LiteralNumber(919.53),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("hspeed".into()),
+                value: LoweredLogicExpr::LiteralNumber(3.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("vspeed".into()),
+                value: LoweredLogicExpr::LiteralNumber(-0.87),
+            },
+        ],
+    );
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: "==".into(),
+                left: Box::new(LoweredLogicExpr::Call {
+                    name: "place_free".into(),
+                    args: vec![
+                        LoweredLogicExpr::BinaryExpr {
+                            op: "+".into(),
+                            left: Box::new(LoweredLogicExpr::Identifier("x".into())),
+                            right: Box::new(LoweredLogicExpr::Identifier("hspeed".into())),
+                        },
+                        LoweredLogicExpr::Identifier("y".into()),
+                    ],
+                }),
+                right: Box::new(LoweredLogicExpr::LiteralBool(false)),
+            },
+            then_branch: vec![
+                LoweredLogicStatement::FunctionCall {
+                    name: "move_contact_solid".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralNumber(0.0),
+                        LoweredLogicExpr::Call {
+                            name: "abs".into(),
+                            args: vec![LoweredLogicExpr::Identifier("hspeed".into())],
+                        },
+                    ],
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::Identifier("hspeed".into()),
+                    value: LoweredLogicExpr::LiteralNumber(0.0),
+                },
+            ],
+            else_branch: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.x = 856.0;
+        player.y = 920.4;
+        player.previous_x = 856.0;
+        player.previous_y = 920.4;
+
+        let spike = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "spike")
+            .unwrap();
+        spike.x = 896.0;
+        spike.y = 928.0;
+
+        let block = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "block")
+            .unwrap();
+        block.x = 864.0;
+        block.y = 928.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.x,
+        859.0,
+        "safe horizontal motion should survive floor resolution; player={player:?}, diagnostics={:?}",
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn script_owned_jump_preserves_safe_vertical_motion_at_block_spike_boundary() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[1].name = "spike".into();
+    package.objects[1].sprite_index = 1;
+    package.objects[1].solid = false;
+    package.objects[1].is_hazard = Some(true);
+    package.objects[2].name = "block".into();
+    package.resources.sprites[0].collision_masks = vec![filled_mask(16, 16)];
+    package.resources.sprites[1].collision_masks = vec![filled_mask(16, 16)];
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("previous_x".into()),
+                value: LoweredLogicExpr::LiteralNumber(16.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("previous_y".into()),
+                value: LoweredLogicExpr::LiteralNumber(24.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("x".into()),
+                value: LoweredLogicExpr::LiteralNumber(15.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("y".into()),
+                value: LoweredLogicExpr::LiteralNumber(20.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("hspeed".into()),
+                value: LoweredLogicExpr::LiteralNumber(-1.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("vspeed".into()),
+                value: LoweredLogicExpr::LiteralNumber(-4.0),
+            },
+        ],
+    );
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("edge_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.player_candidate)
+            .unwrap();
+        player.x = 16.0;
+        player.y = 24.0;
+        player.previous_x = 16.0;
+        player.previous_y = 24.0;
+
+        let spike = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "spike")
+            .unwrap();
+        spike.x = 16.0;
+        spike.y = 40.0;
+
+        let block = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "block")
+            .unwrap();
+        block.x = 0.0;
+        block.y = 24.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.y,
+        20.0,
+        "safe jump motion should survive edge resolution; player={player:?}, diagnostics={:?}",
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn solid_ceiling_collision_event_clears_upward_speed_before_reapply() {
     let mut package = sample_package();
     package.objects[0].name = "mover".into();
@@ -978,6 +1303,31 @@ fn filled_mask(width: u32, height: u32) -> SpriteCollisionMask {
     }
 }
 
+fn rect_mask(
+    width: u32,
+    height: u32,
+    bbox_left: u32,
+    bbox_right: u32,
+    bbox_top: u32,
+    bbox_bottom: u32,
+) -> SpriteCollisionMask {
+    let mut data = vec![false; (width * height) as usize];
+    for y in bbox_top..=bbox_bottom {
+        for x in bbox_left..=bbox_right {
+            data[(y * width + x) as usize] = true;
+        }
+    }
+    SpriteCollisionMask {
+        width,
+        height,
+        bbox_left,
+        bbox_right,
+        bbox_top,
+        bbox_bottom,
+        data,
+    }
+}
+
 fn top_spike_mask(size: u32) -> SpriteCollisionMask {
     let mut data = vec![false; (size * size) as usize];
     for y in 0..size {
@@ -990,6 +1340,29 @@ fn top_spike_mask(size: u32) -> SpriteCollisionMask {
         }
     }
 
+    SpriteCollisionMask {
+        width: size,
+        height: size,
+        bbox_left: 0,
+        bbox_right: size - 1,
+        bbox_top: 0,
+        bbox_bottom: size - 1,
+        data,
+    }
+}
+
+fn right_spike_mask(size: u32) -> SpriteCollisionMask {
+    let mut data = vec![false; (size * size) as usize];
+    for y in 0..size {
+        let width = if y < size / 2 {
+            (y + 1) * 2
+        } else {
+            (size - y) * 2
+        };
+        for x in 0..width.min(size) {
+            data[(y * size + x) as usize] = true;
+        }
+    }
     SpriteCollisionMask {
         width: size,
         height: size,
