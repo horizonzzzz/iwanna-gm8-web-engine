@@ -27,7 +27,13 @@ pub(super) fn assign_runtime_member_reference<H: RuntimeHost>(
     }
 
     if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "self") {
-        assign_instance_field_or_var(member.clone(), value, instance);
+        assign_instance_field_or_var(
+            member.clone(),
+            value,
+            instance,
+            env.sprites,
+            env.sprite_index,
+        );
         return true;
     }
 
@@ -235,7 +241,13 @@ fn assign_runtime_member_by_index<H: RuntimeHost>(
     env: &mut RuntimeStatementEnvironment<'_, H>,
 ) -> bool {
     if target_index == instance_index {
-        assign_instance_field_or_var(member.to_string(), value, instance);
+        assign_instance_field_or_var(
+            member.to_string(),
+            value,
+            instance,
+            env.sprites,
+            env.sprite_index,
+        );
         return true;
     }
 
@@ -247,7 +259,13 @@ fn assign_runtime_member_by_index<H: RuntimeHost>(
     else {
         return false;
     };
-    assign_instance_field_or_var(member.to_string(), value, &mut target_instance);
+    assign_instance_field_or_var(
+        member.to_string(),
+        value,
+        &mut target_instance,
+        env.sprites,
+        env.sprite_index,
+    );
     env.room_instance_updates.set(target_index, target_instance);
     true
 }

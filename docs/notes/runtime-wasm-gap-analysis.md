@@ -140,8 +140,20 @@ Runtime-core now advances ordinary multi-frame sprite animation from instance
 `other:animation-end` when the animation wraps, matching the GM/OpenGMK draw-path
 expectation more closely for slow fractional animations.
 
+Lowered expressions now also resolve named Sprite resources as numeric GM
+constants after local, instance, global, room, and object lookup. Assignments such
+as `sprite_index = sprPlayerRunning` therefore use package resource IDs without
+an IWanna-specific animation rule. Sprite switches follow the OpenGMK instance
+behavior: a valid fractional `image_index` is preserved, while an index outside
+the new sprite's frame range is reset to zero before normal `image_speed`
+advancement.
+
 Current Dife evidence:
 
+- the Player Step GML selects `sprPlayerRunning`, `sprPlayerJump`, and
+  `sprPlayerFall`; local runtime-core regressions now prove right movement,
+  upward jump, and downward fall select those package sprites and advance their
+  exported frames
 - the local `savePoint` object (`object_id = 5`) is not animated by a hardcoded
   runtime rule
 - its visible loop comes from a two-frame sprite (`sprSave`) plus object logic

@@ -1077,6 +1077,129 @@ fn real_sample_player(core: &RuntimeCore) -> crate::RuntimeInstance {
         .expect("live player should exist")
 }
 
+fn real_sample_sprite_id(core: &RuntimeCore, name: &str) -> f64 {
+    core.package
+        .resources
+        .sprites
+        .iter()
+        .find(|sprite| sprite.name.eq_ignore_ascii_case(name))
+        .map(|sprite| sprite.id as f64)
+        .unwrap_or_else(|| panic!("sample package should include sprite {name}"))
+}
+
+fn real_sample_player_animation_value(core: &RuntimeCore, key: &str) -> f64 {
+    real_sample_player(core)
+        .vars
+        .get(key)
+        .and_then(|value| match value {
+            RuntimeValue::Number(number) => Some(*number),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("live player should expose numeric {key}"))
+}
+
+fn real_sample_bound_key(core: &RuntimeCore, key: &str, fallback: u16) -> u16 {
+    core.globals
+        .get(key)
+        .and_then(|value| match value {
+            RuntimeValue::Number(number) => Some(*number as u16),
+            _ => None,
+        })
+        .unwrap_or(fallback)
+}
+
+fn enter_real_sample_animation_room(core: &mut RuntimeCore, host: &mut HeadlessHost) {
+    select_real_sample_medium_difficulty(core, host);
+    core.reload_room(143).unwrap();
+}
+
+#[test]
+fn real_sample_player_uses_running_sprite_animation() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    enter_real_sample_animation_room(&mut core, &mut host);
+    let running_sprite = real_sample_sprite_id(&core, "sprPlayerRunning");
+    let right_key = real_sample_bound_key(&core, "global.rightbutton", 0x27);
+
+    press_real_sample_key(&mut host, right_key);
+    core.tick(&mut host).unwrap();
+    host.input.clear_transitions();
+    let first_frame = real_sample_player_animation_value(&core, "image_index");
+
+    assert_eq!(
+        real_sample_player_animation_value(&core, "sprite_index"),
+        running_sprite
+    );
+    assert_eq!(
+        real_sample_player_animation_value(&core, "image_speed"),
+        0.5
+    );
+
+    core.tick(&mut host).unwrap();
+    let second_frame = real_sample_player_animation_value(&core, "image_index");
+    assert_ne!(second_frame, first_frame);
+}
+
+#[test]
+fn real_sample_player_uses_jump_and_fall_sprite_animation() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    enter_real_sample_animation_room(&mut core, &mut host);
+    let jump_sprite = real_sample_sprite_id(&core, "sprPlayerJump");
+    let fall_sprite = real_sample_sprite_id(&core, "sprPlayerFall");
+    let jump_key = real_sample_bound_key(&core, "global.jumpbutton", 0x10);
+
+    press_real_sample_key(&mut host, jump_key);
+    core.tick(&mut host).unwrap();
+    host.input.clear_transitions();
+    core.tick(&mut host).unwrap();
+    let jump_frame = real_sample_player_animation_value(&core, "image_index");
+    let jumping_player = real_sample_player(&core);
+    assert!(jumping_player.vspeed < -0.05);
+    assert_eq!(
+        real_sample_player_animation_value(&core, "sprite_index"),
+        jump_sprite
+    );
+
+    core.tick(&mut host).unwrap();
+    assert_ne!(
+        real_sample_player_animation_value(&core, "image_index"),
+        jump_frame
+    );
+
+    release_real_sample_key(&mut host, jump_key);
+    core.tick(&mut host).unwrap();
+    host.input.clear_transitions();
+    for _ in 0..120 {
+        if real_sample_player(&core).vspeed > 0.05
+            && real_sample_player_animation_value(&core, "sprite_index") == fall_sprite
+        {
+            break;
+        }
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+    }
+
+    let falling_player = real_sample_player(&core);
+    assert!(falling_player.vspeed > 0.05);
+    assert_eq!(
+        real_sample_player_animation_value(&core, "sprite_index"),
+        fall_sprite
+    );
+    let fall_frame = real_sample_player_animation_value(&core, "image_index");
+    core.tick(&mut host).unwrap();
+    assert_ne!(
+        real_sample_player_animation_value(&core, "image_index"),
+        fall_frame
+    );
+}
+
 fn release_real_sample_key(host: &mut HeadlessHost, key: u16) {
     host.input.set_button_state(
         RuntimeButton::Keyboard(key),

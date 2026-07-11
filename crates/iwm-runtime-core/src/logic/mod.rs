@@ -441,7 +441,13 @@ impl RuntimeCore {
             }
 
             for (key, value) in create.post_create_vars {
-                assignment::assign_instance_field_or_var(key, value, &mut instance);
+                assignment::assign_instance_field_or_var(
+                    key,
+                    value,
+                    &mut instance,
+                    &self.package.resources.sprites,
+                    &self.sprite_index,
+                );
             }
 
             let created_object_name = instance.object_name.clone();

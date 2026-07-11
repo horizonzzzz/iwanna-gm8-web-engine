@@ -22,11 +22,12 @@ use super::diagnostics::{
     record_unsupported_expr_functions, record_unsupported_function, record_unsupported_statement,
     trace_message,
 };
-use super::eval::{assignable_key, evaluate_expr, is_truthy};
+use super::eval::{assignable_key, is_truthy};
 use super::eval_functions::{
     evaluate_collision_line_with_scratch, evaluate_distance_to_object_with_scratch,
     evaluate_instance_number_with_scratch,
 };
+use super::eval_variables::evaluate_expr_with_sprite_constants;
 use super::instances::{
     assign_runtime_member_reference, pending_create_member_value,
     pending_create_member_value_by_object_target, runtime_instance_create_request,
@@ -163,6 +164,8 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         env.globals,
                         scope,
                         Some(&mut *env.room_speed),
+                        env.sprites,
+                        env.sprite_index,
                     );
                 }
             }
@@ -1049,6 +1052,8 @@ fn execute_assignment_expression<H: RuntimeHost>(
                         env.globals,
                         scope,
                         Some(&mut *env.room_speed),
+                        env.sprites,
+                        env.sprite_index,
                     );
                 }
             }
@@ -1242,7 +1247,14 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
         }
     }
 
-    evaluate_expr(expr, instance, env.globals, scope, eval_context)
+    evaluate_expr_with_sprite_constants(
+        expr,
+        instance,
+        env.globals,
+        scope,
+        eval_context,
+        env.sprite_ids_by_name,
+    )
 }
 
 fn evaluate_runtime_binary_operand<H: RuntimeHost>(

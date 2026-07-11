@@ -51,6 +51,7 @@ Important validation note:
 - runtime-core no longer injects fallback players into menu-like rooms; player appearance now depends on explicit room instances or supported original spawn logic such as `other:room-start`
 - jump is no longer a fixed-height placeholder in repository fixtures, and runtime-core now preserves fractional vertical jump movement for the sample's `jump=8.5` / `gravity=0.4` path; the remaining gold-sample jump work is numeric calibration of tap, hold, release-cut, double-jump, and landing-reset behavior against `IWBT_Dife`
 - the shell/runtime snapshot path now exposes grounded plus jump-phase trace flags for the player, which makes browser-side hand-feel debugging easier but does not change the remaining semantic blocker: the gold sample still needs its own player movement path executed accurately
+- named Sprite resources now resolve as general GM constants after variable lookup, so the parsed Player Step assignments select `sprPlayerRunning`, `sprPlayerJump`, and `sprPlayerFall` without a Kid-specific runtime branch; local runtime-core regressions verify that right movement advances the four-frame running animation and that upward/downward jump phases advance the two-frame jump/fall animations, including the visible feet and cape frame changes
 
 ## Sample Audit
 
@@ -61,6 +62,7 @@ Important validation note:
 - Frame draws: the shell and WASM bridge can render telemetry and runtime-core now emits basic Draw-event text commands, but gold-sample-specific frame proof still depends on local package generation
 - Player appears: not repo-proven on a tracked artifact
 - Movement works: not yet verified as a dedicated browser assertion
+- Player animation: runtime-core local-sample regressions verify parsed package GML selects and advances idle, running, jump, and fall sprite resources; browser presentation remains covered by the existing generic sprite-frame renderer rather than a sample-specific draw path
 - First blocking warning or missing behavior: title/menu/select can now be reached through the original room-order path, difficulty/select labels can use basic Draw-event text commands, and the Dife-critical `DeathTime` binary-file path plus room143 S-key `savePoint` path now have minimal runtime support. Full usability still depends on broader Draw-event rendering, menu logic, and general save/file API parity beyond the currently proven file slice.
 - Sprite collision metadata is now present in the parser-emitted package contract as aggregated bbox bounds plus gm8exe-derived `collision_masks`; current runtime pixel checks use the first available sprite mask, while animated per-frame mask selection remains deferred
 - Large-room view behavior: local generated package rooms such as `rStage01`

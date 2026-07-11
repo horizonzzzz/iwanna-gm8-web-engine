@@ -21,6 +21,53 @@ fn assign_var(name: &str, value: LoweredLogicExpr) -> LoweredLogicStatement {
 }
 
 #[test]
+fn core_resolves_named_sprite_constants_in_expressions() {
+    let mut package = sample_package();
+    package.resources.sprites[1].name = "spr_running".into();
+    add_step_block(
+        &mut package,
+        vec![assign_var(
+            "selected_sprite",
+            LoweredLogicExpr::Identifier("spr_running".into()),
+        )],
+    );
+
+    let core = tick_package(package);
+
+    assert_eq!(
+        player_var(&core, "selected_sprite"),
+        Some(&RuntimeValue::Number(1.0))
+    );
+}
+
+#[test]
+fn core_instance_variables_shadow_named_sprite_constants() {
+    let mut package = sample_package();
+    package.resources.sprites[1].name = "spr_running".into();
+    add_create_block(
+        &mut package,
+        vec![assign_var(
+            "spr_running",
+            LoweredLogicExpr::LiteralNumber(9.0),
+        )],
+    );
+    add_step_block(
+        &mut package,
+        vec![assign_var(
+            "selected_sprite",
+            LoweredLogicExpr::Identifier("spr_running".into()),
+        )],
+    );
+
+    let core = tick_package(package);
+
+    assert_eq!(
+        player_var(&core, "selected_sprite"),
+        Some(&RuntimeValue::Number(9.0))
+    );
+}
+
+#[test]
 fn core_evaluates_unary_negative_in_assignments() {
     let cases = [(
         "score",

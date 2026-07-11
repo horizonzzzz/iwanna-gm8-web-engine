@@ -4,7 +4,8 @@ use iwm_runtime_model::RoomDefinition;
 
 use super::assignment::{assign_instance_or_global, assign_room_speed};
 use super::context::RuntimeEvalContext;
-use super::eval::{assignable_key, evaluate_expr, is_truthy};
+use super::eval::{assignable_key, is_truthy};
+use super::eval_variables::evaluate_expr_with_sprite_constants;
 use crate::helpers::as_number;
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeInstance,
@@ -80,6 +81,7 @@ impl RuntimeCore {
                 &script_entries,
                 &mut self.globals,
                 room_speed.as_deref_mut(),
+                &self.sprite_ids_by_name,
             );
         }
     }
@@ -102,7 +104,13 @@ impl RuntimeCore {
                     continue;
                 }
                 for statement in &entry.statements {
-                    apply_statement_to_globals_map(statement, &script_entries, &mut globals, None);
+                    apply_statement_to_globals_map(
+                        statement,
+                        &script_entries,
+                        &mut globals,
+                        None,
+                        &self.sprite_ids_by_name,
+                    );
                 }
             }
             if room.id == target_room_id {
@@ -160,12 +168,13 @@ impl RuntimeCore {
                     None,
                     Some(&eval_context),
                 ) {
-                    if let Some(value) = evaluate_expr(
+                    if let Some(value) = evaluate_expr_with_sprite_constants(
                         value,
                         Some(&instance_snapshot),
                         &self.globals,
                         None,
                         Some(&eval_context),
+                        &self.sprite_ids_by_name,
                     ) {
                         if let Some(instance) = room_state.instances.get_mut(instance_index) {
                             assign_instance_or_global(
@@ -174,6 +183,8 @@ impl RuntimeCore {
                                 instance,
                                 &mut self.globals,
                                 Some(&mut room_state.speed),
+                                &self.package.resources.sprites,
+                                &self.sprite_index,
                             );
                         }
                     }
@@ -202,12 +213,13 @@ impl RuntimeCore {
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                     room_ids_by_name: &self.room_ids_by_name,
                 };
-                let condition_value = evaluate_expr(
+                let condition_value = evaluate_expr_with_sprite_constants(
                     condition,
                     Some(&instance_snapshot),
                     &self.globals,
                     None,
                     Some(&eval_context),
+                    &self.sprite_ids_by_name,
                 );
                 let branch = if is_truthy(condition_value) {
                     then_branch
@@ -339,12 +351,13 @@ impl RuntimeCore {
         let x = args
             .first()
             .and_then(|arg| {
-                evaluate_expr(
+                evaluate_expr_with_sprite_constants(
                     arg,
                     source_instance,
                     &self.globals,
                     None,
                     Some(&eval_context),
+                    &self.sprite_ids_by_name,
                 )
             })
             .and_then(|value| as_number(&value))
@@ -352,12 +365,13 @@ impl RuntimeCore {
         let y = args
             .get(1)
             .and_then(|arg| {
-                evaluate_expr(
+                evaluate_expr_with_sprite_constants(
                     arg,
                     source_instance,
                     &self.globals,
                     None,
                     Some(&eval_context),
+                    &self.sprite_ids_by_name,
                 )
             })
             .and_then(|value| as_number(&value))
@@ -419,9 +433,16 @@ impl RuntimeCore {
             }
         }
 
-        evaluate_expr(expr, source_instance, &self.globals, None, eval_context)
-            .and_then(|value| as_number(&value))
-            .and_then(non_negative_integer_usize)
+        evaluate_expr_with_sprite_constants(
+            expr,
+            source_instance,
+            &self.globals,
+            None,
+            eval_context,
+            &self.sprite_ids_by_name,
+        )
+        .and_then(|value| as_number(&value))
+        .and_then(non_negative_integer_usize)
     }
 }
 
@@ -493,11 +514,19 @@ fn apply_statement_to_globals_map(
     script_entries: &HashMap<String, LoweredLogicEntry>,
     globals: &mut HashMap<String, RuntimeValue>,
     mut room_speed: Option<&mut u32>,
+    sprite_ids_by_name: &HashMap<String, usize>,
 ) {
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
             if let Some(key) = assignable_key(target, None, globals, None, None) {
-                if let Some(value) = evaluate_expr(value, None, globals, None, None) {
+                if let Some(value) = evaluate_expr_with_sprite_constants(
+                    value,
+                    None,
+                    globals,
+                    None,
+                    None,
+                    sprite_ids_by_name,
+                ) {
                     if assign_room_speed(&key, &value, room_speed.as_deref_mut()) {
                         return;
                     }
@@ -510,7 +539,14 @@ fn apply_statement_to_globals_map(
             then_branch,
             else_branch,
         } => {
-            let condition_value = evaluate_expr(condition, None, globals, None, None);
+            let condition_value = evaluate_expr_with_sprite_constants(
+                condition,
+                None,
+                globals,
+                None,
+                None,
+                sprite_ids_by_name,
+            );
             let branch = if is_truthy(condition_value) {
                 then_branch
             } else {
@@ -522,6 +558,7 @@ fn apply_statement_to_globals_map(
                     script_entries,
                     globals,
                     room_speed.as_deref_mut(),
+                    sprite_ids_by_name,
                 );
             }
         }
@@ -535,6 +572,7 @@ fn apply_statement_to_globals_map(
                     script_entries,
                     globals,
                     room_speed.as_deref_mut(),
+                    sprite_ids_by_name,
                 );
             }
         }
@@ -546,6 +584,7 @@ fn apply_statement_to_globals_map(
                         script_entries,
                         globals,
                         room_speed.as_deref_mut(),
+                        sprite_ids_by_name,
                     );
                 }
             }

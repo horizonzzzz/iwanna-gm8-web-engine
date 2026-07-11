@@ -5,6 +5,24 @@ use super::eval::evaluate_expr;
 use super::eval_values::runtime_value_to_string_text;
 use crate::{LoweredLogicExpr, RuntimeInstance, RuntimeValue};
 
+pub(super) fn evaluate_expr_with_sprite_constants(
+    expr: &LoweredLogicExpr,
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    sprite_ids_by_name: &HashMap<String, usize>,
+) -> Option<RuntimeValue> {
+    evaluate_expr(expr, instance, globals, scope, eval_context).or_else(|| {
+        let LoweredLogicExpr::Identifier(name) = expr else {
+            return None;
+        };
+        sprite_ids_by_name
+            .get(&name.to_ascii_lowercase())
+            .map(|sprite_id| RuntimeValue::Number(*sprite_id as f64))
+    })
+}
+
 pub(crate) fn assignable_key(
     expr: &LoweredLogicExpr,
     instance: Option<&RuntimeInstance>,

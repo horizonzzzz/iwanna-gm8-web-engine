@@ -113,3 +113,26 @@ fn core_applies_lowered_room_creation_assignments_to_globals() {
         Some(&RuntimeValue::Bool(true))
     );
 }
+
+#[test]
+fn core_resolves_named_sprite_constants_in_room_creation_code() {
+    let mut package = sample_package();
+    package.resources.sprites[1].name = "spr_room_marker".into();
+    add_room_create_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "room_marker_sprite".into(),
+            },
+            value: LoweredLogicExpr::Identifier("spr_room_marker".into()),
+        }],
+    );
+
+    let core = RuntimeCore::load(package).unwrap();
+
+    assert_eq!(
+        core.globals.get("global.room_marker_sprite"),
+        Some(&RuntimeValue::Number(1.0))
+    );
+}

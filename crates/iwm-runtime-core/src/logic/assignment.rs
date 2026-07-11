@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use iwm_runtime_model::SpriteResource;
+
 use super::context::{RuntimeEvalContext, RuntimeExecutionScope};
 use crate::helpers::{as_number, parse_room_id};
 use crate::{RuntimeInstance, RuntimeValue};
@@ -11,11 +13,21 @@ pub(super) fn assign_runtime_value(
     globals: &mut HashMap<String, RuntimeValue>,
     scope: &mut RuntimeExecutionScope,
     room_speed: Option<&mut u32>,
+    sprites: &[SpriteResource],
+    sprite_index: &HashMap<usize, usize>,
 ) {
     if scope.assign(&key, value.clone()) {
         return;
     }
-    assign_instance_or_global(key, value, instance, globals, room_speed);
+    assign_instance_or_global(
+        key,
+        value,
+        instance,
+        globals,
+        room_speed,
+        sprites,
+        sprite_index,
+    );
 }
 
 pub(super) fn assign_instance_or_global(
@@ -24,6 +36,8 @@ pub(super) fn assign_instance_or_global(
     instance: &mut RuntimeInstance,
     globals: &mut HashMap<String, RuntimeValue>,
     room_speed: Option<&mut u32>,
+    sprites: &[SpriteResource],
+    sprite_index: &HashMap<usize, usize>,
 ) {
     if assign_room_speed(&key, &value, room_speed) {
         return;
@@ -34,13 +48,15 @@ pub(super) fn assign_instance_or_global(
         return;
     }
 
-    assign_instance_field_or_var(key, value, instance);
+    assign_instance_field_or_var(key, value, instance, sprites, sprite_index);
 }
 
 pub(super) fn assign_instance_field_or_var(
     key: String,
     value: RuntimeValue,
     instance: &mut RuntimeInstance,
+    sprites: &[SpriteResource],
+    sprite_index: &HashMap<usize, usize>,
 ) {
     match key.as_str() {
         "x" => assign_number_field(value, &mut instance.x, &mut instance.vars, key),
@@ -77,6 +93,36 @@ pub(super) fn assign_instance_field_or_var(
                 instance.set_direction(n);
             } else {
                 instance.vars.insert(key, value);
+            }
+        }
+        "sprite_index" => {
+            let Some(sprite_id) = as_number(&value)
+                .filter(|value| value.is_finite())
+                .map(|value| value.round() as i32)
+            else {
+                instance.vars.insert(key, value);
+                return;
+            };
+            let frame_count = usize::try_from(sprite_id)
+                .ok()
+                .and_then(|id| sprite_index.get(&id))
+                .and_then(|index| sprites.get(*index))
+                .map(|sprite| sprite.frame_paths.len())
+                .unwrap_or(0);
+            instance.vars.insert(
+                "sprite_index".into(),
+                RuntimeValue::Number(sprite_id as f64),
+            );
+
+            let image_index = instance
+                .vars
+                .get("image_index")
+                .and_then(as_number)
+                .unwrap_or(0.0);
+            if image_index.floor() >= frame_count as f64 {
+                instance
+                    .vars
+                    .insert("image_index".into(), RuntimeValue::Number(0.0));
             }
         }
         _ => {
