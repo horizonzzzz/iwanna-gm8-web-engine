@@ -6,7 +6,7 @@ use iwm_runtime_host::{RuntimeButton, RuntimeHost, RuntimeHostError};
 use super::overlay::RuntimeSparseInstanceOverlay;
 use crate::event_dispatch::RuntimeCollisionSpatialIndex;
 use crate::tick_context::{RuntimeObjectIndex, RuntimeObjectQueryScratch};
-use crate::{RuntimeInstance, RuntimeValue};
+use crate::{RuntimeInstance, RuntimeRoomState, RuntimeValue};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct StepExecutionResult {
@@ -230,6 +230,29 @@ pub(crate) struct RuntimeEvalContext<'a> {
     pub other_runtime_id: Option<usize>,
     pub place_target_ids_by_name: &'a HashMap<String, Vec<usize>>,
     pub room_ids_by_name: &'a HashMap<String, usize>,
+    pub view_zero: Option<RuntimeViewValues>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RuntimeViewValues {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl RuntimeViewValues {
+    pub(crate) fn from_room(room: &RuntimeRoomState) -> Option<Self> {
+        room.views
+            .iter()
+            .find(|view| view.visible)
+            .map(|view| Self {
+                x: view.source_x,
+                y: view.source_y,
+                width: view.source_w,
+                height: view.source_h,
+            })
+    }
 }
 
 impl<'a> RuntimeEvalContext<'a> {
@@ -255,6 +278,7 @@ impl<'a> RuntimeEvalContext<'a> {
             other_runtime_id: Some(other_instance.runtime_id),
             place_target_ids_by_name: self.place_target_ids_by_name,
             room_ids_by_name: self.room_ids_by_name,
+            view_zero: self.view_zero,
         }
     }
 

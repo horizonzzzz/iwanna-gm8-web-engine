@@ -241,6 +241,45 @@ fn instance_create_in_step_creates_duplicate_instances_and_runs_create_event() {
 }
 
 #[test]
+fn instance_create_reads_live_indexed_view_coordinates() {
+    let mut package = sample_package();
+    package.rooms[0].views_enabled = true;
+    package.rooms[0].views[0].visible = true;
+    package.rooms[0].views[0].source_x = 800;
+    package.rooms[0].views[0].source_y = 608;
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "instance_create".into(),
+            args: vec![
+                LoweredLogicExpr::IndexAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("view_xview".into())),
+                    index: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+                },
+                LoweredLogicExpr::IndexAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("view_yview".into())),
+                    index: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+                },
+                LoweredLogicExpr::Identifier("obj_marker".into()),
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    assert!(core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .any(|instance| {
+            instance.object_name == "obj_marker" && (instance.x, instance.y) == (800.0, 608.0)
+        }));
+}
+
+#[test]
 fn instance_created_inside_with_all_does_not_run_same_with_iteration() {
     let mut package = sample_package();
     package.objects[1].events.push(ObjectEventEntry {

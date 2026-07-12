@@ -46,6 +46,41 @@ fn runtime_core_emits_browser_consumable_draw_commands() {
 }
 
 #[test]
+fn runtime_core_orders_instance_sprites_by_gm_depth() {
+    let mut package = sample_package();
+    package
+        .objects
+        .iter_mut()
+        .find(|object| object.id == 0)
+        .unwrap()
+        .depth = -999_999_999;
+    package
+        .objects
+        .iter_mut()
+        .find(|object| object.id == 705)
+        .unwrap()
+        .depth = 100;
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.render(&mut host).unwrap();
+
+    let sprite_ids = host
+        .renderer
+        .submitted_frames
+        .last()
+        .unwrap()
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RuntimeDrawCommand::DrawSprite { sprite_id, .. } => Some(*sprite_id),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(sprite_ids, vec![1, 0]);
+}
+
+#[test]
 fn runtime_core_mirrors_player_sprite_when_facing_left() {
     let mut core = RuntimeCore::load(sample_package()).unwrap();
     let mut host = host();

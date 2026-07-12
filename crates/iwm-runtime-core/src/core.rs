@@ -1006,6 +1006,7 @@ impl RuntimeCore {
                     other_runtime_id: other_instance.as_ref().map(|instance| instance.runtime_id),
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                     room_ids_by_name: &self.room_ids_by_name,
+                    view_zero: crate::logic::RuntimeViewValues::from_room(room),
                 };
                 let mut with_target_indices = Vec::new();
                 let mut statement_env = crate::logic::RuntimeStatementEnvironment {

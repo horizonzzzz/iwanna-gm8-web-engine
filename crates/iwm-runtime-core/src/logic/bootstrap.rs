@@ -160,6 +160,7 @@ impl RuntimeCore {
                     other_runtime_id: None,
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                     room_ids_by_name: &self.room_ids_by_name,
+                    view_zero: super::RuntimeViewValues::from_room(room_state),
                 };
                 if let Some(key) = assignable_key(
                     target,
@@ -212,6 +213,7 @@ impl RuntimeCore {
                     other_runtime_id: None,
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                     room_ids_by_name: &self.room_ids_by_name,
+                    view_zero: super::RuntimeViewValues::from_room(room_state),
                 };
                 let condition_value = evaluate_expr_with_sprite_constants(
                     condition,
@@ -347,6 +349,7 @@ impl RuntimeCore {
             other_runtime_id: None,
             place_target_ids_by_name: &self.place_target_ids_by_name,
             room_ids_by_name: &self.room_ids_by_name,
+            view_zero: super::RuntimeViewValues::from_room(room_state),
         };
         let x = args
             .first()

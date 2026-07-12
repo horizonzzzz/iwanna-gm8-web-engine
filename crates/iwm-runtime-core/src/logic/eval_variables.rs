@@ -78,6 +78,9 @@ pub(super) fn evaluate_identifier(
             "vspeed" => return Some(RuntimeValue::Number(instance.vspeed as f64)),
             _ => {}
         }
+        if let Some(value) = default_instance_variable(name) {
+            return Some(value);
+        }
     }
 
     if name.eq_ignore_ascii_case("off") {
@@ -94,16 +97,30 @@ pub(super) fn evaluate_identifier(
         }
     }
 
-    globals.get(name).cloned().or_else(|| {
-        eval_context
-            .and_then(|context| {
-                context
-                    .place_target_ids_by_name
-                    .get(&name.to_ascii_lowercase())
-                    .and_then(|ids| ids.first().copied())
-            })
-            .map(|object_id| RuntimeValue::Number(object_id as f64))
-    })
+    globals
+        .get(name)
+        .cloned()
+        .or_else(|| eval_context.and_then(|context| view_variable_value(name, context)))
+        .or_else(|| {
+            eval_context
+                .and_then(|context| {
+                    context
+                        .place_target_ids_by_name
+                        .get(&name.to_ascii_lowercase())
+                        .and_then(|ids| ids.first().copied())
+                })
+                .map(|object_id| RuntimeValue::Number(object_id as f64))
+        })
+}
+
+fn default_instance_variable(name: &str) -> Option<RuntimeValue> {
+    let number = match name {
+        "image_alpha" | "image_xscale" | "image_yscale" | "image_speed" => 1.0,
+        "image_index" => 0.0,
+        "visible" => return Some(RuntimeValue::Bool(true)),
+        _ => return None,
+    };
+    Some(RuntimeValue::Number(number))
 }
 
 pub(super) fn evaluate_member_access(
@@ -164,6 +181,35 @@ pub(super) fn evaluate_index_access(
         .and_then(|scope| scope.get(&key))
         .or_else(|| globals.get(&key).cloned())
         .or_else(|| instance.and_then(|instance| instance.vars.get(&key).cloned()))
+        .or_else(|| {
+            (suffix == "0" && is_view_variable_name(&base))
+                .then(|| globals.get(&base).cloned())
+                .flatten()
+        })
+        .or_else(|| {
+            (suffix == "0" && is_view_variable_name(&base))
+                .then(|| eval_context.and_then(|context| view_variable_value(&base, context)))
+                .flatten()
+        })
+}
+
+fn view_variable_value(name: &str, context: &RuntimeEvalContext<'_>) -> Option<RuntimeValue> {
+    let view = context.view_zero?;
+    let value = match name {
+        "view_xview" => view.x as f64,
+        "view_yview" => view.y as f64,
+        "view_wview" => view.width as f64,
+        "view_hview" => view.height as f64,
+        _ => return None,
+    };
+    Some(RuntimeValue::Number(value))
+}
+
+fn is_view_variable_name(name: &str) -> bool {
+    matches!(
+        name,
+        "view_xview" | "view_yview" | "view_wview" | "view_hview"
+    )
 }
 
 fn expr_key_fragment(

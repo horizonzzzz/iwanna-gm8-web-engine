@@ -34,7 +34,7 @@ use crate::{
 pub(crate) use bootstrap::apply_view_globals_to_room;
 pub(crate) use context::{
     RuntimeBinaryFileState, RuntimeEvalContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay,
-    StepExecutionResult,
+    RuntimeViewValues, StepExecutionResult,
 };
 pub(crate) use overlay::RuntimeSparseInstanceOverlay;
 pub(crate) use statement::{
@@ -154,6 +154,7 @@ impl RuntimeCore {
                         other_runtime_id: None,
                         place_target_ids_by_name: &self.place_target_ids_by_name,
                         room_ids_by_name: &self.room_ids_by_name,
+                        view_zero: RuntimeViewValues::from_room(room),
                     };
                     tick_context.with_target_indices.clear();
                     let mut statement_env = RuntimeStatementEnvironment {
@@ -369,6 +370,10 @@ impl RuntimeCore {
                     other_runtime_id: None,
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                     room_ids_by_name: &self.room_ids_by_name,
+                    view_zero: self
+                        .current_room
+                        .as_ref()
+                        .and_then(RuntimeViewValues::from_room),
                 };
                 let destroy_event_entries = &self.cached_destroy_event_entries;
                 let mut room_instance_updates = RuntimeSparseInstanceOverlay::default();

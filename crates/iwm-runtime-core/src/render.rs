@@ -190,7 +190,23 @@ impl RuntimeCore {
                 }),
         );
 
-        for instance in &room.instances {
+        let mut instance_indices = (0..room.instances.len()).collect::<Vec<_>>();
+        instance_indices.sort_by(|left, right| {
+            let left_depth = runtime_instance_depth(
+                &room.instances[*left],
+                &self.package.objects,
+                &self.object_index,
+            );
+            let right_depth = runtime_instance_depth(
+                &room.instances[*right],
+                &self.package.objects,
+                &self.object_index,
+            );
+            right_depth.cmp(&left_depth)
+        });
+
+        for instance_index in instance_indices {
+            let instance = &room.instances[instance_index];
             if !instance.alive {
                 continue;
             }
@@ -376,6 +392,7 @@ impl RuntimeCore {
                         other_runtime_id: None,
                         place_target_ids_by_name: &self.place_target_ids_by_name,
                         room_ids_by_name: &self.room_ids_by_name,
+                        view_zero: crate::logic::RuntimeViewValues::from_room(room),
                     };
                     let mut with_target_indices = Vec::new();
                     let mut statement_env = RuntimeStatementEnvironment {
@@ -509,6 +526,26 @@ fn runtime_instance_alpha(instance: &RuntimeInstance) -> f64 {
         .filter(|value| value.is_finite())
         .unwrap_or(1.0)
         .clamp(0.0, 1.0)
+}
+
+fn runtime_instance_depth(
+    instance: &RuntimeInstance,
+    objects: &[iwm_runtime_model::ObjectDefinition],
+    object_index: &HashMap<usize, usize>,
+) -> i32 {
+    instance
+        .vars
+        .get("depth")
+        .and_then(as_number)
+        .filter(|value| value.is_finite())
+        .map(|value| value.round() as i32)
+        .or_else(|| {
+            object_index
+                .get(&instance.object_id)
+                .and_then(|index| objects.get(*index))
+                .map(|object| object.depth)
+        })
+        .unwrap_or(0)
 }
 
 fn rect_intersects_view(

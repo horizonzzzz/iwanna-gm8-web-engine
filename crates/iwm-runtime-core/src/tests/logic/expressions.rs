@@ -68,6 +68,42 @@ fn core_instance_variables_shadow_named_sprite_constants() {
 }
 
 #[test]
+fn image_alpha_compound_assignment_uses_gm_default() {
+    let core = run_step(vec![assign_var(
+        "image_alpha",
+        LoweredLogicExpr::BinaryExpr {
+            op: "-".into(),
+            left: Box::new(LoweredLogicExpr::Identifier("image_alpha".into())),
+            right: Box::new(LoweredLogicExpr::LiteralNumber(0.02)),
+        },
+    )]);
+
+    let alpha = player_var(&core, "image_alpha")
+        .and_then(crate::helpers::as_number)
+        .expect("image_alpha should be numeric");
+    assert!((alpha - 0.98).abs() < f64::EPSILON, "alpha={alpha}");
+}
+
+#[test]
+fn explicit_view_assignment_precedes_live_view_fallback() {
+    let core = run_step(vec![
+        assign_var("view_xview", LoweredLogicExpr::LiteralNumber(123.0)),
+        assign_var(
+            "observed_view_x",
+            LoweredLogicExpr::IndexAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("view_xview".into())),
+                index: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+            },
+        ),
+    ]);
+
+    assert_eq!(
+        player_var(&core, "observed_view_x"),
+        Some(&RuntimeValue::Number(123.0))
+    );
+}
+
+#[test]
 fn core_evaluates_unary_negative_in_assignments() {
     let cases = [(
         "score",

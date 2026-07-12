@@ -1271,6 +1271,35 @@ fn real_sample_room147_s_key_savepoint_respawns_at_activated_position() {
             && instance.y == 1120.0),
         "respawn helper should be created at the activated savePoint position"
     );
+    let view = room.views.iter().find(|view| view.visible).unwrap();
+    assert!(
+        room.instances.iter().any(|instance| {
+            instance.object_name.eq_ignore_ascii_case("object808")
+                && instance.alive
+                && instance.x == view.source_x as f64
+                && instance.y == view.source_y as f64
+        }),
+        "white-flash overlay should be created at the active view origin"
+    );
+    assert!(
+        host.renderer
+            .submitted_frames
+            .last()
+            .unwrap()
+            .commands
+            .iter()
+            .any(|command| matches!(
+                command,
+                iwm_runtime_host::RuntimeDrawCommand::DrawSprite {
+                    sprite_id: 524,
+                    x: 0,
+                    y: 0,
+                    alpha,
+                    ..
+                } if *alpha > 0.0
+            )),
+        "white-flash sprite should cover the active canvas"
+    );
 
     release_real_sample_key(&mut host, 0x53);
     for _ in 0..81 {
@@ -1351,9 +1380,39 @@ fn real_sample_s_key_savepoint_writes_save_file_and_spawns_feedback() {
             ),
         "activated savePoint should be hidden until its respawn helper fires"
     );
+    let initial_bubbles = room
+        .instances
+        .iter()
+        .filter(|instance| instance.object_name.eq_ignore_ascii_case("object809") && instance.alive)
+        .map(|instance| (instance.runtime_id, instance.x, instance.y))
+        .collect::<Vec<_>>();
+    assert_eq!(initial_bubbles.len(), 7);
 
     release_real_sample_key(&mut host, 0x53);
-    for _ in 0..81 {
+    core.tick(&mut host).unwrap();
+    host.input.clear_transitions();
+
+    let room = core.current_room().unwrap();
+    let stepped_bubbles = room
+        .instances
+        .iter()
+        .filter(|instance| instance.object_name.eq_ignore_ascii_case("object809") && instance.alive)
+        .collect::<Vec<_>>();
+    assert_eq!(stepped_bubbles.len(), 7);
+    assert!(stepped_bubbles.iter().all(|instance| {
+        instance
+            .vars
+            .get("image_alpha")
+            .and_then(crate::helpers::as_number)
+            .is_some_and(|alpha| (alpha - 0.98).abs() < 1e-9)
+    }));
+    assert!(stepped_bubbles.iter().any(|instance| {
+        initial_bubbles.iter().any(|(runtime_id, x, y)| {
+            *runtime_id == instance.runtime_id && (*x != instance.x || *y != instance.y)
+        })
+    }));
+
+    for _ in 0..80 {
         core.tick(&mut host).unwrap();
         host.input.clear_transitions();
     }
