@@ -13,6 +13,11 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
   the L1 regression sample. The first ArioTrials L2 audit reaches `rTitle` (room
   111), remains stable for 600 ticks, and reports no runtime blockers; this does
   not yet claim menu navigation or gameplay-room compatibility.
+- Uninitialized `global.member` reads now use GM8's numeric zero fallback, the
+  same class of behavior already used for ordinary uninitialized instance
+  variables. This allows package-owned room-start conditions such as
+  `!instance_exists(player) && global.grav = 0` to create the player without a
+  sample-specific spawn rule.
 
 - The browser shell can load packages, boot the WASM bridge, auto-run it at the active runtime room speed, pause/resume that loop, reset, select rooms, and show telemetry. Runtime `room_speed` assignments override static room metadata for both snapshots and browser auto-tick scheduling.
 - The parser now preserves raw logic in `logic.raw.json` and emits a structured lowered contract in `logic.lowered.json` for the current IWanna-critical subset.

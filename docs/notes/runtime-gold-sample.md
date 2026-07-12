@@ -32,6 +32,13 @@ remains stable through tick 600, and reports no runtime blockers.
 `docs/notes/runtime-scenarios/ariotrials-title-idle.json` records this repeatable
 baseline. Menu navigation and first gameplay-room entry are the next L2 targets.
 
+The first L2 compatibility fix covers GM8 zero-value reads for uninitialized
+global members. ArioTrials relies on `global.grav` reading as `0` in a
+savePoint `other:room-start` condition before it has been assigned. With the
+general runtime behavior restored, direct room 109 selection creates the
+package-owned `player` from that event; the regression scenario is
+`docs/notes/runtime-scenarios/ariotrials-select-stage-player.json`.
+
 Why it still matters:
 
 - it remains the intended first sample for validating boot, movement, death/reset, and room transition semantics

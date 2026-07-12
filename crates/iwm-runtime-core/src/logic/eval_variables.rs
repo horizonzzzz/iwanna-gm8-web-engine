@@ -164,6 +164,7 @@ pub(super) fn evaluate_member_access(
         .and_then(|scope| scope.get(&key))
         .or_else(|| globals.get(&key).cloned())
         .or_else(|| instance.and_then(|instance| instance.vars.get(&key).cloned()))
+        .or_else(|| (base == "global").then_some(RuntimeValue::Number(0.0)))
 }
 
 pub(super) fn evaluate_index_access(

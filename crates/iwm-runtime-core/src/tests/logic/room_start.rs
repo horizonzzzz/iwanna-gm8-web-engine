@@ -89,6 +89,67 @@ fn core_dispatches_room_start_events_after_room_build() {
 }
 
 #[test]
+fn room_start_conditional_can_spawn_missing_player() {
+    let mut package = sample_package();
+    package.rooms[0]
+        .instances
+        .retain(|instance| instance.object_id != 0);
+    package.objects[1]
+        .events
+        .push(iwm_runtime_model::ObjectEventEntry {
+            event_type: 7,
+            sub_event: 4,
+            event_tag: "other:room-start".into(),
+            block_id: "object:1:event:7:4".into(),
+            action_count: 1,
+        });
+    package.lowered_logic = Some(crate::LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![crate::LoweredLogicEntry {
+            block_id: "object:1:event:7:4".into(),
+            statements: vec![LoweredLogicStatement::Conditional {
+                condition: LoweredLogicExpr::BinaryExpr {
+                    op: "&&".into(),
+                    left: Box::new(LoweredLogicExpr::UnaryExpr {
+                        op: "!".into(),
+                        child: Box::new(LoweredLogicExpr::Call {
+                            name: "instance_exists".into(),
+                            args: vec![LoweredLogicExpr::Identifier("obj_player".into())],
+                        }),
+                    }),
+                    right: Box::new(LoweredLogicExpr::BinaryExpr {
+                        op: "=".into(),
+                        left: Box::new(LoweredLogicExpr::MemberAccess {
+                            target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                            member: "grav".into(),
+                        }),
+                        right: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+                    }),
+                },
+                then_branch: vec![LoweredLogicStatement::FunctionCall {
+                    name: "instance_create".into(),
+                    args: vec![
+                        LoweredLogicExpr::Identifier("x".into()),
+                        LoweredLogicExpr::Identifier("y".into()),
+                        LoweredLogicExpr::Identifier("obj_player".into()),
+                    ],
+                }],
+                else_branch: vec![],
+            }],
+        }],
+    });
+
+    let core = RuntimeCore::load(package).unwrap();
+
+    assert!(core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .any(|instance| instance.object_name == "obj_player"));
+}
+
+#[test]
 fn room_start_assignment_updates_runtime_room_speed() {
     let mut package = sample_package();
     package.objects[1]

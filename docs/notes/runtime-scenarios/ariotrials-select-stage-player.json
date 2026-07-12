@@ -1,0 +1,11 @@
+{
+  "ticks": [],
+  "assertions": {
+    "no_runtime_blockers": true,
+    "final_room_id": 109,
+    "final_player": {
+      "x": { "min": 380.0, "max": 420.0 },
+      "y": { "min": 500.0, "max": 570.0 }
+    }
+  }
+}
