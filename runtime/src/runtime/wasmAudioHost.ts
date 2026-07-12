@@ -23,6 +23,8 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
   const playingSounds = new Set<number>();
   let packageBasePath = '';
   let packageSounds = new Map<number, string>();
+  let packageSoundKinds = new Map<number, string>();
+  let activeBackgroundMusic: { soundId: number; source: AudioBufferSourceNode } | undefined;
 
   async function loadBuffer(soundId: number): Promise<AudioBuffer | null> {
     const path = packageSounds.get(soundId);
@@ -54,6 +56,15 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
     if (mode === 'loop') {
       stopSource(activeLoops.get(soundId));
     }
+    if (isExclusiveMusicKind(packageSoundKinds.get(soundId))) {
+      if (activeBackgroundMusic?.soundId !== soundId) {
+        stopSource(activeBackgroundMusic?.source);
+        if (activeBackgroundMusic) {
+          activeLoops.delete(activeBackgroundMusic.soundId);
+          playingSounds.delete(activeBackgroundMusic.soundId);
+        }
+      }
+    }
 
     const source = context.createBufferSource();
     source.buffer = buffer;
@@ -68,6 +79,9 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
     source.start();
     if (mode === 'loop') {
       activeLoops.set(soundId, source);
+    }
+    if (isExclusiveMusicKind(packageSoundKinds.get(soundId))) {
+      activeBackgroundMusic = { soundId, source };
     }
   }
 
@@ -88,9 +102,11 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
       }
       packageBasePath = basePath.replace(/\/$/, '');
       packageSounds = new Map(pkg.resources.sounds.map((sound) => [sound.id, sound.file_path]));
+      packageSoundKinds = new Map(pkg.resources.sounds.map((sound) => [sound.id, sound.kind ?? 'normal']));
       buffers.clear();
       activeLoops.clear();
       playingSounds.clear();
+      activeBackgroundMusic = undefined;
     },
     async playSound(soundId, mode) {
       const buffer = await loadBuffer(soundId);
@@ -102,6 +118,9 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
       stopSource(activeLoops.get(soundId));
       activeLoops.delete(soundId);
       playingSounds.delete(soundId);
+      if (activeBackgroundMusic?.soundId === soundId) {
+        activeBackgroundMusic = undefined;
+      }
     },
     stopAllSounds() {
       for (const source of activeLoops.values()) {
@@ -109,11 +128,16 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
       }
       activeLoops.clear();
       playingSounds.clear();
+      activeBackgroundMusic = undefined;
     },
     isSoundPlaying(soundId) {
       return playingSounds.has(soundId);
     }
   };
+}
+
+function isExclusiveMusicKind(kind: string | undefined): boolean {
+  return kind === 'background-music' || kind === 'multimedia';
 }
 
 function defaultAudioContext(): AudioContext | undefined {

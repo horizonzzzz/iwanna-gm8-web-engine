@@ -2,11 +2,39 @@ use std::fs;
 
 use gm8exe::{
     asset::font::Font,
+    asset::sound::{Sound, SoundFX, SoundKind},
     asset::sprite::{CollisionMap, Frame},
     asset::Sprite,
     settings::{GameHelpDialog, Settings},
     Colour, GameAssets, GameVersion,
 };
+
+#[test]
+fn exported_sound_resources_preserve_gm8_sound_kind() {
+    let mut assets = game_assets_with_sprite_frame(vec![0, 0, 0, 0], 1, 1);
+    assets.sounds.push(Some(Box::new(Sound {
+        name: "music".into(),
+        source: "music.mp3".into(),
+        extension: ".mp3".into(),
+        data: Some(vec![1, 2, 3].into_boxed_slice()),
+        kind: SoundKind::Multimedia,
+        volume: 1.0,
+        pan: 0.0,
+        preload: true,
+        fx: SoundFX {
+            chorus: false,
+            echo: false,
+            flanger: false,
+            gargle: false,
+            reverb: false,
+        },
+    })));
+    let temp = tempfile::tempdir().unwrap();
+
+    let index = iwm_parser::resource_export::export_resources(&assets, temp.path()).unwrap();
+
+    assert_eq!(index.sounds[0].kind, "multimedia");
+}
 
 fn game_assets_with_sprite_frame(data: Vec<u8>, width: u32, height: u32) -> GameAssets {
     GameAssets {

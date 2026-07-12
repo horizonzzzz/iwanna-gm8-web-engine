@@ -18,6 +18,10 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
   variables. This allows package-owned room-start conditions such as
   `!instance_exists(player) && global.grav = 0` to create the player without a
   sample-specific spawn rule.
+- Sound resources now preserve GM8 `SoundKind` metadata in the package. The Web
+  Audio host treats `background-music` and `multimedia` as GM8's exclusive music
+  channels: starting a different music track stops the previous one, while
+  normal and 3D looping sounds remain independently playable.
 
 - The browser shell can load packages, boot the WASM bridge, auto-run it at the active runtime room speed, pause/resume that loop, reset, select rooms, and show telemetry. Runtime `room_speed` assignments override static room metadata for both snapshots and browser auto-tick scheduling.
 - The parser now preserves raw logic in `logic.raw.json` and emits a structured lowered contract in `logic.lowered.json` for the current IWanna-critical subset.

@@ -62,6 +62,7 @@ export type ResourceIndex = {
     file_path: string;
     extension: string;
     preload: boolean;
+    kind?: 'normal' | 'background-music' | 'three-dimensional' | 'multimedia';
   }>;
   fonts?: Array<{
     id: number;

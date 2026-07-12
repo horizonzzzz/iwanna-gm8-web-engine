@@ -39,6 +39,13 @@ general runtime behavior restored, direct room 109 selection creates the
 package-owned `player` from that event; the regression scenario is
 `docs/notes/runtime-scenarios/ariotrials-select-stage-player.json`.
 
+ArioTrials also establishes the first multi-BGM regression requirement. Its
+stage rooms loop different resources such as `Ban`, `Wind`, and `Phoenix`
+without explicit `sound_stop` calls because their GM8 `Multimedia` resources use
+an exclusive media channel. The parser now preserves sound kind and the browser
+host replaces the active music track when another `Multimedia` or
+`BackgroundMusic` resource starts.
+
 Why it still matters:
 
 - it remains the intended first sample for validating boot, movement, death/reset, and room transition semantics

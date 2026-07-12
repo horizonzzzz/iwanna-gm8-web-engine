@@ -38,6 +38,31 @@ const packageWithSound = makeRuntimePackage({
 });
 
 describe('wasm web audio host', () => {
+  it('replaces the active GM exclusive music channel', async () => {
+    const context = new FakeAudioContext();
+    const fetchSound = vi.fn(async () => new Response(new Uint8Array([1, 2, 3])));
+    const host = createWebAudioHost({
+      audioContext: context as unknown as AudioContext,
+      fetch: fetchSound
+    });
+    const pkg = makeRuntimePackage({
+      resources: makeResourceIndex({
+        sounds: [
+          { id: 1, name: 'first', file_path: '1.mp3', extension: '.mp3', preload: true, kind: 'multimedia' },
+          { id: 2, name: 'second', file_path: '2.mp3', extension: '.mp3', preload: true, kind: 'multimedia' }
+        ]
+      })
+    });
+
+    host.configurePackage(pkg, '/packages/sample');
+    await host.playSound(1, 'loop');
+    await host.playSound(2, 'loop');
+
+    expect(context.createdSources[0].stop).toHaveBeenCalledTimes(1);
+    expect(host.isSoundPlaying(1)).toBe(false);
+    expect(host.isSoundPlaying(2)).toBe(true);
+  });
+
   it('plays package sounds through Web Audio and stops active loops', async () => {
     const context = new FakeAudioContext();
     const fetchSound = vi.fn(async () => new Response(new Uint8Array([1, 2, 3])));

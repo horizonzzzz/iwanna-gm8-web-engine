@@ -131,6 +131,13 @@ pub fn export_resources(assets: &GameAssets, output_dir: &Path) -> Result<Resour
                 file_path: relative_path(output_dir, &path)?,
                 extension,
                 preload: sound.preload,
+                kind: match sound.kind {
+                    gm8exe::asset::sound::SoundKind::BackgroundMusic => "background-music",
+                    gm8exe::asset::sound::SoundKind::ThreeDimensional => "three-dimensional",
+                    gm8exe::asset::sound::SoundKind::Multimedia => "multimedia",
+                    gm8exe::asset::sound::SoundKind::Normal => "normal",
+                }
+                .into(),
             })
         })
         .collect::<Result<Vec<_>>>()?;

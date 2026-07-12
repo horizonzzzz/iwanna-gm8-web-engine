@@ -249,6 +249,7 @@ fn sample_resources() -> ResourceIndex {
             file_path: "resources/audio/0.wav".into(),
             extension: "wav".into(),
             preload: false,
+            kind: "normal".into(),
         }],
         fonts: vec![],
     }

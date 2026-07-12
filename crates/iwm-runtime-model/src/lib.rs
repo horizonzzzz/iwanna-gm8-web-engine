@@ -103,6 +103,12 @@ pub struct SoundResource {
     pub file_path: String,
     pub extension: String,
     pub preload: bool,
+    #[serde(default = "default_sound_kind")]
+    pub kind: String,
+}
+
+fn default_sound_kind() -> String {
+    "normal".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
