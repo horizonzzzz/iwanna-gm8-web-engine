@@ -56,6 +56,32 @@ enum Commands {
         #[arg(long)]
         trace_output: Option<PathBuf>,
     },
+    RuntimeScenario {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        scenario: PathBuf,
+        #[arg(long, default_value_t = 600)]
+        ticks: u32,
+        #[arg(long)]
+        select_room: Option<usize>,
+        #[arg(long, default_value_t = 0)]
+        preselect_ticks: u32,
+        #[arg(long, default_value_t = false)]
+        trace_player: bool,
+        #[arg(long, default_value_t = 1)]
+        trace_every: u32,
+    },
+    SampleAudit {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        package_output: PathBuf,
+        #[arg(long)]
+        report_output: PathBuf,
+        #[arg(long, default_value_t = 600)]
+        ticks: u32,
+    },
 }
 
 fn main() {
@@ -284,7 +310,358 @@ fn main() {
                 println!("{output}");
             }
         }
+        Commands::RuntimeScenario {
+            input,
+            scenario,
+            ticks,
+            select_room,
+            preselect_ticks,
+            trace_player,
+            trace_every,
+        } => run_runtime_scenario_command(
+            &input,
+            &scenario,
+            ticks,
+            select_room,
+            preselect_ticks,
+            trace_player,
+            trace_every,
+        ),
+        Commands::SampleAudit {
+            input,
+            package_output,
+            report_output,
+            ticks,
+        } => run_sample_audit_command(&input, &package_output, &report_output, ticks),
     }
+}
+
+fn run_sample_audit_command(
+    input: &std::path::Path,
+    package_output: &std::path::Path,
+    report_output: &std::path::Path,
+    ticks: u32,
+) {
+    if !input.exists() {
+        eprintln!("sample input does not exist: {}", input.display());
+        std::process::exit(1);
+    }
+    let detection = match detect_input(input) {
+        Ok(report) => report,
+        Err(err) => {
+            eprintln!("sample detection failed: {err}");
+            std::process::exit(1);
+        }
+    };
+    let mut report = json!({
+        "source": input,
+        "package_output": package_output,
+        "ticks": ticks,
+        "detection": detection,
+        "stages": {
+            "detect": {"status":"passed"},
+            "build": {"status":"pending"},
+            "validate": {"status":"pending"},
+            "runtime": {"status":"pending"}
+        }
+    });
+    if detection.verdict != iwm_detector::DetectionVerdict::Gm8Likely {
+        report["stages"]["build"] = json!({"status":"skipped","reason":"input is not gm8-likely"});
+        write_audit_report(report_output, &report);
+        std::process::exit(2);
+    }
+    let source_package = match load_package(input) {
+        Ok(package) => package,
+        Err(err) => {
+            report["stages"]["build"] = json!({"status":"failed","error":err.to_string()});
+            write_audit_report(report_output, &report);
+            std::process::exit(1);
+        }
+    };
+    let exe = match selected_executable(&source_package) {
+        Ok(exe) => exe,
+        Err(err) => {
+            report["stages"]["build"] = json!({"status":"failed","error":err.to_string()});
+            write_audit_report(report_output, &report);
+            std::process::exit(1);
+        }
+    };
+    if let Err(err) = build_package(exe, package_output, &detection.dlls) {
+        report["stages"]["build"] = json!({"status":"failed","error":format!("{err:#}")});
+        write_audit_report(report_output, &report);
+        std::process::exit(1);
+    }
+    report["stages"]["build"] = json!({"status":"passed"});
+    let runtime_package = match read_runtime_package_dir(package_output) {
+        Ok(package) => package,
+        Err(err) => {
+            report["stages"]["validate"] = json!({"status":"failed","error":err.to_string()});
+            write_audit_report(report_output, &report);
+            std::process::exit(1);
+        }
+    };
+    let validation = validate_runtime_package(&runtime_package);
+    report["validation"] = json!(validation);
+    report["inventory"] = json!({
+        "default_room_id": runtime_package.manifest.default_room_id,
+        "rooms": runtime_package.rooms.len(),
+        "objects": runtime_package.objects.len(),
+        "scripts": runtime_package.scripts.blocks.len(),
+        "lowered_entries": runtime_package.lowered_logic.entries.len(),
+        "sprites": runtime_package.resources.sprites.len(),
+        "backgrounds": runtime_package.resources.backgrounds.len(),
+        "sounds": runtime_package.resources.sounds.len()
+    });
+    if !validation.valid {
+        report["stages"]["validate"] = json!({"status":"failed"});
+        write_audit_report(report_output, &report);
+        std::process::exit(2);
+    }
+    report["stages"]["validate"] = json!({"status":"passed"});
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("runtime-diagnostics")
+        .arg("--input")
+        .arg(package_output)
+        .arg("--ticks")
+        .arg(ticks.to_string())
+        .output();
+    match output {
+        Ok(output) if output.status.success() => {
+            match serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+                Ok(diagnostics) => {
+                    report["stages"]["runtime"] = json!({"status":"passed"});
+                    report["runtime"] = diagnostics;
+                }
+                Err(err) => {
+                    report["stages"]["runtime"] = json!({"status":"failed","error":err.to_string()})
+                }
+            }
+        }
+        Ok(output) => {
+            report["stages"]["runtime"] =
+                json!({"status":"failed","error":String::from_utf8_lossy(&output.stderr)})
+        }
+        Err(err) => {
+            report["stages"]["runtime"] = json!({"status":"failed","error":err.to_string()})
+        }
+    }
+    let runtime_passed = report["stages"]["runtime"]["status"] == "passed";
+    write_audit_report(report_output, &report);
+    println!("{}", serde_json::to_string_pretty(&report).unwrap());
+    if !runtime_passed {
+        std::process::exit(2);
+    }
+}
+
+fn write_audit_report(path: &std::path::Path, report: &serde_json::Value) {
+    if let Some(parent) = path.parent() {
+        if let Err(err) = fs::create_dir_all(parent) {
+            eprintln!(
+                "failed to create audit report directory {}: {err}",
+                parent.display()
+            );
+            std::process::exit(1);
+        }
+    }
+    let serialized = serde_json::to_string_pretty(report).unwrap();
+    if let Err(err) = fs::write(path, serialized) {
+        eprintln!("failed to write audit report {}: {err}", path.display());
+        std::process::exit(1);
+    }
+}
+
+fn run_runtime_scenario_command(
+    input: &std::path::Path,
+    scenario: &std::path::Path,
+    ticks: u32,
+    select_room: Option<usize>,
+    preselect_ticks: u32,
+    trace_player: bool,
+    trace_every: u32,
+) {
+    let scenario_value: serde_json::Value = match fs::read(scenario)
+        .map_err(|err| err.to_string())
+        .and_then(|bytes| serde_json::from_slice(&bytes).map_err(|err| err.to_string()))
+    {
+        Ok(value) => value,
+        Err(err) => {
+            eprintln!("failed to read scenario {}: {err}", scenario.display());
+            std::process::exit(1);
+        }
+    };
+    let executable = match std::env::current_exe() {
+        Ok(path) => path,
+        Err(err) => {
+            eprintln!("failed to locate current executable: {err}");
+            std::process::exit(1);
+        }
+    };
+    let mut command = std::process::Command::new(executable);
+    command
+        .arg("runtime-diagnostics")
+        .arg("--input")
+        .arg(input)
+        .arg("--ticks")
+        .arg(ticks.to_string())
+        .arg("--input-script")
+        .arg(scenario)
+        .arg("--preselect-ticks")
+        .arg(preselect_ticks.to_string())
+        .arg("--trace-every")
+        .arg(trace_every.to_string());
+    if let Some(room_id) = select_room {
+        command.arg("--select-room").arg(room_id.to_string());
+    }
+    if trace_player
+        || scenario_value
+            .get("assertions")
+            .and_then(|value| value.get("final_player"))
+            .is_some()
+    {
+        command.arg("--trace-player");
+    }
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(err) => {
+            eprintln!("failed to execute runtime scenario: {err}");
+            std::process::exit(1);
+        }
+    };
+    if !output.status.success() {
+        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+        std::process::exit(output.status.code().unwrap_or(1));
+    }
+    let diagnostics: serde_json::Value = match serde_json::from_slice(&output.stdout) {
+        Ok(value) => value,
+        Err(err) => {
+            eprintln!("runtime scenario produced invalid diagnostics JSON: {err}");
+            std::process::exit(1);
+        }
+    };
+    let assertion_results = evaluate_scenario_assertions(
+        &diagnostics,
+        scenario_value
+            .get("assertions")
+            .unwrap_or(&serde_json::Value::Null),
+    );
+    let passed = assertion_results
+        .iter()
+        .all(|result| result["passed"] == true);
+    let result = json!({
+        "passed": passed,
+        "assertions": assertion_results,
+        "diagnostics": diagnostics,
+    });
+    println!("{}", serde_json::to_string_pretty(&result).unwrap());
+    if !passed {
+        std::process::exit(2);
+    }
+}
+
+fn evaluate_scenario_assertions(
+    diagnostics: &serde_json::Value,
+    assertions: &serde_json::Value,
+) -> Vec<serde_json::Value> {
+    let mut results = Vec::new();
+    if assertions
+        .get("no_runtime_blockers")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+    {
+        let actual = diagnostics["runtime_blockers"]
+            .as_array()
+            .map_or(0, Vec::len);
+        results.push(json!({"name":"no_runtime_blockers","passed":actual == 0,"actual":actual}));
+    }
+    if let Some(expected) = assertions
+        .get("final_room_id")
+        .and_then(serde_json::Value::as_u64)
+    {
+        let actual = diagnostics
+            .get("current_room_id")
+            .and_then(serde_json::Value::as_u64);
+        results.push(json!({"name":"final_room_id","passed":actual == Some(expected),"expected":expected,"actual":actual}));
+    }
+    if let Some(expected_rooms) = assertions
+        .get("visited_room_ids")
+        .and_then(serde_json::Value::as_array)
+    {
+        let mut visited = HashSet::new();
+        if let Some(room) = diagnostics
+            .get("current_room_id")
+            .and_then(serde_json::Value::as_u64)
+        {
+            visited.insert(room);
+        }
+        if let Some(events) = diagnostics
+            .get("runtime_events")
+            .and_then(serde_json::Value::as_array)
+        {
+            for event in events {
+                for field in ["room", "from_room", "to_room"] {
+                    if let Some(room) = event.get(field).and_then(serde_json::Value::as_u64) {
+                        visited.insert(room);
+                    }
+                }
+            }
+        }
+        for expected in expected_rooms.iter().filter_map(serde_json::Value::as_u64) {
+            results.push(json!({"name":format!("visited_room_id:{expected}"),"passed":visited.contains(&expected),"expected":expected,"actual":visited}));
+        }
+    }
+    if let Some(expected_events) = assertions
+        .get("events")
+        .and_then(serde_json::Value::as_array)
+    {
+        let actual_events = diagnostics["runtime_events"]
+            .as_array()
+            .map_or(&[][..], Vec::as_slice);
+        for expected in expected_events {
+            let minimum = expected
+                .get("min_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(1);
+            let count = actual_events
+                .iter()
+                .filter(|actual| {
+                    ["code", "object", "reason"].iter().all(|field| {
+                        expected.get(field).is_none() || expected.get(field) == actual.get(field)
+                    })
+                })
+                .count() as u64;
+            results.push(json!({"name":format!("event:{}", expected.get("code").and_then(serde_json::Value::as_str).unwrap_or("matching")),"passed":count >= minimum,"expected_min_count":minimum,"actual":count}));
+        }
+    }
+    if let Some(death) = assertions.get("death") {
+        let actual_events = diagnostics["runtime_events"]
+            .as_array()
+            .map_or(&[][..], Vec::as_slice);
+        let passed = actual_events.iter().any(|actual| {
+            actual.get("code").and_then(serde_json::Value::as_str) == Some("runtime-player-died")
+                && ["object", "reason"].iter().all(|field| {
+                    death.get(field).is_none() || death.get(field) == actual.get(field)
+                })
+        });
+        results.push(json!({"name":"death","passed":passed,"expected":death}));
+    }
+    if let Some(expected) = assertions
+        .get("final_player")
+        .and_then(serde_json::Value::as_object)
+    {
+        let actual = diagnostics.pointer("/trace_summary/last");
+        for (field, range) in expected {
+            let value = actual
+                .and_then(|player| player.get(field))
+                .and_then(serde_json::Value::as_f64);
+            let minimum = range.get("min").and_then(serde_json::Value::as_f64);
+            let maximum = range.get("max").and_then(serde_json::Value::as_f64);
+            let passed = value.is_some_and(|value| {
+                minimum.is_none_or(|min| value >= min) && maximum.is_none_or(|max| value <= max)
+            });
+            results.push(json!({"name":format!("final_player:{field}"),"passed":passed,"expected":range,"actual":value}));
+        }
+    }
+    results
 }
 
 fn apply_cli_input(

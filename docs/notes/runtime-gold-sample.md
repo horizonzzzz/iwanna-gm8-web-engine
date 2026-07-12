@@ -16,6 +16,22 @@ Important local-path note:
 
 **Path:** `samples/local/iwanna-examples/gm8-core/IWBT_Dife`
 
+IWBT_Dife is the L1 regression baseline: later sample work must preserve its
+established movement, collision, death, save/load, savepoint, view, and rendering
+behavior.
+
+## Current L2 Development Sample
+
+**Path:** `samples/local/iwanna-examples/gm8-core/I Wanna Break Through ArioTrials`
+
+The first structured audit succeeds through detection, package generation,
+validation, and a 600-tick runtime run. The package contains 12 rooms, 229
+objects, 173 sprites, 22 backgrounds, 25 sounds, 373 script blocks, and 657
+lowered entries. It transitions from room 2 to `rTitle` (room 111) at tick 1,
+remains stable through tick 600, and reports no runtime blockers.
+`docs/notes/runtime-scenarios/ariotrials-title-idle.json` records this repeatable
+baseline. Menu navigation and first gameplay-room entry are the next L2 targets.
+
 Why it still matters:
 
 - it remains the intended first sample for validating boot, movement, death/reset, and room transition semantics

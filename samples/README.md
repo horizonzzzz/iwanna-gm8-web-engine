@@ -53,3 +53,21 @@ Important:
 - Do not treat current category labels as permanent truth
 - Reclassify samples when stronger parser evidence becomes available
 - Be careful with redistribution and copyright
+
+## Regression Workflow
+
+Samples are organized as L1/L2/L3 validation targets. IWBT_Dife is the stable
+L1 regression baseline. I Wanna Break Through ArioTrials is the current L2
+compatibility-development sample. Larger or extended games are L3 pressure tests
+until their earlier pipeline stages are stable.
+
+Run `sample-audit` first to compose detection, package generation, validation,
+and bounded runtime diagnostics. Keep generated reports under
+`target/sample-audits/` and packages under `runtime/public/packages/`; neither is
+a tracked sample artifact.
+
+After a path is stable, use `runtime-scenario`. Scenario JSON files reuse the
+existing `ticks` input format and add observable assertions for blockers,
+final/visited rooms, instance events, deaths, and final-player numeric ranges.
+Scripts make play paths reproducible; Rust tests remain responsible for precise
+GM8 semantics and feature-gated real-sample integration.

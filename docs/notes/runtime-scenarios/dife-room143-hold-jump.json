@@ -8,5 +8,13 @@
       "tick": 80,
       "release_keys": [16]
     }
-  ]
+  ],
+  "assertions": {
+    "no_runtime_blockers": true,
+    "final_room_id": 143,
+    "visited_room_ids": [143],
+    "final_player": {
+      "y": { "min": 480.0, "max": 570.0 }
+    }
+  }
 }

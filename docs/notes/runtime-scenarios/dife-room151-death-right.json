@@ -8,5 +8,14 @@
       "tick": 180,
       "release_keys": [39]
     }
-  ]
+  ],
+  "assertions": {
+    "no_runtime_blockers": true,
+    "final_room_id": 151,
+    "death": { "object": "player", "reason": "hazard" },
+    "events": [
+      { "code": "runtime-instance-created", "object": "bloodEmitter2", "min_count": 1 },
+      { "code": "runtime-instance-created", "object": "GAMEOVER", "min_count": 1 }
+    ]
+  }
 }

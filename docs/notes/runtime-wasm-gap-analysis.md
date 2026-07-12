@@ -8,6 +8,12 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 
 ## Current Baseline
 
+- The CLI provides `sample-audit` for staged local compatibility audits and
+  `runtime-scenario` for input-script replay with declarative assertions. Dife is
+  the L1 regression sample. The first ArioTrials L2 audit reaches `rTitle` (room
+  111), remains stable for 600 ticks, and reports no runtime blockers; this does
+  not yet claim menu navigation or gameplay-room compatibility.
+
 - The browser shell can load packages, boot the WASM bridge, auto-run it at the active runtime room speed, pause/resume that loop, reset, select rooms, and show telemetry. Runtime `room_speed` assignments override static room metadata for both snapshots and browser auto-tick scheduling.
 - The parser now preserves raw logic in `logic.raw.json` and emits a structured lowered contract in `logic.lowered.json` for the current IWanna-critical subset.
 - The parser now also emits sprite collision bounds in `resources/index.json` as `bbox_left`, `bbox_right`, `bbox_top`, and `bbox_bottom`, plus optional `collision_masks` sourced from OpenGMK collision metadata. Parser sprite PNG export now converts gm8exe BGRA frame data to browser RGBA order, matching the existing background conversion path; this fixes Dife blood sprites that previously exported blue instead of red.

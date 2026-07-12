@@ -8,5 +8,13 @@
       "tick": 1,
       "release_keys": [90]
     }
-  ]
+  ],
+  "assertions": {
+    "no_runtime_blockers": true,
+    "final_room_id": 143,
+    "events": [
+      { "code": "runtime-instance-created", "object": "bullet", "min_count": 1 },
+      { "code": "runtime-instance-destroyed", "object": "bullet", "min_count": 1 }
+    ]
+  }
 }

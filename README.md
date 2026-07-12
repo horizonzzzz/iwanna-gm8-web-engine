@@ -223,3 +223,20 @@ dependency or code reuse must be a deliberate licensing decision.
 - keep browser work focused on WASM host integration, diagnostics, controls, and rendering
 - do not re-expand a parallel TypeScript gameplay runtime
 - do not claim full GM8 parity from the current IWanna-critical subset
+
+## Local Sample Regression Commands
+
+Use a staged audit before promoting a new compatibility sample:
+
+```powershell
+cargo run -p iwm-cli -- sample-audit --input "C:\path\to\game" --package-output .\runtime\public\packages\candidate --report-output .\target\sample-audits\candidate.json --ticks 600
+```
+
+After identifying a stable path, replay it with declarative assertions:
+
+```powershell
+cargo run -p iwm-cli -- runtime-scenario --input .\runtime\public\packages\candidate --scenario .\docs\notes\runtime-scenarios\candidate-title-idle.json --ticks 600
+```
+
+Audit reports and generated packages stay local. Scenario definitions may be
+committed when they contain only input timing and observable expectations.
