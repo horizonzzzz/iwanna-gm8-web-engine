@@ -207,6 +207,10 @@ export type RuntimeRawCodeAction = {
   lib_id: number;
   action_kind: number;
   execution_type: number;
+  applies_to?: number;
+  is_condition?: boolean;
+  invert_condition?: boolean;
+  is_relative?: boolean;
   fn_name: string;
   fn_code: string;
   args: string[];

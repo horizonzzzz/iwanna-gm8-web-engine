@@ -32,7 +32,10 @@ Current implemented pieces:
 The runtime package currently includes raw preserved logic, structured lowered
 logic, browser-ready resources, sprite collision bounds/masks, and GM font atlas
 metadata. The lowered runtime path covers an IWanna-critical subset, but this is
-not a full GM8 runner.
+not a full GM8 runner. That subset now includes structured GM8 drag-and-drop
+condition/block/repeat actions, per-instance timelines, stateful deterministic
+random helpers, and `other:outside` dispatch used by the ArioTrials endurance
+room.
 
 ## Current Docs
 

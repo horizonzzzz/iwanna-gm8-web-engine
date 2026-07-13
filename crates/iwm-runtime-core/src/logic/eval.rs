@@ -4,8 +4,8 @@ use super::context::{RuntimeEvalContext, RuntimeExecutionScope};
 use super::eval_functions::{
     evaluate_choose_call, evaluate_collision_line, evaluate_distance_to_object,
     evaluate_instance_exists, evaluate_instance_number, evaluate_instance_place,
-    evaluate_keyboard_query, evaluate_ord_call, evaluate_place_query, evaluate_random_call,
-    evaluate_random_range_call,
+    evaluate_irandom_call, evaluate_keyboard_query, evaluate_ord_call, evaluate_place_query,
+    evaluate_point_direction, evaluate_random_call, evaluate_random_range_call,
 };
 pub(super) use super::eval_values::is_truthy;
 use super::eval_values::{eval_binary_expr, runtime_value_to_string_text};
@@ -53,10 +53,14 @@ pub(super) fn evaluate_expr(
                 .and_then(|value| as_number(&value))
                 .map(|value| RuntimeValue::Number(value.floor())),
             "random" => evaluate_random_call(args, instance, globals, scope, eval_context),
+            "irandom" => evaluate_irandom_call(args, instance, globals, scope, eval_context),
             "random_range" => {
                 evaluate_random_range_call(args, instance, globals, scope, eval_context)
             }
             "choose" => evaluate_choose_call(args, instance, globals, scope, eval_context),
+            "point_direction" => {
+                evaluate_point_direction(args, instance, globals, scope, eval_context)
+            }
             "string" => args
                 .first()
                 .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))

@@ -177,6 +177,11 @@ impl RuntimeCore {
         vars.insert("image_yscale".into(), crate::RuntimeValue::Number(1.0));
         vars.insert("image_index".into(), crate::RuntimeValue::Number(0.0));
         vars.insert("image_speed".into(), crate::RuntimeValue::Number(1.0));
+        vars.insert("timeline_index".into(), crate::RuntimeValue::Number(-1.0));
+        vars.insert("timeline_position".into(), crate::RuntimeValue::Number(0.0));
+        vars.insert("timeline_speed".into(), crate::RuntimeValue::Number(1.0));
+        vars.insert("timeline_running".into(), crate::RuntimeValue::Bool(false));
+        vars.insert("timeline_loop".into(), crate::RuntimeValue::Bool(false));
         Some(RuntimeInstance {
             runtime_id,
             instance_id: -1 - runtime_id as i32,

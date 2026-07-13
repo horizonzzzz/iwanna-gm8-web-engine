@@ -381,6 +381,9 @@ impl RuntimeCore {
                     let eval_context = crate::logic::RuntimeEvalContext {
                         current_room_id,
                         room_speed: current_room_speed,
+                        room_width: room.width,
+                        room_height: room.height,
+                        random_state: &self.random_state,
                         button_states: &button_states,
                         room_instances: &room.instances,
                         room_instance_indices_by_object_id: &room_instance_indices_by_object_id,

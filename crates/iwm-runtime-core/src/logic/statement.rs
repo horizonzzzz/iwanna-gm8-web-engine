@@ -430,6 +430,54 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     );
                 }
             }
+            "__iwm_action_wrap" => {
+                let Some(context) = eval_context else {
+                    return;
+                };
+                let mode = args
+                    .first()
+                    .and_then(|arg| {
+                        evaluate_with_diagnostics(
+                            arg,
+                            Some(instance),
+                            Some(scope),
+                            eval_context,
+                            env,
+                            instance,
+                        )
+                    })
+                    .and_then(|value| as_number(&value))
+                    .map(|value| value.round() as i32)
+                    .unwrap_or(2);
+                let image_xscale = instance
+                    .vars
+                    .get("image_xscale")
+                    .and_then(as_number)
+                    .unwrap_or(1.0);
+                let image_yscale = instance
+                    .vars
+                    .get("image_yscale")
+                    .and_then(as_number)
+                    .unwrap_or(1.0);
+                let sprite_width = instance.width as f64 * image_xscale;
+                let sprite_height = instance.height as f64 * image_yscale;
+                if mode != 1 {
+                    let room_width = context.room_width as f64;
+                    if instance.hspeed > 0.0 && instance.x > room_width {
+                        instance.x -= room_width + sprite_width;
+                    } else if instance.hspeed < 0.0 && instance.x < 0.0 {
+                        instance.x += room_width + sprite_width;
+                    }
+                }
+                if mode != 0 {
+                    let room_height = context.room_height as f64;
+                    if instance.vspeed > 0.0 && instance.y > room_height {
+                        instance.y -= room_height + sprite_height;
+                    } else if instance.vspeed < 0.0 && instance.y < 0.0 {
+                        instance.y += room_height + sprite_height;
+                    }
+                }
+            }
             "instance_destroy" => {
                 if instance.alive {
                     let entries = destroy_event_entries

@@ -2,6 +2,22 @@ use std::fs;
 
 use iwm_runtime_model::ObjectDefinition;
 
+fn dnd_action(action_kind: u32, fn_name: &str, args: &[&str]) -> iwm_parser::models::RawCodeAction {
+    iwm_parser::models::RawCodeAction {
+        action_id: 0,
+        lib_id: 1,
+        action_kind,
+        execution_type: 1,
+        applies_to: -1,
+        is_condition: false,
+        invert_condition: false,
+        is_relative: false,
+        fn_name: fn_name.to_string(),
+        fn_code: String::new(),
+        args: args.iter().map(|value| (*value).to_string()).collect(),
+    }
+}
+
 #[test]
 fn raw_logic_file_preserves_gml_ownership_and_source_text() {
     use iwm_parser::models::{
@@ -44,6 +60,10 @@ fn raw_logic_file_preserves_gml_ownership_and_source_text() {
                 lib_id: 1,
                 action_kind: 7,
                 execution_type: 2,
+                applies_to: -1,
+                is_condition: false,
+                invert_condition: false,
+                is_relative: false,
                 fn_name: "code".to_string(),
                 fn_code: "timer += 1; if timer > 60 { y -= 2; }".to_string(),
                 args: vec!["timer".to_string()],
@@ -70,6 +90,10 @@ fn raw_logic_file_preserves_gml_ownership_and_source_text() {
                 lib_id: 1,
                 action_kind: 7,
                 execution_type: 2,
+                applies_to: -1,
+                is_condition: false,
+                invert_condition: false,
+                is_relative: false,
                 fn_name: "code".to_string(),
                 fn_code: "alarm[0] = 60;".to_string(),
                 args: vec![],
@@ -140,6 +164,10 @@ fn lowered_logic_file_tokenizes_assignments_and_calls_from_raw_logic() {
                 lib_id: 1,
                 action_kind: 7,
                 execution_type: 2,
+                applies_to: -1,
+                is_condition: false,
+                invert_condition: false,
+                is_relative: false,
                 fn_name: "code".to_string(),
                 fn_code: "if place_meeting(x, y, obj_player) { game_restart(); }".to_string(),
                 args: vec![],
@@ -202,6 +230,10 @@ fn lowered_logic_file_recognizes_control_flow_blocks() {
                 lib_id: 1,
                 action_kind: 7,
                 execution_type: 2,
+                applies_to: -1,
+                is_condition: false,
+                invert_condition: false,
+                is_relative: false,
                 fn_name: "code".to_string(),
                 fn_code: "if place_meeting(x, y, obj_player) { game_restart(); }".to_string(),
                 args: vec![],
@@ -242,6 +274,10 @@ fn lowered_logic_file_recognizes_common_loop_blocks() {
                 lib_id: 1,
                 action_kind: 7,
                 execution_type: 2,
+                applies_to: -1,
+                is_condition: false,
+                invert_condition: false,
+                is_relative: false,
                 fn_name: "code".to_string(),
                 fn_code: "with (obj_player) { x += hspeed; } repeat (3) { y -= 2; } while (y < 100) { y += 1; } for (i = 0; i < 3; i += 1) { alarm[0] = 60; }".to_string(),
                 args: vec![],
@@ -287,6 +323,10 @@ fn lowered_logic_file_translates_common_function_actions() {
                     lib_id: 1,
                     action_kind: 0,
                     execution_type: 1,
+                    applies_to: -1,
+                    is_condition: false,
+                    invert_condition: false,
+                    is_relative: false,
                     fn_name: "action_set_alarm".to_string(),
                     fn_code: String::new(),
                     args: vec!["80".to_string(), "0".to_string()],
@@ -296,6 +336,10 @@ fn lowered_logic_file_translates_common_function_actions() {
                     lib_id: 1,
                     action_kind: 0,
                     execution_type: 1,
+                    applies_to: -1,
+                    is_condition: false,
+                    invert_condition: false,
+                    is_relative: false,
                     fn_name: "action_create_object".to_string(),
                     fn_code: String::new(),
                     args: vec!["5".to_string(), "x".to_string(), "y".to_string()],
@@ -305,6 +349,10 @@ fn lowered_logic_file_translates_common_function_actions() {
                     lib_id: 1,
                     action_kind: 0,
                     execution_type: 1,
+                    applies_to: -1,
+                    is_condition: false,
+                    invert_condition: false,
+                    is_relative: false,
                     fn_name: "action_kill_object".to_string(),
                     fn_code: String::new(),
                     args: vec![],
@@ -414,6 +462,10 @@ fn lowered_logic_file_does_not_treat_comparisons_as_assignments() {
                 lib_id: 1,
                 action_kind: 7,
                 execution_type: 2,
+                applies_to: -1,
+                is_condition: false,
+                invert_condition: false,
+                is_relative: false,
                 fn_name: "code".to_string(),
                 fn_code: "if a == b { game_restart(); } x = y >= z;".to_string(),
                 args: vec![],
@@ -645,6 +697,10 @@ fn lowered_logic_file_uses_code_action_args_when_fn_code_is_empty() {
                 lib_id: 1,
                 action_kind: 7,
                 execution_type: 2,
+                applies_to: -1,
+                is_condition: false,
+                invert_condition: false,
+                is_relative: false,
                 fn_name: String::new(),
                 fn_code: String::new(),
                 args: vec![
@@ -774,4 +830,176 @@ fn fully_lowered_source_only_blocks_do_not_emit_missing_source_lowering_warning(
         .any(|statement| matches!(statement, iwm_parser::LoweredLogicStatement::Raw { .. }));
 
     assert!(!still_has_raw);
+}
+
+#[test]
+fn lowered_logic_file_translates_timeline_start_action() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawLogicEventBinding, RawLogicFile};
+
+    let mut action = dnd_action(0, "action_timeline_set", &["18", "0", "0", "0"]);
+    action.action_id = 305;
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".into(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 731,
+            object_name: "Taiko".into(),
+            event_type: 7,
+            sub_event: 4,
+            event_tag: "other:room-start".into(),
+            collision_object_id: None,
+            block_id: "object:731:event:7:4".into(),
+            actions: vec![action],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let json = serde_json::to_string(&lowered.entries[0]).unwrap();
+    assert!(json.contains("timeline_index"));
+    assert!(json.contains("timeline_position"));
+    assert!(json.contains("timeline_running"));
+    assert!(json.contains("timeline_loop"));
+    assert!(!json.contains("\"kind\":\"raw\""));
+}
+
+#[test]
+fn lowered_logic_file_preserves_dnd_condition_block_and_relative_motion_create() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawLogicEventBinding, RawLogicFile};
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
+
+    let mut condition = dnd_action(0, "action_if_dice", &["3"]);
+    condition.is_condition = true;
+    condition.invert_condition = true;
+    let mut create = dnd_action(
+        0,
+        "action_create_object_motion",
+        &["743", "0", "0", "8", "random(500)"],
+    );
+    create.is_relative = true;
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".into(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 746,
+            object_name: "RandomMaker1".into(),
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            collision_object_id: None,
+            block_id: "object:746:event:3:0".into(),
+            actions: vec![
+                condition,
+                dnd_action(1, "", &[]),
+                create,
+                dnd_action(2, "", &[]),
+            ],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let LoweredLogicStatement::Conditional {
+        condition,
+        then_branch,
+        else_branch,
+    } = &lowered.entries[0].statements[0]
+    else {
+        panic!("expected DnD condition");
+    };
+    assert!(matches!(condition, LoweredLogicExpr::UnaryExpr { op, .. } if op == "!"));
+    assert!(else_branch.is_empty());
+    let branch_json = serde_json::to_string(then_branch).unwrap();
+    assert!(branch_json.contains("instance_create"));
+    assert!(branch_json.contains("__iwm_action_created"));
+    assert!(branch_json.contains("random"));
+    assert!(branch_json.contains("\"value\":\"x\""));
+    assert!(branch_json.contains("\"value\":\"y\""));
+}
+
+#[test]
+fn lowered_logic_file_preserves_repeat_and_relative_variable_action() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawLogicEventBinding, RawLogicFile};
+    use iwm_parser::LoweredLogicStatement;
+
+    let mut variable = dnd_action(6, "", &["a", "360/9"]);
+    variable.is_relative = true;
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".into(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 785,
+            object_name: "BigTaikoBullet".into(),
+            event_type: 2,
+            sub_event: 0,
+            event_tag: "alarm:0".into(),
+            collision_object_id: None,
+            block_id: "object:785:event:2:0".into(),
+            actions: vec![
+                dnd_action(5, "", &["9"]),
+                dnd_action(1, "", &[]),
+                dnd_action(0, "action_create_object", &["743", "x", "y"]),
+                variable,
+                dnd_action(2, "", &[]),
+            ],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    assert!(matches!(
+        lowered.entries[0].statements[0],
+        LoweredLogicStatement::Repeat { .. }
+    ));
+    let json = serde_json::to_string(&lowered.entries[0]).unwrap();
+    assert!(json.contains("instance_create"));
+    assert!(json.contains("360"));
+    assert!(json.contains("\"op\":\"+\""));
+}
+
+#[test]
+fn lowered_timeline_action_keeps_explicit_object_target() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawLogicFile, RawLogicTimelineMoment};
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
+
+    let mut kill = dnd_action(0, "action_kill_object", &[]);
+    kill.applies_to = 746;
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".into(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![RawLogicTimelineMoment {
+            timeline_id: 18,
+            timeline_name: "timeline18".into(),
+            moment: 1749,
+            actions: vec![kill],
+        }],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    assert!(matches!(
+        &lowered.entries[0].statements[0],
+        LoweredLogicStatement::With {
+            target: LoweredLogicExpr::Call { name, args },
+            body,
+        } if name == "__iwm_object"
+            && matches!(args.as_slice(), [LoweredLogicExpr::LiteralNumber(value)] if (*value - 746.0).abs() < f64::EPSILON)
+            && matches!(body.as_slice(), [LoweredLogicStatement::FunctionCall { name, .. }] if name == "instance_destroy")
+    ));
 }

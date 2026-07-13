@@ -141,11 +141,50 @@ fn raw_action(action: &CodeAction) -> RawCodeAction {
         lib_id: action.lib_id,
         action_kind: action.action_kind,
         execution_type: action.execution_type,
+        applies_to: action.applies_to,
+        is_condition: action.is_condition,
+        invert_condition: action.invert_condition,
+        is_relative: action.is_relative,
         fn_name: action.fn_name.to_string(),
         fn_code: action.fn_code.to_string(),
         args: take_action_args(
             action.param_count,
             std::array::from_fn(|index| action.param_strings[index].to_string()),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::raw_action;
+    use gm8exe::asset::{code_action::CodeAction, PascalString};
+
+    #[test]
+    fn raw_action_preserves_dnd_execution_metadata() {
+        let mut param_strings: [PascalString; 8] = Default::default();
+        param_strings[0] = "3".into();
+        let action = CodeAction {
+            id: 405,
+            applies_to: 746,
+            is_condition: true,
+            invert_condition: true,
+            is_relative: true,
+            lib_id: 1,
+            action_kind: 0,
+            execution_type: 1,
+            can_be_relative: 1,
+            applies_to_something: true,
+            fn_name: "action_if_dice".into(),
+            fn_code: "".into(),
+            param_count: 1,
+            param_types: [0; 8],
+            param_strings,
+        };
+
+        let raw = raw_action(&action);
+        assert_eq!(raw.applies_to, 746);
+        assert!(raw.is_condition);
+        assert!(raw.invert_condition);
+        assert!(raw.is_relative);
     }
 }

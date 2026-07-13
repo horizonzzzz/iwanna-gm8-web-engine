@@ -6,4 +6,5 @@ mod movement;
 mod movement_math;
 mod render;
 mod support;
+mod timelines;
 mod transitions;

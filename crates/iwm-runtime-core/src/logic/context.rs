@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -219,6 +220,9 @@ impl RuntimeExecutionScope {
 pub(crate) struct RuntimeEvalContext<'a> {
     pub current_room_id: usize,
     pub room_speed: u32,
+    pub room_width: u32,
+    pub room_height: u32,
+    pub random_state: &'a Cell<u64>,
     pub button_states: &'a HashMap<RuntimeButton, iwm_runtime_host::ButtonState>,
     pub room_instances: &'a [RuntimeInstance],
     pub room_instance_indices_by_object_id: &'a HashMap<usize, Vec<usize>>,
@@ -267,6 +271,9 @@ impl<'a> RuntimeEvalContext<'a> {
         RuntimeEvalContext {
             current_room_id: self.current_room_id,
             room_speed: self.room_speed,
+            room_width: self.room_width,
+            room_height: self.room_height,
+            random_state: self.random_state,
             button_states: self.button_states,
             room_instances: self.room_instances,
             room_instance_indices_by_object_id: self.room_instance_indices_by_object_id,

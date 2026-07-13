@@ -69,6 +69,22 @@ pub(super) fn write_with_target_indices(
             );
             return;
         }
+        LoweredLogicExpr::Call { name, args } if name == "__iwm_object" => {
+            let Some(object_id) = args.first().and_then(|arg| match arg {
+                LoweredLogicExpr::LiteralNumber(value) if value.is_finite() && *value >= 0.0 => {
+                    Some(value.round() as usize)
+                }
+                _ => None,
+            }) else {
+                return;
+            };
+            output.extend(
+                context
+                    .room_instances_iter()
+                    .filter(|(_, candidate)| candidate.alive && candidate.object_id == object_id)
+                    .map(|(index, _)| index),
+            );
+        }
         LoweredLogicExpr::Identifier(name) => {
             let wanted_object_ids = context
                 .place_target_ids_by_name

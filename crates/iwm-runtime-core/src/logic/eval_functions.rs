@@ -34,7 +34,7 @@ pub(super) fn evaluate_random_call(
     if max == 0.0 {
         return Some(RuntimeValue::Number(0.0));
     }
-    let unit = deterministic_random_unit(instance, scope, max.to_bits());
+    let unit = next_random_unit(eval_context, instance, scope, max.to_bits());
     Some(RuntimeValue::Number(unit * max))
 }
 
@@ -56,8 +56,29 @@ pub(super) fn evaluate_random_range_call(
     if min == max {
         return Some(RuntimeValue::Number(min));
     }
-    let unit = deterministic_random_unit(instance, scope, min.to_bits() ^ max.to_bits());
+    let unit = next_random_unit(eval_context, instance, scope, min.to_bits() ^ max.to_bits());
     Some(RuntimeValue::Number(min + unit * (max - min)))
+}
+
+pub(super) fn evaluate_irandom_call(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let max = args
+        .first()
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?
+        .round();
+    let unit = next_random_unit(eval_context, instance, scope, max.to_bits());
+    let value = if max >= 0.0 {
+        (unit * (max + 1.0)).floor()
+    } else {
+        -(unit * (-max + 1.0)).floor()
+    };
+    Some(RuntimeValue::Number(value))
 }
 
 pub(super) fn evaluate_choose_call(
@@ -77,9 +98,34 @@ pub(super) fn evaluate_choose_call(
     if values.is_empty() {
         return None;
     }
-    let unit = deterministic_random_unit(instance, scope, values.len() as u64);
+    let unit = next_random_unit(eval_context, instance, scope, values.len() as u64);
     let index = ((unit * values.len() as f64).floor() as usize).min(values.len() - 1);
     values.get(index).cloned()
+}
+
+pub(super) fn evaluate_point_direction(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let values = args
+        .iter()
+        .take(4)
+        .map(|arg| {
+            evaluate_expr(arg, instance, globals, scope, eval_context)
+                .and_then(|value| as_number(&value))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    if values.len() != 4 {
+        return None;
+    }
+    let direction = (values[1] - values[3])
+        .atan2(values[2] - values[0])
+        .to_degrees()
+        .rem_euclid(360.0);
+    Some(RuntimeValue::Number(direction))
 }
 
 pub(super) fn evaluate_keyboard_query(
@@ -403,7 +449,31 @@ fn deterministic_random_unit(
     seed = (seed ^ (seed >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
     seed = (seed ^ (seed >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
     let mixed = seed ^ (seed >> 31);
-    (mixed as f64) / (u64::MAX as f64)
+    unit_interval_from_u64(mixed)
+}
+
+fn next_random_unit(
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    instance: Option<&RuntimeInstance>,
+    scope: Option<&RuntimeExecutionScope>,
+    salt: u64,
+) -> f64 {
+    let Some(context) = eval_context else {
+        return deterministic_random_unit(instance, scope, salt);
+    };
+    let mut seed = context
+        .random_state
+        .get()
+        .wrapping_add(0x9e37_79b9_7f4a_7c15);
+    seed = (seed ^ (seed >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    seed = (seed ^ (seed >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    let mixed = seed ^ (seed >> 31);
+    context.random_state.set(mixed);
+    unit_interval_from_u64(mixed)
+}
+
+fn unit_interval_from_u64(value: u64) -> f64 {
+    ((value >> 11) as f64) * (1.0 / ((1u64 << 53) as f64))
 }
 
 fn instance_target_object_ids(

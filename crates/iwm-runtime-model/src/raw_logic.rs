@@ -48,9 +48,21 @@ pub struct RawCodeAction {
     pub lib_id: u32,
     pub action_kind: u32,
     pub execution_type: u32,
+    #[serde(default = "default_action_applies_to")]
+    pub applies_to: i32,
+    #[serde(default)]
+    pub is_condition: bool,
+    #[serde(default)]
+    pub invert_condition: bool,
+    #[serde(default)]
+    pub is_relative: bool,
     pub fn_name: String,
     pub fn_code: String,
     pub args: Vec<String>,
+}
+
+fn default_action_applies_to() -> i32 {
+    -1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -137,7 +137,9 @@ This is currently useful for diagnostics and shell validation, but it is not the
 ### Parser-Owns Raw And Lowered Logic
 
 - `logic.raw.json` preserves the original GML source text and ownership metadata for room, instance, object event, script, trigger, and timeline logic
+- raw DnD action records preserve `applies_to`, condition/inversion, and relative-action flags; consumers must not infer these semantics from `fn_name` or arguments alone
 - `logic.lowered.json` holds the parser-owned lowered contract for current critical-path expressions and statements such as calls, assignments, member access, index access, binary expressions, `var` declarations, `return` statements, and structured control-flow heads
+- DnD Begin/End, condition/Else, Repeat, Set Variable, timeline, object-motion creation, sprite, sound, and wrap actions are lowered into the same statement/expression contract rather than being flattened into unrelated calls
 - runtime should treat these files as the bridge between `gm8exe` extraction and executable runtime semantics, not as a separate public API for end users
 - current repository direction assumes that `logic.lowered.json` must keep moving toward a structurally correct runtime-facing contract; any remaining raw fallback is transitional diagnostics, not the intended steady-state execution contract
 - for the active Phase 4 route, parser work should converge on real callable structure for the IWanna-critical subset even if full general GML support remains out of scope

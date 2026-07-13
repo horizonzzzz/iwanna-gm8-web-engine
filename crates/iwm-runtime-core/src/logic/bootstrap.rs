@@ -149,6 +149,9 @@ impl RuntimeCore {
                 let eval_context = RuntimeEvalContext {
                     current_room_id: room_state.room_id,
                     room_speed: room_state.speed,
+                    room_width: room_state.width,
+                    room_height: room_state.height,
+                    random_state: &self.random_state,
                     button_states: &button_states,
                     room_instances: room_instances.as_ref(),
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
@@ -202,6 +205,9 @@ impl RuntimeCore {
                 let eval_context = RuntimeEvalContext {
                     current_room_id: room_state.room_id,
                     room_speed: room_state.speed,
+                    room_width: room_state.width,
+                    room_height: room_state.height,
+                    random_state: &self.random_state,
                     button_states: &button_states,
                     room_instances: room_instances.as_ref(),
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
@@ -338,6 +344,9 @@ impl RuntimeCore {
         let eval_context = RuntimeEvalContext {
             current_room_id: room_state.room_id,
             room_speed: room_state.speed,
+            room_width: room_state.width,
+            room_height: room_state.height,
+            random_state: &self.random_state,
             button_states: &button_states,
             room_instances: room_instances.as_ref(),
             room_instance_indices_by_object_id: &room_instance_indices_by_object_id,

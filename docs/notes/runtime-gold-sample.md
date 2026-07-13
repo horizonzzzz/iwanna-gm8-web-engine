@@ -30,7 +30,17 @@ objects, 173 sprites, 22 backgrounds, 25 sounds, 373 script blocks, and 657
 lowered entries. It transitions from room 2 to `rTitle` (room 111) at tick 1,
 remains stable through tick 600, and reports no runtime blockers.
 `docs/notes/runtime-scenarios/ariotrials-title-idle.json` records this repeatable
-baseline. Menu navigation and first gameplay-room entry are the next L2 targets.
+baseline.
+
+The current L2 gameplay baseline is the endurance room `room156`. Its placed
+`Taiko` starts timeline 18 from `other:room-start`; moment 856 creates
+`RandomMaker1`, whose structured DnD Dice/Begin/End actions create moving
+`TaikoBullet1` and `TaikoBullet2` instances. Those bullets now leave through
+their original `other:outside` destroy events. A headless diagnostics run to
+tick 1900 also reaches the Fast/Orange/BigTaiko alarm and Repeat phases and
+reports zero runtime blockers. This baseline requires a package rebuilt with
+the current parser because older packages discarded the DnD metadata before
+runtime execution.
 
 The first L2 compatibility fix covers GM8 zero-value reads for uninitialized
 global members. ArioTrials relies on `global.grav` reading as `0` in a

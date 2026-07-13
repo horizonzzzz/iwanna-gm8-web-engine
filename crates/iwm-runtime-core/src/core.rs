@@ -1,5 +1,6 @@
 //! RuntimeCore state, package loading, tick orchestration, and snapshots.
 
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 
 use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
@@ -44,6 +45,7 @@ pub struct RuntimeCore {
     pub(crate) cached_dispatch_tables: RuntimeEventDispatchTables,
     pub(crate) cached_create_event_entries: HashMap<usize, Vec<LoweredLogicEntry>>,
     pub(crate) cached_destroy_event_entries: HashMap<usize, Vec<LoweredLogicEntry>>,
+    pub(crate) cached_timeline_entries: HashMap<usize, Vec<(u32, usize)>>,
     pub(crate) cached_collision_target_ids: HashMap<usize, Vec<usize>>,
     pub(crate) cached_collision_matching_object_ids: HashMap<usize, Vec<usize>>,
     /// Maps a lowercased object name to the full set of object ids that match or
@@ -67,6 +69,7 @@ pub struct RuntimeCore {
     pub(crate) host_bootstrap_scripts_applied: bool,
     pub(crate) binary_files: RuntimeBinaryFileState,
     pub(crate) tick_context: RuntimeTickContext,
+    pub(crate) random_state: Cell<u64>,
 }
 
 impl RuntimeCore {
@@ -138,6 +141,7 @@ impl RuntimeCore {
             cached_dispatch_tables: RuntimeEventDispatchTables::default(),
             cached_create_event_entries: HashMap::new(),
             cached_destroy_event_entries: HashMap::new(),
+            cached_timeline_entries: HashMap::new(),
             cached_collision_target_ids: HashMap::new(),
             cached_collision_matching_object_ids: HashMap::new(),
             place_target_ids_by_name: HashMap::new(),
@@ -164,6 +168,7 @@ impl RuntimeCore {
             host_bootstrap_scripts_applied: false,
             binary_files: RuntimeBinaryFileState::default(),
             tick_context: RuntimeTickContext::default(),
+            random_state: Cell::new(0x4d59_5df4_d0f3_3173),
         };
 
         core.cached_room_order = core.runtime_room_order();
@@ -194,6 +199,31 @@ impl RuntimeCore {
         self.cached_create_event_entries = self.lowered_event_entries_by_tag_for_runtime("create");
         self.cached_destroy_event_entries =
             self.lowered_event_entries_by_selector(RuntimeEventSelector::Destroy);
+        self.cached_timeline_entries = self
+            .lowered_logic_index
+            .iter()
+            .filter_map(|(block_id, entry_index)| {
+                let suffix = block_id.strip_prefix("timeline:")?;
+                let (timeline_id, moment) = suffix.split_once(':')?;
+                Some((
+                    timeline_id.parse::<usize>().ok()?,
+                    moment.parse::<u32>().ok()?,
+                    *entry_index,
+                ))
+            })
+            .fold(
+                HashMap::new(),
+                |mut timelines, (timeline_id, moment, entry_index)| {
+                    timelines
+                        .entry(timeline_id)
+                        .or_insert_with(Vec::new)
+                        .push((moment, entry_index));
+                    timelines
+                },
+            );
+        for entries in self.cached_timeline_entries.values_mut() {
+            entries.sort_by_key(|(moment, _)| *moment);
+        }
         self.cached_collision_target_ids = self.collision_target_ids_by_object_id();
         self.cached_collision_matching_object_ids = self.collision_matching_object_ids_by_target();
         self.place_target_ids_by_name = self.compute_place_target_ids_by_name();
@@ -394,6 +424,11 @@ impl RuntimeCore {
         self.room_needs_first_render_settle = false;
         tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
 
+        self.process_timelines(host)?;
+        if self.has_pending_scene_change() {
+            self.apply_pending_room_change(host)?;
+        }
+
         let Some(room) = self.current_room.as_ref() else {
             self.status = RuntimeStatus::Error;
             return Err(RuntimeCoreError::NoRooms);
@@ -440,6 +475,8 @@ impl RuntimeCore {
             self.step_non_player_instances()?;
             tick_phases.player_movement_nanos += mark_phase_elapsed(host, &mut phase_start);
         }
+
+        self.dispatch_outside_room_events(host)?;
 
         self.dispatch_collision_events(host)?;
         tick_phases.collision_events_nanos += mark_phase_elapsed(host, &mut phase_start);
@@ -878,6 +915,156 @@ impl RuntimeCore {
         Ok(())
     }
 
+    fn process_timelines<H: RuntimeHost>(&mut self, host: &mut H) -> Result<(), RuntimeCoreError> {
+        let plans = {
+            let Some(room) = self.current_room.as_ref() else {
+                return Err(RuntimeCoreError::NoRooms);
+            };
+            room.instances
+                .iter()
+                .enumerate()
+                .filter(|(_, instance)| instance.alive)
+                .filter_map(|(instance_index, instance)| {
+                    let running = instance
+                        .vars
+                        .get("timeline_running")
+                        .and_then(as_number)
+                        .is_some_and(|value| value != 0.0);
+                    if !running {
+                        return None;
+                    }
+                    let timeline_id = instance
+                        .vars
+                        .get("timeline_index")
+                        .and_then(as_number)
+                        .filter(|value| value.is_finite() && *value >= 0.0)?
+                        .round() as usize;
+                    let moments = self.cached_timeline_entries.get(&timeline_id)?;
+                    let old_position = instance
+                        .vars
+                        .get("timeline_position")
+                        .and_then(as_number)
+                        .unwrap_or(0.0);
+                    let speed = instance
+                        .vars
+                        .get("timeline_speed")
+                        .and_then(as_number)
+                        .unwrap_or(1.0);
+                    let new_position = old_position + speed;
+                    let timeline_length = moments
+                        .last()
+                        .map(|(moment, _)| *moment as f64)
+                        .unwrap_or(0.0);
+                    let looping = instance
+                        .vars
+                        .get("timeline_loop")
+                        .and_then(as_number)
+                        .is_some_and(|value| value != 0.0);
+                    let stored_position = if new_position > timeline_length && looping {
+                        if speed >= 0.0 {
+                            0.0
+                        } else {
+                            timeline_length
+                        }
+                    } else {
+                        new_position
+                    };
+                    let mut entry_indices = moments
+                        .iter()
+                        .filter(|(moment, _)| {
+                            let moment = *moment as f64;
+                            if speed > 0.0 {
+                                moment >= old_position && moment < new_position
+                            } else if speed < 0.0 {
+                                moment <= old_position && moment > new_position
+                            } else {
+                                false
+                            }
+                        })
+                        .map(|(_, entry_index)| *entry_index)
+                        .collect::<Vec<_>>();
+                    if speed < 0.0 {
+                        entry_indices.reverse();
+                    }
+                    Some((instance_index, timeline_id, stored_position, entry_indices))
+                })
+                .collect::<Vec<_>>()
+        };
+
+        for (instance_index, timeline_id, stored_position, entry_indices) in plans {
+            if let Some(instance) = self
+                .current_room
+                .as_mut()
+                .and_then(|room| room.instances.get_mut(instance_index))
+            {
+                instance.vars.insert(
+                    "timeline_position".into(),
+                    RuntimeValue::Number(stored_position),
+                );
+            }
+            if entry_indices.is_empty() {
+                continue;
+            }
+            self.apply_event_entry_indices_to_instance(
+                host,
+                instance_index,
+                &entry_indices,
+                None,
+                RuntimeEventSelector::Timeline,
+                format!("timeline:{timeline_id}"),
+                None,
+            );
+            if self.has_pending_scene_change() {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn dispatch_outside_room_events<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+    ) -> Result<(), RuntimeCoreError> {
+        let selector = RuntimeEventSelector::OtherOutside;
+        let lookups = {
+            let Some(room) = self.current_room.as_ref() else {
+                return Err(RuntimeCoreError::NoRooms);
+            };
+            room.instances
+                .iter()
+                .enumerate()
+                .filter(|(_, instance)| instance.alive)
+                .filter_map(|(instance_index, instance)| {
+                    let (left, top, right, bottom) = bounds_at(instance, instance.x, instance.y);
+                    let outside = right < 0
+                        || bottom < 0
+                        || left > room.width as i32
+                        || top > room.height as i32;
+                    if !outside {
+                        return None;
+                    }
+                    self.cached_entry_indices_for_selector(instance.object_id, &selector)
+                        .map(|entries| (instance_index, entries.to_vec()))
+                })
+                .collect::<Vec<_>>()
+        };
+        for (instance_index, entry_indices) in lookups {
+            self.apply_event_entry_indices_to_instance(
+                host,
+                instance_index,
+                &entry_indices,
+                None,
+                selector.clone(),
+                "other:outside".into(),
+                None,
+            );
+            if self.has_pending_scene_change() {
+                break;
+            }
+        }
+        Ok(())
+    }
+
     fn cached_entry_indices_for_selector(
         &self,
         object_id: usize,
@@ -995,6 +1182,9 @@ impl RuntimeCore {
                 let eval_context = crate::logic::RuntimeEvalContext {
                     current_room_id,
                     room_speed: current_room_speed,
+                    room_width: room.width,
+                    room_height: room.height,
+                    random_state: &self.random_state,
                     button_states: &button_states,
                     room_instances: &room.instances,
                     room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
@@ -1811,6 +2001,8 @@ fn selector_event_tag(selector: &RuntimeEventSelector) -> String {
         }
         RuntimeEventSelector::OtherAnimationEnd => "other:animation-end".into(),
         RuntimeEventSelector::OtherRoomStart => "other:room-start".into(),
+        RuntimeEventSelector::OtherOutside => "other:outside".into(),
+        RuntimeEventSelector::Timeline => "timeline".into(),
         RuntimeEventSelector::Collision { .. } => "collision".into(),
     }
 }

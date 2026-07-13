@@ -19,6 +19,8 @@ pub(crate) enum RuntimeEventSelector {
     KeyboardReleased(u16),
     OtherAnimationEnd,
     OtherRoomStart,
+    OtherOutside,
+    Timeline,
     #[cfg_attr(not(test), allow(dead_code))]
     Collision {
         target_object_id: usize,
@@ -210,6 +212,8 @@ fn event_selector_parts(selector: &RuntimeEventSelector) -> (usize, u32, String)
             (7usize, 7u32, "other:animation-end".to_string())
         }
         RuntimeEventSelector::OtherRoomStart => (7usize, 4u32, "other:room-start".to_string()),
+        RuntimeEventSelector::OtherOutside => (7usize, 0u32, "other:outside".to_string()),
+        RuntimeEventSelector::Timeline => (usize::MAX, 0u32, "timeline".to_string()),
         RuntimeEventSelector::Collision { target_object_id } => {
             (4usize, *target_object_id as u32, "collision".to_string())
         }
