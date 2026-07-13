@@ -1,12 +1,24 @@
 use iwm_runtime_model::ObjectEventEntry;
 
-use super::support::{append_lowered_entry, host, sample_package};
+#[cfg(feature = "local-sample-tests")]
+use super::support::local_sample_package;
+use super::support::{add_step_block, append_lowered_entry, host, sample_package};
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
 
 fn assignment(name: &str, value: LoweredLogicExpr) -> LoweredLogicStatement {
     LoweredLogicStatement::Assignment {
         target: LoweredLogicExpr::Identifier(name.into()),
         value,
+    }
+}
+
+fn indexed_member(receiver: &str, member: &str, index: f64) -> LoweredLogicExpr {
+    LoweredLogicExpr::IndexAccess {
+        target: Box::new(LoweredLogicExpr::MemberAccess {
+            target: Box::new(LoweredLogicExpr::Identifier(receiver.into())),
+            member: member.into(),
+        }),
+        index: Box::new(LoweredLogicExpr::LiteralNumber(index)),
     }
 }
 
@@ -94,6 +106,195 @@ fn runtime_timeline_fires_crossed_moments_and_runs_created_instance_create_event
                 && instance.y == 90.0
                 && instance.vars.get("created_by_timeline") == Some(&RuntimeValue::Bool(true))
         }));
+}
+
+#[test]
+fn timeline_object_indexed_alarm_assignment_starts_target_alarm() {
+    let mut package = sample_package();
+    package.objects[1].events.push(ObjectEventEntry {
+        event_type: 2,
+        sub_event: 0,
+        event_tag: "alarm:0".into(),
+        block_id: "object:1:event:2:0".into(),
+        action_count: 1,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:1:event:2:0".into(),
+        vec![assignment(
+            "alarm_fired",
+            LoweredLogicExpr::LiteralBool(true),
+        )],
+    );
+    append_lowered_entry(
+        &mut package,
+        "timeline:18:1".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: indexed_member("obj_marker", "alarm", 0.0),
+            value: LoweredLogicExpr::LiteralNumber(2.0),
+        }],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+    let owner = core
+        .current_room
+        .as_mut()
+        .unwrap()
+        .instances
+        .first_mut()
+        .unwrap();
+    owner
+        .vars
+        .insert("timeline_index".into(), RuntimeValue::Number(18.0));
+    owner
+        .vars
+        .insert("timeline_running".into(), RuntimeValue::Bool(true));
+    let mut runtime_host = host();
+
+    for _ in 0..3 {
+        core.tick(&mut runtime_host).unwrap();
+    }
+
+    let room = core.current_room().unwrap();
+    let owner = &room.instances[0];
+    let marker = room
+        .instances
+        .iter()
+        .find(|instance| instance.object_id == 1)
+        .unwrap();
+    assert_eq!(
+        marker.vars.get("alarm_fired"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert_eq!(
+        marker.vars.get("alarm[0]"),
+        Some(&RuntimeValue::Number(0.0))
+    );
+    assert!(!owner.vars.contains_key("obj_marker.alarm[0]"));
+}
+
+#[test]
+fn object_indexed_assignment_updates_every_live_target() {
+    let mut package = sample_package();
+    package.objects[2].parent_index = 1;
+    let mut second_marker = package.rooms[0]
+        .instances
+        .iter()
+        .find(|instance| instance.object_id == 1)
+        .unwrap()
+        .clone();
+    second_marker.instance_id = 16;
+    second_marker.x = 80;
+    package.rooms[0].instances.push(second_marker);
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: indexed_member("obj_marker", "values", 3.0),
+            value: LoweredLogicExpr::LiteralNumber(7.0),
+        }],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+
+    core.tick(&mut host()).unwrap();
+
+    let room = core.current_room().unwrap();
+    let markers = room
+        .instances
+        .iter()
+        .filter(|instance| matches!(instance.object_id, 1 | 2))
+        .collect::<Vec<_>>();
+    assert_eq!(markers.len(), 3);
+    assert!(markers
+        .iter()
+        .all(|marker| { marker.vars.get("values[3]") == Some(&RuntimeValue::Number(7.0)) }));
+    assert!(!room.instances[0].vars.contains_key("obj_marker.values[3]"));
+}
+
+#[test]
+fn object_indexed_assignment_with_no_live_target_is_a_noop() {
+    let mut package = sample_package();
+    package.rooms[0]
+        .instances
+        .retain(|instance| instance.object_id != 1);
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: indexed_member("obj_marker", "values", 3.0),
+            value: LoweredLogicExpr::LiteralNumber(7.0),
+        }],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+
+    core.tick(&mut host()).unwrap();
+
+    let room = core.current_room().unwrap();
+    assert!(room
+        .instances
+        .iter()
+        .all(|instance| !instance.vars.contains_key("values[3]")));
+    assert!(!room.instances[0].vars.contains_key("obj_marker.values[3]"));
+}
+
+#[test]
+fn object_indexed_read_uses_first_live_target() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![assignment(
+            "observed_value",
+            indexed_member("obj_marker", "values", 3.0),
+        )],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+    core.current_room
+        .as_mut()
+        .unwrap()
+        .instances
+        .iter_mut()
+        .find(|instance| instance.object_id == 1)
+        .unwrap()
+        .vars
+        .insert("values[3]".into(), RuntimeValue::Number(9.0));
+
+    core.tick(&mut host()).unwrap();
+
+    assert_eq!(
+        core.current_room().unwrap().instances[0]
+            .vars
+            .get("observed_value"),
+        Some(&RuntimeValue::Number(9.0))
+    );
+}
+
+#[cfg(feature = "local-sample-tests")]
+#[test]
+fn ariotrials_room156_time_limit_counts_down() {
+    let Some(package) = local_sample_package("ariotrials") else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    core.reload_room(156).unwrap();
+    let mut runtime_host = host();
+
+    for _ in 0..120 {
+        core.tick(&mut runtime_host).unwrap();
+    }
+
+    let room = core.current_room().unwrap();
+    let timer = room
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "timelimitobject")
+        .unwrap();
+    assert!(
+        matches!(timer.vars.get("setS"), Some(RuntimeValue::Number(seconds)) if *seconds < 55.0),
+        "expected room156 setS to count down from 55, vars={:?}",
+        timer.vars
+    );
+    assert!(room
+        .instances
+        .iter()
+        .filter(|instance| instance.object_name == "Taiko")
+        .all(|instance| !instance.vars.contains_key("timelimitobject.alarm[0]")));
 }
 
 #[test]

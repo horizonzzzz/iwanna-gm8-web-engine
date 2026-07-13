@@ -42,6 +42,17 @@ reports zero runtime blockers. This baseline requires a package rebuilt with
 the current parser because older packages discarded the DnD metadata before
 runtime execution.
 
+Timeline 18 moment 1 also starts the visible time limit through
+`timelimitobject.alarm[0] = room_speed`. The lowered package already preserved
+that expression, but runtime-core previously flattened the receiver into a
+`timelimitobject.alarm[0]` key on the timeline-owning `Taiko`; the real time-limit
+instance never received an active alarm, so the upper-right display stayed at
+`1:55` while the barrage advanced. Runtime-core now keeps the object receiver
+separate from the canonical `alarm[0]` member key, fans the write out to live
+matching instances, and lets the package-owned alarm event decrement the timer.
+The regression is covered by in-memory runtime tests rather than a sample-specific
+runtime rule.
+
 The first L2 compatibility fix covers GM8 zero-value reads for uninitialized
 global members. ArioTrials relies on `global.grav` reading as `0` in a
 savePoint `other:room-start` condition before it has been assigned. With the

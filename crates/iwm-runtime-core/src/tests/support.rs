@@ -391,13 +391,18 @@ pub(super) fn assert_no_runtime_blockers(core: &RuntimeCore) {
 
 #[cfg(feature = "local-sample-tests")]
 pub(super) fn real_sample_package() -> Option<RuntimePackage> {
+    local_sample_package("sample")
+}
+
+#[cfg(feature = "local-sample-tests")]
+pub(super) fn local_sample_package(name: &str) -> Option<RuntimePackage> {
     let package_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join("runtime")
         .join("public")
         .join("packages")
-        .join("sample");
+        .join(name);
 
     let manifest_path = package_root.join("manifest.json");
     if !manifest_path.exists() {

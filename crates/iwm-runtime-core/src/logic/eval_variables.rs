@@ -131,30 +131,10 @@ pub(super) fn evaluate_member_access(
     scope: Option<&RuntimeExecutionScope>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<RuntimeValue> {
-    if matches!(target, LoweredLogicExpr::Identifier(name) if name == "other") {
-        let other = eval_context?.other_instance()?;
-        return runtime_instance_member_value(other, member);
-    }
-    if let LoweredLogicExpr::Identifier(object_name) = target {
-        if object_name != "global" {
-            if let Some(context) = eval_context {
-                let target_object_ids = context
-                    .place_target_ids_by_name
-                    .get(&object_name.to_ascii_lowercase());
-                if let Some((_, target_instance)) = target_object_ids.and_then(|ids| {
-                    context
-                        .room_instances_matching_object_ids(ids)
-                        .find(|(_, candidate)| candidate.alive)
-                }) {
-                    return runtime_instance_member_value(target_instance, member);
-                }
-            }
-        }
-    }
-    if let Some(RuntimeValue::Number(instance_ref)) =
-        evaluate_expr(target, instance, globals, scope, eval_context)
-    {
-        if let Some(target_instance) = resolve_instance_reference(instance_ref, eval_context?) {
+    if !matches!(target, LoweredLogicExpr::Identifier(name) if name == "global") {
+        if let Some(target_instance) =
+            resolve_instance_receiver(target, instance, globals, scope, eval_context)
+        {
             return runtime_instance_member_value(target_instance, member);
         }
     }
@@ -175,6 +155,19 @@ pub(super) fn evaluate_index_access(
     scope: Option<&RuntimeExecutionScope>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
 ) -> Option<RuntimeValue> {
+    if let LoweredLogicExpr::MemberAccess { target, member } = target {
+        if !matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "global") {
+            let suffix = expr_key_fragment(index, instance, globals, scope, eval_context)?;
+            if let Some(target_instance) =
+                resolve_instance_receiver(target, instance, globals, scope, eval_context)
+            {
+                return runtime_instance_member_value(
+                    target_instance,
+                    &format!("{member}[{suffix}]"),
+                );
+            }
+        }
+    }
     let base = assignable_key(target, instance, globals, scope, eval_context)?;
     let suffix = expr_key_fragment(index, instance, globals, scope, eval_context)?;
     let key = format!("{base}[{suffix}]");
@@ -213,7 +206,29 @@ fn is_view_variable_name(name: &str) -> bool {
     )
 }
 
-fn expr_key_fragment(
+pub(super) fn instance_member_access<'a>(
+    expr: &'a LoweredLogicExpr,
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<(&'a LoweredLogicExpr, String)> {
+    match expr {
+        LoweredLogicExpr::MemberAccess { target, member } => {
+            Some((target.as_ref(), member.clone()))
+        }
+        LoweredLogicExpr::IndexAccess { target, index } => {
+            let LoweredLogicExpr::MemberAccess { target, member } = target.as_ref() else {
+                return None;
+            };
+            let suffix = expr_key_fragment(index, instance, globals, scope, eval_context)?;
+            Some((target.as_ref(), format!("{member}[{suffix}]")))
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn expr_key_fragment(
     expr: &LoweredLogicExpr,
     instance: Option<&RuntimeInstance>,
     globals: &HashMap<String, RuntimeValue>,
@@ -268,6 +283,44 @@ fn resolve_instance_reference<'a>(
             candidate.instance_id as f64 == rounded || candidate.runtime_id as f64 == rounded
         })
         .map(|(_, candidate)| candidate)
+}
+
+fn resolve_instance_receiver<'a>(
+    receiver: &LoweredLogicExpr,
+    instance: Option<&'a RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&'a RuntimeEvalContext<'_>>,
+) -> Option<&'a RuntimeInstance> {
+    if matches!(receiver, LoweredLogicExpr::Identifier(name) if name == "self") {
+        return instance;
+    }
+    if matches!(receiver, LoweredLogicExpr::Identifier(name) if name == "other") {
+        return eval_context?.other_instance();
+    }
+    if let LoweredLogicExpr::Identifier(object_name) = receiver {
+        let is_local = scope
+            .map(|scope| scope.is_local_key(object_name))
+            .unwrap_or(false);
+        if !is_local {
+            let context = eval_context?;
+            if let Some(target_object_ids) = context
+                .place_target_ids_by_name
+                .get(&object_name.to_ascii_lowercase())
+            {
+                return context
+                    .room_instances_matching_object_ids(target_object_ids)
+                    .find(|(_, candidate)| candidate.alive)
+                    .map(|(_, candidate)| candidate);
+            }
+        }
+    }
+    let RuntimeValue::Number(instance_ref) =
+        evaluate_expr(receiver, instance, globals, scope, eval_context)?
+    else {
+        return None;
+    };
+    resolve_instance_reference(instance_ref, eval_context?)
 }
 
 fn runtime_instance_member_value(instance: &RuntimeInstance, member: &str) -> Option<RuntimeValue> {

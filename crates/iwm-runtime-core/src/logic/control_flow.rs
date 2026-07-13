@@ -85,6 +85,9 @@ pub(super) fn write_with_target_indices(
                     .map(|(index, _)| index),
             );
         }
+        LoweredLogicExpr::Identifier(name) if scope.is_local_key(name) => {
+            push_with_instance_ref_target(target, instance, scope, context, globals, output);
+        }
         LoweredLogicExpr::Identifier(name) => {
             let wanted_object_ids = context
                 .place_target_ids_by_name

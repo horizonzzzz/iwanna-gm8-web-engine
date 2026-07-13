@@ -4,7 +4,9 @@ use iwm_runtime_host::RuntimeHost;
 
 use super::assignment::assign_instance_field_or_var;
 use super::context::{RuntimeEvalContext, RuntimeExecutionScope, RuntimeInstanceCreateRequest};
+use super::control_flow::write_with_target_indices;
 use super::eval::evaluate_expr;
+use super::eval_variables::instance_member_access;
 use super::statement::{evaluate_with_diagnostics, RuntimeStatementEnvironment};
 use crate::helpers::as_number;
 use crate::{LoweredLogicExpr, RuntimeInstance, RuntimeValue};
@@ -18,58 +20,60 @@ pub(super) fn assign_runtime_member_reference<H: RuntimeHost>(
     eval_context: Option<&RuntimeEvalContext<'_>>,
     env: &mut RuntimeStatementEnvironment<'_, H>,
 ) -> bool {
-    let LoweredLogicExpr::MemberAccess { target, member } = target else {
+    let Some((receiver, member)) = instance_member_access(
+        target,
+        Some(instance),
+        env.globals,
+        Some(scope),
+        eval_context,
+    ) else {
         return false;
     };
 
-    if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "global") {
+    if matches!(receiver, LoweredLogicExpr::Identifier(name) if name == "global") {
         return false;
     }
 
-    if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "self") {
-        assign_instance_field_or_var(
-            member.clone(),
-            value,
-            instance,
-            env.sprites,
-            env.sprite_index,
-        );
-        return true;
-    }
+    let object_receiver = matches!(receiver, LoweredLogicExpr::Identifier(name)
+    if !scope.is_local_key(name)
+        && eval_context.is_some_and(|context| {
+            context
+                .place_target_ids_by_name
+                .contains_key(&name.to_ascii_lowercase())
+        }));
 
-    if matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "other") {
-        let Some(context) = eval_context else {
-            return false;
-        };
-        let Some(other) = context.other_instance() else {
-            return false;
-        };
-        return assign_runtime_member_by_ref(
-            other.instance_id as f64,
-            member,
-            value,
-            instance,
+    if let Some(context) = eval_context {
+        write_with_target_indices(
+            receiver,
             instance_index,
-            eval_context,
-            env,
-        );
-    }
-
-    if let Some((target_index, _)) = object_member_assignment_target(target, scope, eval_context) {
-        return assign_runtime_member_by_index(
-            target_index,
-            member,
-            value,
             instance,
-            instance_index,
-            eval_context,
-            env,
+            scope,
+            context,
+            env.globals,
+            env.with_target_indices,
         );
+        let target_indices = std::mem::take(env.with_target_indices);
+        let mut assigned = false;
+        for target_index in target_indices.iter().copied() {
+            assigned |= assign_runtime_member_by_index(
+                target_index,
+                &member,
+                value.clone(),
+                instance,
+                instance_index,
+                Some(context),
+                env,
+            );
+        }
+        *env.with_target_indices = target_indices;
+        if assigned {
+            return true;
+        }
     }
 
     if assign_pending_create_member_by_object_target(
-        target,
-        member,
+        receiver,
+        &member,
         value.clone(),
         scope,
         eval_context,
@@ -77,9 +81,12 @@ pub(super) fn assign_runtime_member_reference<H: RuntimeHost>(
     ) {
         return true;
     }
+    if object_receiver {
+        return true;
+    }
 
     let Some(RuntimeValue::Number(instance_ref)) = evaluate_with_diagnostics(
-        target,
+        receiver,
         Some(instance),
         Some(scope),
         eval_context,
@@ -91,7 +98,7 @@ pub(super) fn assign_runtime_member_reference<H: RuntimeHost>(
 
     assign_runtime_member_by_ref(
         instance_ref,
-        member,
+        &member,
         value,
         instance,
         instance_index,
@@ -170,26 +177,6 @@ pub(super) fn runtime_instance_create_request(
         y,
         post_create_vars: HashMap::new(),
     })
-}
-
-fn object_member_assignment_target<'a>(
-    target: &LoweredLogicExpr,
-    scope: &RuntimeExecutionScope,
-    eval_context: Option<&'a RuntimeEvalContext<'_>>,
-) -> Option<(usize, &'a RuntimeInstance)> {
-    let LoweredLogicExpr::Identifier(name) = target else {
-        return None;
-    };
-    if scope.is_local_key(name) {
-        return None;
-    }
-    let context = eval_context?;
-    let target_object_ids = context
-        .place_target_ids_by_name
-        .get(&name.to_ascii_lowercase())?;
-    context
-        .room_instances_matching_object_ids(target_object_ids)
-        .find(|(_, candidate)| candidate.alive)
 }
 
 fn assign_runtime_member_by_ref<H: RuntimeHost>(

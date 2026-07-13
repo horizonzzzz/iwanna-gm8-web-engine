@@ -654,6 +654,67 @@ fn repeat_instance_create_expression_assigns_members_to_created_instances_before
 }
 
 #[test]
+fn pending_instance_indexed_member_read_sees_same_event_write() {
+    let mut package = sample_package();
+    package.objects[1].name = "blood2".into();
+    let indexed_member = |receiver: &str| LoweredLogicExpr::IndexAccess {
+        target: Box::new(LoweredLogicExpr::MemberAccess {
+            target: Box::new(LoweredLogicExpr::Identifier(receiver.into())),
+            member: "values".into(),
+        }),
+        index: Box::new(LoweredLogicExpr::LiteralNumber(3.0)),
+    };
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::VariableDeclaration {
+                names: vec!["b".into()],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("b".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "instance_create".into(),
+                    args: vec![
+                        LoweredLogicExpr::Identifier("x".into()),
+                        LoweredLogicExpr::Identifier("y".into()),
+                        LoweredLogicExpr::Identifier("blood2".into()),
+                    ],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: indexed_member("b"),
+                value: LoweredLogicExpr::LiteralNumber(7.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("b".into())),
+                    member: "observed".into(),
+                },
+                value: indexed_member("b"),
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let original_instance_count = core.current_room().unwrap().instances.len();
+
+    core.tick(&mut host()).unwrap();
+
+    let created = instances_named(&core, "blood2")
+        .into_iter()
+        .find(|instance| instance.runtime_id >= original_instance_count)
+        .unwrap();
+    assert_eq!(
+        created.vars.get("values[3]"),
+        Some(&RuntimeValue::Number(7.0))
+    );
+    assert_eq!(
+        created.vars.get("observed"),
+        Some(&RuntimeValue::Number(7.0))
+    );
+}
+
+#[test]
 fn instance_create_accepts_numeric_object_id_argument() {
     let mut package = sample_package();
     package.objects[1].name = "obj_spawned_by_id".into();

@@ -27,7 +27,7 @@ use super::eval_functions::{
     evaluate_collision_line_with_scratch, evaluate_distance_to_object_with_scratch,
     evaluate_instance_number_with_scratch,
 };
-use super::eval_variables::evaluate_expr_with_sprite_constants;
+use super::eval_variables::{evaluate_expr_with_sprite_constants, instance_member_access};
 use super::instances::{
     assign_runtime_member_reference, pending_create_member_value,
     pending_create_member_value_by_object_target, runtime_instance_create_request,
@@ -1274,11 +1274,13 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
             return Some(RuntimeValue::Number(byte as f64));
         }
     }
-    if let LoweredLogicExpr::MemberAccess { target, member } = expr {
+    if let Some((target, member)) =
+        instance_member_access(expr, instance, env.globals, scope, eval_context)
+    {
         if let Some(value) = pending_create_member_value_by_object_target(
             env.room_instance_creates,
             target,
-            member,
+            &member,
             scope,
             eval_context,
         ) {
@@ -1288,7 +1290,7 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
             evaluate_runtime_expr(target, instance, scope, eval_context, env, trace_instance)
         {
             if let Some(value) =
-                pending_create_member_value(env.room_instance_creates, instance_ref, member)
+                pending_create_member_value(env.room_instance_creates, instance_ref, &member)
             {
                 return Some(value);
             }
