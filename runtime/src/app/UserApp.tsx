@@ -88,10 +88,10 @@ export function UserApp(): JSX.Element {
     <main className="beta-app">
       <section className="beta-upload" aria-labelledby="beta-title">
         <div>
-          <p className="beta-kicker">IWANNA WEB · BETA 0.2</p>
-          <h1 id="beta-title">上传，然后开跑。</h1>
+          <p className="beta-kicker">IWANNA GM8 WEB ENGINE / BETA</p>
+          <h1 id="beta-title">在浏览器中运行 IWanna 游戏</h1>
           <p className="beta-intro">
-            选择原始 IWanna 游戏的 EXE，或包含完整游戏目录的 ZIP。
+            上传原始 IWanna 游戏的 EXE 文件，或包含完整游戏目录的 ZIP 文件。系统完成解析与验证后，将在浏览器 Canvas 中启动游戏。
           </p>
         </div>
 
@@ -119,11 +119,11 @@ export function UserApp(): JSX.Element {
         </div>
 
         <div className="beta-meta">
-          <p>最大 512 MiB · 仅处理，不执行上传的 EXE 或 DLL</p>
+          <p>最大 512 MiB · 仅解析上传内容，不执行 EXE 或 DLL</p>
           {compatibility === 'partial'
             ? <p>部分兼容：某些房间或 GM8 功能可能仍不可用。</p>
             : null}
-          <a href="/shell">打开诊断 Shell</a>
+          <a href="/shell">需要诊断？打开 Shell</a>
         </div>
       </section>
 
@@ -149,8 +149,9 @@ export function UserApp(): JSX.Element {
           {!ready
             ? (
               <div className="beta-empty">
-                <span aria-hidden="true">◆</span>
-                <p>Canvas 会在游戏解析完成后启动</p>
+                <span className="beta-empty-signal" aria-hidden="true" />
+                <p className="beta-empty-label">等待游戏包</p>
+                <p>选择一个游戏包，Canvas 会在这里启动。</p>
               </div>
             )
             : null}

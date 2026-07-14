@@ -12,7 +12,7 @@ describe('runtime app bootstrap', () => {
     window.history.replaceState({}, '', '/');
     render(<RootApp />);
 
-    expect(screen.getByRole('heading', { name: '上传，然后开跑。' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '在浏览器中运行 IWanna 游戏' })).toBeInTheDocument();
     expect(screen.getByLabelText('游戏包')).toHaveAttribute('accept', expect.stringContaining('.exe'));
     expect(screen.getByRole('button', { name: '开始游戏' })).toBeDisabled();
   });
