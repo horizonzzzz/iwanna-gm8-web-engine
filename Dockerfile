@@ -14,9 +14,10 @@ COPY --from=rust-build /src/target/wasm32-unknown-unknown/release/iwm_runtime_we
 RUN npm run build
 
 FROM debian:bookworm-slim
+ARG VERSION=0.2.0-beta.1
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="IWanna GM8 Web Engine Beta" \
-      org.opencontainers.image.version="0.2.0-beta.1" \
+      org.opencontainers.image.version="$VERSION" \
       org.opencontainers.image.revision="$VCS_REF" \
       org.opencontainers.image.source="https://github.com/horizonzzzz/iwanna-gm8-web-engine"
 RUN apt-get update \

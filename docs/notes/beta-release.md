@@ -111,6 +111,11 @@ image requires matching corresponding source, build scripts, license text, and
 the pinned submodule revision. `NOTICE.md` and OCI revision metadata make this
 obligation explicit; they do not replace a distributor's compliance review.
 
+The tag-triggered workflow at `.github/workflows/release.yml` validates a `v*`
+tag against the Cargo workspace version, publishes one Docker Hub manifest for
+`linux/amd64` and `linux/arm64`, and creates the matching GitHub Release. It
+requires the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
+
 ## Release Gates
 
 Before publishing a Beta image:

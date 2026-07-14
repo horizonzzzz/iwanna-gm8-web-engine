@@ -48,6 +48,14 @@ The build script pulls the three base images sequentially before invoking
 `docker build`, which is more reliable on networks where BuildKit's concurrent
 registry authorization fails.
 
+## Publish A Release
+
+Push a tag such as `v0.2.0-beta.1` to run `.github/workflows/release.yml`.
+Configure the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`; the
+workflow validates the tag against the Cargo workspace version, publishes
+`${DOCKERHUB_USERNAME}/iwanna-gm8-web-engine:<version>` for `linux/amd64` and
+`linux/arm64`, and creates the matching GitHub Release.
+
 ## Local Development
 
 Prerequisites:
