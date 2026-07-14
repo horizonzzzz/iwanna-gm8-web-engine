@@ -1,11 +1,18 @@
 use crate::models::{DetectionReport, DetectionVerdict, EngineFamily};
-use crate::package::load_package;
+use crate::package::{load_package, LoadedPackage};
 use crate::signatures::{match_inventory_signals, match_signals};
 use std::fs;
+use std::io::Read;
 use std::path::Path;
+
+const SIGNATURE_SCAN_BYTES: u64 = 8_000_000;
 
 pub fn detect_input(path: &Path) -> Result<DetectionReport, String> {
     let package = load_package(path)?;
+    detect_package(&package)
+}
+
+pub fn detect_package(package: &LoadedPackage) -> Result<DetectionReport, String> {
     let mut signals = Vec::new();
     let mut warnings = package.warnings.clone();
 
@@ -20,8 +27,13 @@ pub fn detect_input(path: &Path) -> Result<DetectionReport, String> {
     }
 
     for exe in &package.executables {
-        let bytes = fs::read(exe).map_err(|e| e.to_string())?;
-        signals.extend(match_signals(&bytes[..bytes.len().min(8_000_000)]));
+        let mut bytes = Vec::new();
+        fs::File::open(exe)
+            .map_err(|e| e.to_string())?
+            .take(SIGNATURE_SCAN_BYTES)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        signals.extend(match_signals(&bytes));
     }
 
     let inventory_paths = package
@@ -37,13 +49,13 @@ pub fn detect_input(path: &Path) -> Result<DetectionReport, String> {
     let verdict = classify(&signals, package.executables.len());
 
     Ok(DetectionReport {
-        source_name: package.source_name,
+        source_name: package.source_name.clone(),
         input_kind: package.input_kind,
         verdict,
         signals,
         executable_count: package.executables.len(),
-        dlls: package.dlls,
-        files: package.files,
+        dlls: package.dlls.clone(),
+        files: package.files.clone(),
         warnings,
     })
 }

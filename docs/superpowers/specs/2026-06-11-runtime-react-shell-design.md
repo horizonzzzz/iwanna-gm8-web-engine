@@ -1,5 +1,9 @@
 # Runtime React Shell Design
 
+> **Status: Historical shell design.** The resulting diagnostics surface is
+> retained at `/shell`; static fallback described below is intentionally not
+> part of the public Beta page.
+
 > **Status:** Historical / implemented
 >
 > The runtime shell now uses the React structure described here. Keep this file

@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
-import { App } from './app/App';
+import { RootApp } from './app/RootApp';
 
 const root = document.querySelector<HTMLDivElement>('#app');
 
@@ -11,6 +11,6 @@ if (!root) {
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <App />
+    <RootApp />
   </React.StrictMode>
 );

@@ -23,8 +23,9 @@ This package is runtime-consumable but still phase-limited.
 
 Important direction note:
 
-- this package remains the current browser-shell input format
-- the current TypeScript runtime consumption path is transitional
+- this package is published by `iwm-api` under `/games/{sha256}` after validation
+- the diagnostic shell can still load local packages from `/packages/<name>`
+- TypeScript remains browser host glue; gameplay execution belongs to WASM
 - the current WASM bridge also boots from this normalized JSON package today
 - the current parser-side lowering is not considered semantically sufficient for long-term gameplay execution
 - if the WASM-hosted runtime later requires a richer execution input, this format may evolve again
@@ -47,9 +48,12 @@ Included in this phase:
 - control-flow heads in `logic.lowered.json` are represented as lowered expressions so the WASM bridge can deserialize them directly
 - runtime categorization: hazard, checkpoint, player-controlled hints
 
-## Current Shell Integration
+## Current Web Integration
 
-Today the browser shell expects a package directory under `runtime/public/packages/<name>/` and loads:
+The public Beta receives a package URL from `POST /api/v1/games`. The Rust API
+serves that validated package from `/games/{sha256}`. The retained diagnostic
+shell can also load a local package directory under
+`runtime/public/packages/<name>/`. Both paths load:
 
 - `manifest.json`
 - `rooms.json`
@@ -60,10 +64,12 @@ Today the browser shell expects a package directory under `runtime/public/packag
 - `analysis.json`
 - `resources/index.json`
 
-The default shell input is `/packages/sample`, which corresponds to `runtime/public/packages/sample/`.
+The default `/shell` input remains `/packages/sample`, which corresponds to
+`runtime/public/packages/sample/`. The public `/` page does not use that
+fallback path.
 
 The current `iwm-runtime-web` bridge still boots from the normalized runtime payload; the raw and lowered logic files are parser-side artifacts used to preserve and prepare GM8 logic for later runtime consumption.
-The browser shell also loads `logic.raw.json` and `logic.lowered.json` today so diagnostics and future runtime-facing tooling can inspect parser-owned logic without reopening the original GM8 executable.
+Both browser surfaces load `logic.raw.json` and `logic.lowered.json` so diagnostics and runtime-facing tooling can inspect parser-owned logic without reopening the original GM8 executable.
 
 ## Current Execution Status
 
@@ -123,7 +129,7 @@ This is a command-line debugging feature, not a package-format invariant. It ran
 
 ### Currently Executable Action-List Subset
 
-The following `action-list` script blocks can be executed by the browser runtime:
+The following `action-list` script blocks can be executed by runtime-core:
 
 - Basic variable reads and writes for instance-local state
 - Simple arithmetic operations
@@ -142,7 +148,7 @@ This is currently useful for diagnostics and shell validation, but it is not the
 - DnD Begin/End, condition/Else, Repeat, Set Variable, timeline, object-motion creation, sprite, sound, and wrap actions are lowered into the same statement/expression contract rather than being flattened into unrelated calls
 - runtime should treat these files as the bridge between `gm8exe` extraction and executable runtime semantics, not as a separate public API for end users
 - current repository direction assumes that `logic.lowered.json` must keep moving toward a structurally correct runtime-facing contract; any remaining raw fallback is transitional diagnostics, not the intended steady-state execution contract
-- for the active Phase 4 route, parser work should converge on real callable structure for the IWanna-critical subset even if full general GML support remains out of scope
+- for the active Beta route, parser work should converge on real callable structure for the IWanna-critical subset even if full general GML support remains out of scope
 
 ### Current WASM Bridge Status
 
@@ -212,7 +218,8 @@ Current `analysis.json` warnings include actionable categories:
 - `runtime-missing-source-lowering:<block_id>` - source-only blocks requiring GML lowering
 - `runtime-unsupported-event:<event_tag>` - event types not yet supported (e.g., triggers, user events)
 - `runtime-unsupported-action:<fn_name>` - actions not yet implemented (e.g., file_*, sound_*, window_*)
-- `logic-execution-not-yet-implemented` - general execution placeholder
+- `lowered-logic-raw-fallback` - generated logic still contains raw fallback statements
+- `external-dll-execution` - the package includes DLLs that the browser runtime will not execute
 
 These warnings still guide parser and shell diagnostics work, but gameplay-runtime prioritization now belongs to the WASM-first runtime plan.
 

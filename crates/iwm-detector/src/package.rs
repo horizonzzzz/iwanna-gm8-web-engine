@@ -1,8 +1,15 @@
-use crate::models::{FileEntry, PackageInputKind};
 use std::fs;
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+
 use tempfile::TempDir;
 use walkdir::WalkDir;
+
+use crate::models::{FileEntry, PackageInputKind};
+
+const MAX_ZIP_ENTRIES: usize = 4_096;
+const MAX_ZIP_ENTRY_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_ZIP_TOTAL_BYTES: u64 = 1024 * 1024 * 1024;
 
 #[derive(Debug)]
 pub struct LoadedPackage {
@@ -137,7 +144,58 @@ fn load_zip(path: &Path) -> Result<LoadedPackage, String> {
     let temp = tempfile::tempdir().map_err(|e| e.to_string())?;
     let file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-    archive.extract(temp.path()).map_err(|e| e.to_string())?;
+
+    if archive.len() > MAX_ZIP_ENTRIES {
+        return Err(format!(
+            "zip contains too many entries: {} (maximum {MAX_ZIP_ENTRIES})",
+            archive.len()
+        ));
+    }
+
+    let mut declared_total_bytes = 0_u64;
+    let mut extracted_total_bytes = 0_u64;
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index).map_err(|e| e.to_string())?;
+        let relative_path = safe_zip_entry_path(entry.name())?;
+        reject_special_zip_entry(&entry)?;
+
+        if entry.size() > MAX_ZIP_ENTRY_BYTES {
+            return Err(format!("zip entry is too large: {}", entry.name()));
+        }
+        declared_total_bytes = declared_total_bytes
+            .checked_add(entry.size())
+            .ok_or_else(|| "zip expanded size overflow".to_string())?;
+        if declared_total_bytes > MAX_ZIP_TOTAL_BYTES {
+            return Err("zip expanded size exceeds 1 GiB".into());
+        }
+
+        let output_path = temp.path().join(relative_path);
+        if entry.is_dir() {
+            fs::create_dir_all(&output_path).map_err(|e| e.to_string())?;
+            continue;
+        }
+
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let mut output = fs::File::create(&output_path).map_err(|e| e.to_string())?;
+        let copied = io::copy(&mut entry.take(MAX_ZIP_ENTRY_BYTES + 1), &mut output)
+            .map_err(|e| e.to_string())?;
+        output.flush().map_err(|e| e.to_string())?;
+        if copied > MAX_ZIP_ENTRY_BYTES {
+            return Err(format!(
+                "zip entry expanded beyond the size limit: {}",
+                output_path.display()
+            ));
+        }
+        extracted_total_bytes = extracted_total_bytes
+            .checked_add(copied)
+            .ok_or_else(|| "zip extracted size overflow".to_string())?;
+        if extracted_total_bytes > MAX_ZIP_TOTAL_BYTES {
+            return Err("zip extracted size exceeds 1 GiB".into());
+        }
+    }
+
     load_directory(temp.path()).map(|mut package| {
         package.source_name = path
             .file_name()
@@ -148,4 +206,49 @@ fn load_zip(path: &Path) -> Result<LoadedPackage, String> {
         package._temp_dir = Some(temp);
         package
     })
+}
+
+fn safe_zip_entry_path(name: &str) -> Result<PathBuf, String> {
+    let normalized = name.replace('\\', "/");
+    let has_drive_prefix = normalized.as_bytes().get(1) == Some(&b':');
+    let unsafe_component = normalized.split('/').any(|component| {
+        component == ".." || component == "." || is_windows_reserved_name(component)
+    });
+
+    if normalized.starts_with('/') || has_drive_prefix || unsafe_component {
+        return Err(format!("unsafe zip entry path: {name}"));
+    }
+
+    let path = PathBuf::from(normalized);
+    if path.as_os_str().is_empty() {
+        return Err("zip entry path is empty".into());
+    }
+    Ok(path)
+}
+
+fn is_windows_reserved_name(component: &str) -> bool {
+    let stem = component
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches([' ', '.'])
+        .to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || stem
+            .strip_prefix("COM")
+            .or_else(|| stem.strip_prefix("LPT"))
+            .is_some_and(|suffix| {
+                matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+            })
+}
+
+fn reject_special_zip_entry(entry: &zip::read::ZipFile<'_>) -> Result<(), String> {
+    let Some(mode) = entry.unix_mode() else {
+        return Ok(());
+    };
+    let file_type = mode & 0o170000;
+    if file_type == 0 || file_type == 0o040000 || file_type == 0o100000 {
+        return Ok(());
+    }
+    Err(format!("zip entry is not a regular file: {}", entry.name()))
 }

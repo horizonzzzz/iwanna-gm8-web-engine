@@ -84,7 +84,7 @@ export async function runWasmScenario(
     performanceEvery?: number;
   }
 ): Promise<WasmScenarioResult> {
-  await page.goto('/');
+  await page.goto('/shell');
   return page.evaluate(async ({ scenario, roomId, ticks, preselectTicks = 0, traceEvery = 0, performanceEvery = 0 }) => {
     const { loadPackage } = await import('/src/loadPackage.ts');
     const { instantiateWasmRuntimeBridge } = await import('/src/runtime/wasmBridge.ts');

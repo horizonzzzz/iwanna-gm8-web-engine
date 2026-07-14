@@ -4,7 +4,7 @@ This note records which vendored upstream module should guide which runtime conc
 
 ## Boundary Rules
 
-- OpenGMK `gm8emulator` is the primary reference for GM8 runner semantics during Phase 4.
+- OpenGMK `gm8emulator` is the primary reference for GM8 runner semantics during the Beta line.
 - That reference does not decide this project's package format, host-boundary shape, or licensing decisions.
 - OpenGMK `gm8exe` remains the only intended direct dependency boundary for parser code, isolated behind `crates/iwm-parser/src/gm8_adapter.rs`.
 - GM8Decompiler is for parser recovery behavior and odd executable comparisons only. Do not use it to define runtime semantics.
@@ -13,7 +13,7 @@ This note records which vendored upstream module should guide which runtime conc
 
 | Concern | Vendor reference | Why it matters here | Use timing |
 | --- | --- | --- | --- |
-| Per-instance movement state, friction, gravity, speed application, and bounce/collision response | `vendor/OpenGMK/gm8emulator/src/game/movement.rs` | Phase 4 needs a vendor-guided baseline for player motion, gravity, and solid-contact behavior instead of re-inventing GM8-like rules in the WASM core | Now |
+| Per-instance movement state, friction, gravity, speed application, and bounce/collision response | `vendor/OpenGMK/gm8emulator/src/game/movement.rs` | The Beta runtime needs a vendor-guided baseline for player motion, gravity, and solid-contact behavior instead of re-inventing GM8-like rules in the WASM core | Now |
 | Event ownership and ordering for object, keyboard, mouse, trigger, alarm, and shutdown flows | `vendor/OpenGMK/gm8emulator/src/game/events.rs` | The runtime core needs a reliable reference for when events run, which instances receive them, and when pending room changes suppress further event execution | Now |
 | Instance-variable owners combined with array accessors | `vendor/OpenGMK/gm8emulator/src/gml/compiler.rs` and `vendor/OpenGMK/gm8emulator/src/gml/runtime.rs` (`FieldAccessor`, `VariableAccessor`, `SetField`, and `SetVariable`) | GM8 keeps the receiver target separate from the array index; object-owner writes apply to matching instances instead of flattening the owner into a local variable name. This is the reference for expressions such as `timelimitobject.alarm[0]` | Now |
 | Timeline advancement and crossed-moment ordering | `vendor/OpenGMK/gm8emulator/src/game.rs` (timeline advancement in the main step path) | Per-instance timeline position, speed, loop behavior, and forward/reverse moment ranges drive scripted endurance-room phases | Now |

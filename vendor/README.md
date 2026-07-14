@@ -43,10 +43,10 @@ Primary reasons this repo is included:
 - inspect `gm8emulator` behavior when runner semantics need study
 - inspect asset layout and GM8 format handling
 
-Expected near-term use in this project:
+Current use in this project:
 
 - reference `gm8exe`
-- optionally path-depend on `vendor/OpenGMK/gm8exe` through a narrow adapter boundary
+- path-depend on `vendor/OpenGMK/gm8exe` through the narrow parser adapter boundary
 
 Do not:
 
@@ -83,7 +83,7 @@ Current project rule:
 
 - vendor these repos as tracked submodules for study and controlled integration experiments
 - keep all project-owned logic behind narrow adapter boundaries
-- revisit long-term dependency strategy before productization or broad redistribution
+- treat API/Docker redistribution as GPL-sensitive and follow `NOTICE.md`
 
 ## Integration Boundary
 

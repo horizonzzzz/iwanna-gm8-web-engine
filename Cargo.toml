@@ -1,9 +1,11 @@
 [workspace]
 resolver = "2"
+exclude = ["vendor/OpenGMK/gm8exe"]
 members = [
   "crates/iwm-detector",
   "crates/iwm-parser",
   "crates/iwm-cli",
+  "crates/iwm-api",
   "crates/iwm-runtime-core",
   "crates/iwm-runtime-host",
   "crates/iwm-runtime-model",
@@ -13,10 +15,11 @@ members = [
 [workspace.package]
 edition = "2021"
 license = "MIT"
-version = "0.1.0"
+version = "0.2.0-beta.1"
 
 [workspace.dependencies]
 anyhow = "1.0"
+axum = { version = "0.8", features = ["multipart"] }
 camino = "1.1"
 clap = { version = "4.5.7", features = ["derive"] }
 png = "0.17"
@@ -24,5 +27,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
 tempfile = "3.10"
+tokio = { version = "1.43", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs"] }
 walkdir = "2.5"
 zip = "2.1"

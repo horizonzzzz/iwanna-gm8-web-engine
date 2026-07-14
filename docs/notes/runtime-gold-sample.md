@@ -32,15 +32,20 @@ remains stable through tick 600, and reports no runtime blockers.
 `docs/notes/runtime-scenarios/ariotrials-title-idle.json` records this repeatable
 baseline.
 
-The current L2 gameplay baseline is the endurance room `room156`. Its placed
+The current L2 gameplay baseline is the endurance room `room156` when entered
+with the package flow that carries the persistent player state. Its placed
 `Taiko` starts timeline 18 from `other:room-start`; moment 856 creates
 `RandomMaker1`, whose structured DnD Dice/Begin/End actions create moving
 `TaikoBullet1` and `TaikoBullet2` instances. Those bullets now leave through
 their original `other:outside` destroy events. A headless diagnostics run to
 tick 1900 also reaches the Fast/Orange/BigTaiko alarm and Repeat phases and
-reports zero runtime blockers. This baseline requires a package rebuilt with
-the current parser because older packages discarded the DnD metadata before
-runtime execution.
+reports zero runtime blockers. A direct `--select-room 156 --ticks 1900` is not
+equivalent: it creates `playerStart` without a live persistent `player`, and the
+first dependent `player.x/player.y` evaluation at tick 1851 is currently
+misclassified as a `point_direction` blocker. The zero-blocker baseline therefore
+requires the carried-player precondition and a package rebuilt with the current
+parser because older packages discarded the DnD metadata before runtime
+execution.
 
 Timeline 18 moment 1 also starts the visible time limit through
 `timelimitobject.alarm[0] = room_speed`. The lowered package already preserved
@@ -133,7 +138,7 @@ Critical-path `runtime-missing-source-lowering:*` warnings:
 
 ## Current Validation Behaviors To Prove
 
-For `IWBT_Dife`, Phase 4 still needs to prove:
+For `IWBT_Dife`, Beta compatibility still needs to prove:
 
 - package loads successfully
 - the runtime core boots the intended first playable room

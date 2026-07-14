@@ -6,6 +6,16 @@
 
 This is a living note. Update it whenever parser, runtime-core, runtime-web, or shell behavior changes what the browser can actually play.
 
+## Beta Product Boundary
+
+- `iwm-api` now owns untrusted upload staging, detect/build/validate orchestration,
+  and publication of generated packages under `/games/{sha256}`.
+- The public `/` page reuses the existing WASM host path and fails closed on
+  package or WASM errors. Static viewer fallback remains available only in the
+  developer `/shell`.
+- Upload acceptance is not a compatibility claim. The runtime gaps below still
+  determine whether a validated package can actually be played.
+
 ## Current Baseline
 
 - The CLI provides `sample-audit` for staged local compatibility audits and
@@ -29,7 +39,7 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - The lowered parser contract now covers common comment stripping, `var` declarations, assignments, returns, calls, member/index access, unary expressions, and common control-flow heads on the current critical path.
 - Parser raw-action export now retains GM8 DnD `applies_to`, conditional/inversion, and relative flags. Action-list lowering preserves Begin/End groups, condition/Else ownership, Repeat bodies, relative Set Variable actions, motion-bearing instance creation, timeline controls, sprite transforms, sound actions, and wrap actions as structured lowered logic. This closes the silent-flattening failure that previously left ArioTrials room156 static.
 - The runtime core now consumes a small create-time slice and a narrow `step` slice of `logic.lowered.json` for bootstrapping assignments plus direct `room_goto` / `game_restart` / assignment semantics, and it now also dispatches alarm, held-key, key-press, and key-release slices with parent fallback lookup for event dispatch.
-- Runtime-core now advances per-instance timeline positions before ordinary Step dispatch, executes crossed `timeline:<id>:<moment>` entries against the owning instance, supports object-targeted DnD actions without changing the timeline owner, and dispatches `other:outside` after motion. Receiver-qualified indexed variables preserve the instance owner separately from the member's array key, so timeline 18 moment 1 writes `timelimitobject.alarm[0]` to every live matching time-limit instance instead of storing a flattened `timelimitobject.alarm[0]` key on `Taiko`; the target alarm can then drive the visible room156 countdown. Receiver-qualified indexed reads select the first live matching instance, matching existing object-member read behavior. The same path adds stateful deterministic `random`/`irandom`, `point_direction`, motion-create post-assignments, and GM horizontal/vertical wrap semantics. A rebuilt ArioTrials package selected directly into room156 creates `RandomMaker1` at tick 857, continuously creates and retires TaikoBullet1/2 through outside events, reaches the BigTaiko alarm/repeat phase, and reports zero runtime blockers through tick 1900.
+- Runtime-core now advances per-instance timeline positions before ordinary Step dispatch, executes crossed `timeline:<id>:<moment>` entries against the owning instance, supports object-targeted DnD actions without changing the timeline owner, and dispatches `other:outside` after motion. Receiver-qualified indexed variables preserve the instance owner separately from the member's array key, so timeline 18 moment 1 writes `timelimitobject.alarm[0]` to every live matching time-limit instance instead of storing a flattened `timelimitobject.alarm[0]` key on `Taiko`; the target alarm can then drive the visible room156 countdown. Receiver-qualified indexed reads select the first live matching instance, matching existing object-member read behavior. The same path adds stateful deterministic `random`/`irandom`, `point_direction`, motion-create post-assignments, and GM horizontal/vertical wrap semantics. The zero-blocker room156 baseline requires entry with the persistent player state carried from the package flow. Direct `--select-room 156` creates only `playerStart`; at tick 1851 unresolved `player.x/player.y` values are currently misreported as `point_direction` blockers, so direct selection is not valid 1900-tick proof.
 - The runtime core now uses a variable-height jump state machine on the IWanna-critical path, including held jump differentiation, release-cut tracking, ceiling-hit phase clearing, and landing reset state clearing.
 - The runtime core now also evaluates `keyboard_check`, `keyboard_check_direct`, `keyboard_check_pressed`, `keyboard_check_released`, `keyboard_get_numlock`, `place_meeting`, `place_free`, `instance_place`, `&&`, `||`, and single-`=` / `==` / `!=` GM comparisons on the current lowered path, executes `keyboard_set_numlock` against a spoofed host input state, and player motion now preserves floating-point `x/y/hspeed/vspeed` plus subpixel axis deltas instead of rounding assignments or movement back to integers.
 - The runtime core now executes `var` declarations through a per-lowered-entry local scope for runtime event execution. Local variables can feed later expressions in the same block without leaking into instance variables, script calls receive their own local scope, and unresolved identifiers no longer silently become text values during ordinary variable reads. Object-name identifiers on the lowered runtime path can now also resolve to runtime object ids when a helper or comparison expects the GM object constant.
@@ -215,15 +225,14 @@ Current status:
 
 ### 6. Lifecycle Event Chain
 
-The object lifecycle is incomplete.
-
-Current rendering exists at the room/frame level, but GML event-driven lifecycle execution does not.
+The IWanna-critical object lifecycle slice exists, but broader GM8 lifecycle
+parity remains incomplete.
 
 Missing pieces include:
 
-- per-frame `Step`
-- `Draw event` logic execution
-- collision event dispatch beyond selector and lookup coverage
+- broader `Step` ordering and event semantics
+- `Draw event` behavior beyond the current basic text/draw slice
+- collision event parity beyond the current indexed dispatch path
 - `Clean Up`
 - full room creation code execution beyond the currently lowered bootstrap subset
 - full instance creation code execution beyond the currently lowered bootstrap subset
@@ -312,8 +321,6 @@ The parser already preserves `parent_index` in object definitions, and runtime e
 
 Missing pieces include:
 
-- `parent_index` inheritance chain
-- inherited event fallback
 - inherited variable defaults
 - collision / categorization behavior that respects the chain
 
@@ -337,11 +344,11 @@ This is not always a first-room blocker, but many fangame traps, delayed spikes,
 These are real GM8 features, but they do not need to block the first playable runtime slice.
 
 - particles
-- timelines
+- broader timeline parity
 - surface rendering
 - broader save / load parity beyond the current small binary-file slice and package-scoped browser persistence
 - advanced collision transforms such as scaled / rotated precise masks
-- D&D action execution for non-GML-heavy games
+- broader D&D action execution beyond the current structured subset
 - external DLL semantics
 - advanced drawing APIs
 - broader menu/save-load parity beyond the current package-owned room-order, save-select, and difficulty-select path
@@ -358,7 +365,7 @@ For IWanna-style games, the runtime is only meaningfully playable when it can do
 - play audio
 - support room transitions and deaths as real game events
 
-Current implementation already has a hardcoded baseline for player movement, bbox broad-phase plus sprite-mask pixel collision, reset, room switching, frame submission, and browser-hosted telemetry. The missing middle layer is the actual GM8 gameplay semantics: GML execution, variables, lifecycle dispatch, animation, and audio.
+Current implementation has real coverage for player movement, bbox plus sprite-mask collision, reset, room switching, frame submission, lowered GML, variables, lifecycle dispatch, animation, audio, and browser telemetry. The remaining middle-layer gaps are broader GM8 semantic parity and sample coverage, not an entirely missing execution layer.
 The browser can now start from the original `rInit` order and advance toward title/menu/select rooms through lowered room logic. Runtime-core also executes basic Draw-event text calls for package-owned labels, but full playability still depends on advanced Draw-event behavior, general file/save API parity beyond the currently proven file slice, and broader menu object logic.
 
 Current jump-validation note:
@@ -377,13 +384,13 @@ Current resource-contract note:
 
 ## Immediate Priority Order
 
-The current route sets the next implementation order as:
+The Beta route sets the next implementation order as:
 
-1. use runtime unsupported diagnostics, block-level trace output, headless player traces, and browser timing telemetry to rank the active Dife path before adding more GM helpers
-2. keep the shared lowered parser contract stable except where gold-sample evidence requires targeted expansion
-3. headless OpenGMK-derived runtime extraction behind narrow host traits
-4. browser WASM host integration for that runtime core
-5. audio, animation, and broader lifecycle coverage after the runtime can execute trustworthy semantics
+1. keep upload-to-validated-package-to-Canvas regression coverage fresh
+2. use unsupported diagnostics and behavior traces before adding GM helpers
+3. keep the lowered parser contract stable except where sample evidence requires expansion
+4. close visible runtime compatibility gaps on L1/L2 paths
+5. revisit catch-up timing, workers, queues, or multi-instance storage only from measured need
 
 Current gameplay-blocker workflow:
 

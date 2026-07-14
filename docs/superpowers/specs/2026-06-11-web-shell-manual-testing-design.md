@@ -1,5 +1,9 @@
 # Web Shell Manual Testing Design
 
+> **Status: Historical shell design.** The resulting diagnostic UI is retained
+> at `/shell`; the current public user flow is defined in
+> `docs/notes/beta-release.md`.
+
 ## Purpose
 
 The runtime web shell should become the manual testing companion to CLI runtime diagnostics.

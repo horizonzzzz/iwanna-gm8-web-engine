@@ -2,6 +2,11 @@
 
 > **Maintenance note:** Update this file when the runtime host boundary changes enough that existing coupling guidance becomes misleading.
 
+> **Status note:** This is the historical extraction audit that produced the
+> current `iwm-runtime-host`, runtime-core, and WASM boundaries. Sections phrased
+> as a "first boot" or "first extraction" describe the original investigation,
+> not unfinished Beta service work.
+
 This note records the first host-boundary audit for the WASM-first runtime plan.
 
 The goal of this pass is not to finish extraction. The goal is to identify which
@@ -11,7 +16,7 @@ layer should sit.
 
 Current repository route decision:
 
-- OpenGMK `gm8emulator` is now the intended runtime-semantics mainline for Phase 4
+- OpenGMK `gm8emulator` remains the semantic reference for Beta runtime work
 - project-owned parser work remains responsible for extracting and structuring runtime input
 - the repository should prefer host-boundary extraction plus headless bring-up over further TS gameplay-runtime growth
 - windowing, audio, externals, and recording remain host concerns rather than runtime-core semantics
@@ -145,7 +150,7 @@ Can defer safely in the first spike:
 | Temp/included files | `src/game.rs` | File export and temp-dir policy are mixed into launch | Move file effects behind a constrained file host |
 | DLLs/externals | `src/game/external.rs` | Browser cannot honor native DLL semantics | Reject explicitly and surface diagnostics |
 
-## Minimal Host Surface For Phase 4A
+## Minimal Host Surface Established During Phase 4A
 
 The first host layer should stay narrow:
 

@@ -1,5 +1,9 @@
 # Parser and Runtime Next-Step Design
 
+> **Status: Historical.** This local gold-sample/parser-runtime seam plan was
+> completed during the early MVP phase. Current release shape is defined in
+> `docs/notes/beta-release.md`.
+
 ## Overview
 
 This document defines the next implementation slice for `iwanna-gm8-web-engine`.

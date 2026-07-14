@@ -308,7 +308,7 @@ Current host limits:
 - no `Worker`, `SharedArrayBuffer`, `OffscreenCanvas`, WebGL/WebGPU renderer, or
   `AudioWorklet` path is currently in use
 
-These limits do not prevent the current MVP from becoming smooth on practical
+These limits do not prevent the current Beta from becoming smooth on practical
 samples, but they prevent a strict guarantee that browser runtime timing will
 match a native EXE in every environment.
 

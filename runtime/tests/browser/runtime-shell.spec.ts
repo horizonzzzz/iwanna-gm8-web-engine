@@ -9,7 +9,7 @@ import {
 } from './wasmScenario';
 
 async function loadPackage(page: import('@playwright/test').Page, packagePath: string): Promise<void> {
-  await page.goto('/');
+  await page.goto('/shell');
   await page.locator('input[name="packagePath"]').fill(packagePath);
   await page.getByRole('button', { name: 'Load Package' }).click();
 }
@@ -81,7 +81,7 @@ test('sample package pause button stops and resumes automatic ticking', async ({
 });
 
 test('sample package creates and renders a bullet from the browser wasm bridge on Z press', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/shell');
 
   const result = await page.evaluate(async () => {
     const { loadPackage } = await import('/src/loadPackage.ts');
@@ -142,7 +142,7 @@ test('sample package creates and renders a bullet from the browser wasm bridge o
 });
 
 test('sample package ignores raw R save-load input on the difficulty room', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/shell');
 
   const result = await page.evaluate(async () => {
     const { loadPackage } = await import('/src/loadPackage.ts');

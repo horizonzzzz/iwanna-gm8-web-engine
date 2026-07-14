@@ -1,6 +1,6 @@
 # Local Samples
 
-This directory stores development sample data used to validate detector, parser, and later runtime behavior.
+This directory stores development sample data used to validate detector, parser, API, and runtime behavior.
 
 ## Layout
 
@@ -26,7 +26,7 @@ These samples are used for:
 - engine detection validation
 - parser smoke testing
 - compatibility triage
-- future runtime regression checks
+- runtime regression checks
 
 Important local-environment note:
 

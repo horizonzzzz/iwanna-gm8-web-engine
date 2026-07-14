@@ -437,4 +437,4 @@ The recommended path is:
 5. validate with deterministic traces
 6. use `IWBT_Dife` as the first real acceptance target
 
-This keeps the repository aligned with the Phase 4 WASM-first route while addressing one of the most player-visible fidelity gaps first.
+This keeps the repository aligned with the current WASM-first runtime route while addressing one of the most player-visible fidelity gaps first.

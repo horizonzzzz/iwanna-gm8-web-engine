@@ -2,231 +2,120 @@
 
 [English README](README.md)
 
-面向旧版 GM8 风格 IWanna fangame 的浏览器可玩 MVP。
+面向旧版 GM8 风格 IWanna 游戏的浏览器运行引擎。当前发布线为
+`0.2.0-beta.1`。
 
-> [!NOTE]
-> 本项目当前不是完整 GM8 运行器。它聚焦主流旧版 GM8 风格 IWanna 游戏，目标是把可支持的原始游戏包解析为项目自有运行时包，并通过浏览器 WASM 路径执行。
+> [!IMPORTANT]
+> Beta 表示“上传到 Canvas 游玩”的产品链路已经形成，不表示任意 GM8
+> 游戏都能完整兼容或通关。
 
-## 当前方向
+## Beta 产品形态
 
-当前主流程是：
+部署后只有两个页面：
 
-1. 检测上传的游戏包是否像可支持的 GM8 风格目标
-2. 使用后端/工具链 crate 解析可支持包
-3. 归一化为项目自有 runtime package
-4. 通过浏览器面对的 WASM runtime path 执行
+- `/`：用户页，只做 `.exe` / `.zip` 上传、处理状态、Canvas 游玩和重置
+- `/shell`：保留的开发诊断 Shell，用于 package 检查、选房间和运行时诊断
 
-Phase 4 正在推进中。浏览器 shell 现在主要承担 package loader、检查器、诊断界面和 host bridge 的职责。长期运行方向是 WASM-first runtime path；此前的 TypeScript gameplay runtime 不是长期引擎方向。
+单容器主流程：
 
-当前已实现的主要部分：
+```text
+上传 -> iwm-api -> detector -> parser -> runtime-v1 validator
+     -> /data/games/<sha256> -> WASM runtime -> Canvas
+```
 
-- `crates/iwm-detector/`：识别可能支持的目标游戏包
-- `crates/iwm-parser/`：读取 GM8 资源并构建归一化 runtime package
-- `crates/iwm-cli/`：提供检测、构建、校验和 runtime diagnostics 命令
-- `crates/iwm-runtime-model/`：共享 package schema 和校验
-- `crates/iwm-runtime-host/`：runtime host boundary trait 和默认/headless helper
-- `crates/iwm-runtime-core/`：确定性 runtime-core 行为和当前 lowered-logic 执行切片
-- `crates/iwm-runtime-web/`：浏览器可加载 WASM bridge
-- `runtime/`：加载 package、驱动 WASM bridge、转发输入、渲染 frame command、展示诊断信息
+Rust 服务不会执行上传的 EXE 或 DLL。它只解析受支持的 GM8 数据；生成包
+通过结构校验后才会发布给浏览器。
 
-runtime package 当前包含保留的 raw logic、结构化 lowered logic、浏览器可用资源、sprite 碰撞边界/mask、GM font atlas 元数据等。当前 lowered runtime path 覆盖 IWanna 关键子集，但不是完整 GML/GM8 语义实现。
+## 运行 Beta
 
-## 快速开始
+```powershell
+git submodule update --init --recursive
+.\scripts\build-beta.ps1
+docker run --rm --name iwm-beta -p 3000:3000 -v iwm-data:/data iwm-beta:0.2.0-beta.1
+```
+
+打开 `http://127.0.0.1:3000`。健康检查为 `/healthz`。
+
+打包脚本会先依次拉取 Rust、Node、Debian 三个基础镜像，再执行
+`docker build`，避免当前网络环境下 BuildKit 并行鉴权失败。
+
+Docker volume 只保存生成后的 runtime package。上传原文件位于不会被静态
+服务暴露的 staging 目录，请求结束后删除。生成包保留 24 小时，最多 16 个。
+
+## 本地开发
 
 ```powershell
 git submodule update --init --recursive
 npm --prefix runtime install
 rustup target add wasm32-unknown-unknown
-```
-
-在 Windows 上构建 WASM target 时，需要从 Visual Studio Developer Command Prompt 执行，或确保 `clang` 和 `clang++` 在 `PATH` 中。
-
-## 验证
-
-```powershell
-cargo test
-npm --prefix runtime test
-npm --prefix runtime run test:browser
-npm --prefix runtime run build
-```
-
-默认 Rust 测试使用内存 fixture。本地 sample 支持的 runtime-core 测试需要显式 feature，避免陈旧的本地生成包影响普通验证：
-
-```powershell
-cargo test -p iwm-runtime-core --features local-sample-tests
-```
-
-仅在重新构建并校验 `runtime/public/packages/sample` 后运行这个 feature。
-
-## 构建 WASM Bridge
-
-```powershell
-$env:PATH='C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\bin;' + $env:PATH
-$env:CC='clang'
-$env:CXX='clang++'
 cargo build -p iwm-runtime-web --release --target wasm32-unknown-unknown
 npm --prefix runtime run sync:wasm
+npm --prefix runtime run build
+cargo run -p iwm-api
 ```
 
-`sync:wasm` 会把：
-
-```text
-target\wasm32-unknown-unknown\release\iwm_runtime_web.wasm
-```
-
-复制到：
-
-```text
-runtime\public\wasm\iwm_runtime_web.wasm
-```
-
-## 构建 Runtime Package
-
-```powershell
-cargo run -p iwm-cli -- detect --input C:\path\to\game
-cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample
-cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample
-```
-
-浏览器 shell 默认 package path 是 `/packages/sample`，对应本地目录：
-
-```text
-runtime\public\packages\sample\
-```
-
-`validate-package` 会在浏览器 smoke 前检查归一化 runtime package contract，包括 manifest 计数、稀疏 id 引用、资源引用，以及 `scripts.ir.json`、`logic.raw.json`、`logic.lowered.json` 之间的 logic block 一致性。
-
-## Runtime Diagnostics
-
-package 校验通过后，使用 CLI diagnostics 运行 headless runtime，并按实际 lowered execution 路径排序 blocker：
-
-```powershell
-cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --ticks 600
-cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --select-room 143 --ticks 240 --press-keys 16
-cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --input-script .\runtime-input-script.json --trace-player --trace-every 1
-```
-
-常用参数：
-
-- `--select-room <room_id>`：tick 前进入指定 room
-- `--preselect-ticks <n>`：手动选 room 前先推进 boot room
-- `--ticks <n>`：诊断 tick 窗口
-- `--press-keys`、`--hold-keys`、`--input-script`：驱动虚拟键输入
-- `--trace-player`：输出 compact player 行为 trace
-- `--trace-output <path>`：写出完整 diagnostics JSON
-
-诊断 JSON 包含 runtime blocker 聚合、runtime lifecycle event，以及可选 player trace summary。已提交的输入脚本示例位于：
-
-```text
-docs/notes/runtime-scenarios/
-```
-
-## 运行浏览器 Shell
+另开终端：
 
 ```powershell
 npm --prefix runtime run dev -- --host 127.0.0.1
 ```
 
-然后打开：
+Vite 使用 `http://127.0.0.1:4173`，并把 `/api`、`/games` 代理到 3000 端口。
 
-```text
-http://127.0.0.1:4173
+## API
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `POST` | `/api/v1/games` | multipart 上传，字段名为 `game` |
+| `GET` | `/games/{sha256}/*` | 已校验的生成包与资源 |
+| `GET` | `/healthz` | 服务健康状态与版本 |
+
+当前边界：单次上传 512 MiB；ZIP 最多 4,096 项，单项解压 512 MiB，总解压
+与生成包 1 GiB；同时只运行一个 parser；HTTP 解析窗口 120 秒。ZIP 路径穿越
+和特殊文件会直接拒绝。
+
+## 验证
+
+```powershell
+cargo test
+cargo clippy -p iwm-api -p iwm-detector -p iwm-parser --all-targets --locked --no-deps -- -D warnings
+npm --prefix runtime test
+npm --prefix runtime run build
+npm --prefix runtime run test:browser
+docker build -t iwm-beta:0.2.0-beta.1 .
 ```
 
-当前 shell 行为：
+浏览器和 sample 验证必须先重建 release WASM，并用当前 parser 重新生成
+package；`runtime/public/` 中的旧文件不能作为 release 证据。
 
-- 从 package path 输入加载归一化 package
-- WASM bridge 可用时启动 WASM runtime
-- WASM 缺失或 boot 失败时回退到静态 package inspection
-- 转发原始 GM virtual-key hold/press/release 状态
-- 按当前 room speed 自动 tick WASM path，并提供 Pause/Resume
-- 在 canvas 上渲染 runtime frame
-- 暴露 HUD telemetry 和 copy-first 纯文本 runtime report
-- 保留 package inspector 作为次要只读 tab
+## 兼容范围
 
-当前手测按键：
+当前 runtime 已覆盖 Gap 文档中验证过的 IWanna 关键移动、碰撞、生命周期、
+存档点、房间、音频和绘制路径，但仍不是完整 GM8 运行器。主要缺口包括更广
+的 GML/GM8 语义、鼠标、完整 Draw、逐帧 mask、多 view/camera、完整音频与
+文件 API，以及 DLL/external 调用。
 
-- `ArrowLeft` / `A`：向左
-- `ArrowRight` / `D`：向右
-- `Space` / `ArrowUp` / `W`：跳跃输入
-- `R`：原始 package keyboard input
-- `Reset` 按钮：显式 shell reset
+API 只会报告 `supported`、`partial` 或 `blocked`，不会承诺任意上传都能玩。
 
 ## 项目结构
 
-- `docs/`：设计文档、状态 note 和项目指导
-- `crates/iwm-detector/`：目标检测和 package inventory
-- `crates/iwm-parser/`：GM8 解析、package 构建、资源导出、logic lowering
-- `crates/iwm-cli/`：开发者 CLI
-- `crates/iwm-runtime-model/`：共享 runtime package schema 和校验
-- `crates/iwm-runtime-host/`：runtime host boundary 类型和 helper
-- `crates/iwm-runtime-core/`：确定性 runtime-core 行为
-- `crates/iwm-runtime-web/`：WASM/browser bridge surface
-- `runtime/`：浏览器 shell、诊断 UI、package loading 和渲染 glue
-- `samples/local/iwanna-examples/`：本地 sample corpus，存在时用于本地验证
-- `vendor/`：上游参考 submodule
+- `crates/iwm-api/`：上传 API、生成包和静态 Web 服务
+- `crates/iwm-detector/`：安全解压、目录清单和引擎判定
+- `crates/iwm-parser/`：GM8 解析、资源导出和 logic lowering
+- `crates/iwm-runtime-model/`：package schema 与校验
+- `crates/iwm-runtime-host/`：项目自有 host boundary
+- `crates/iwm-runtime-core/`：确定性 runtime 行为
+- `crates/iwm-runtime-web/`：浏览器/WASM bridge
+- `crates/iwm-cli/`：开发诊断与 sample 工作流
+- `runtime/`：用户 Web、`/shell`、输入/音频/渲染 glue
+- `docs/`：当前 note 和明确标记为历史的设计记录
 
-计划中的后续区域：
+本地有版权的 sample 只能放在 `samples/local/iwanna-examples/`，不得提交。
+`IWBT_Dife` 仍是 L1 回归样本，ArioTrials 是当前 L2 开发样本。
 
-- `backend/`
+## 当前文档
 
-## Sample Corpus
-
-本地 sample corpus 位于：
-
-```text
-samples/local/iwanna-examples/
-```
-
-当前分类：
-
-- `gm8-core`
-- `gm8-extended`
-- `needs-manual-check`
-- `non-target`
-
-这些分类是开发中的工作标签，不是最终事实。不要把有版权的 sample binary 提交到 git。
-
-默认 gold sample 是：
-
-```text
-samples/local/iwanna-examples/gm8-core/IWBT_Dife
-```
-
-如果当前机器没有该路径，可以使用最接近的 `gm8-core` sample 做本地 smoke，但这不改变仓库层面的目标样本。
-
-## Vendored References
-
-当前跟踪的参考仓库：
-
-- `vendor/OpenGMK/`
-- `vendor/GM8Decompiler/`
-
-用途：
-
-- 研究 GM8 executable handling
-- 验证 parser 假设
-- 对照 runtime 语义
-- 审计 WASM-first host boundary 假设
-
-> [!CAUTION]
-> OpenGMK 生态组件可能涉及 `GPL-2.0-only`。任何直接依赖或代码复用都必须是有意识的架构和许可证决策。
-
-## 范围边界
-
-- 聚焦主流旧版 GM8 风格 IWanna fangame
-- parser/runtime contract 只在 gold-sample 证据要求时做有目标的扩展
-- 浏览器工作聚焦 WASM host integration、diagnostics、controls 和 rendering
-- 不重新扩展并行的 TypeScript gameplay runtime
-- 不宣称当前 IWanna-critical subset 已具备完整 GM8 parity
-
-## 关键文档
-
-当前优先阅读：
-
-- `README.md`
-- `AGENTS.md`
-- `docs/superpowers/specs/2026-05-19-iwanna-gm8-web-engine-design.md`
+- `docs/notes/beta-release.md`
 - `docs/notes/package-format-v1-runtime.md`
 - `docs/notes/runtime-wasm-gap-analysis.md`
 - `docs/notes/runtime-performance-optimization.md`
@@ -235,4 +124,10 @@ samples/local/iwanna-examples/gm8-core/IWBT_Dife
 - `docs/notes/opengmk-host-coupling-audit.md`
 - `docs/notes/testing-strategy.md`
 
-旧设计 spec 可能有历史参考价值，但当它们和当前 note/code 冲突时，以当前 note 和实际代码为准。
+`docs/superpowers/specs/` 中原始 MVP 设计只保留作历史基线，不再是当前部署规范。
+
+## 许可证
+
+项目自有源码使用 MIT。parser/API 二进制链接声明为 `GPL-2.0-only` 的
+OpenGMK `gm8exe`；发布 API 二进制或 Docker 镜像时，必须履行 `NOTICE.md`
+中说明的 GPL 对应源码义务。发布前请同时阅读 `vendor/README.md`。

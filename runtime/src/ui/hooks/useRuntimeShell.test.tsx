@@ -96,6 +96,22 @@ afterEach(() => {
 });
 
 describe('useRuntimeShell', () => {
+  it('fails closed when the public runtime cannot boot wasm', async () => {
+    mocks.loadPackage.mockResolvedValue(makeRuntimePackage());
+    mocks.loadDefaultWasmRuntimeBridge.mockRejectedValue(new Error('missing wasm'));
+    const { result } = renderHook(() => useRuntimeShell({ allowStaticFallback: false }));
+
+    await act(async () => {
+      await expect(result.current.loadCurrentPackage()).rejects.toThrow(
+        'WASM runtime unavailable: missing wasm'
+      );
+    });
+
+    expect(result.current.runtimeReady).toBe(false);
+    expect(result.current.loadedPackage).toBeNull();
+    expect(result.current.error).toContain('WASM runtime unavailable: missing wasm');
+  });
+
   it('ticks a loaded wasm runtime without shadowing the browser performance clock', async () => {
     const bridge = arrangeWasmPackage();
     const { result } = renderHook(() => useRuntimeShell());

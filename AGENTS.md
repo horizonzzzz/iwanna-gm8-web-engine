@@ -2,20 +2,23 @@
 
 ## Project Overview
 
-This repository is an active MVP for a browser-playable IWanna engine targeting mainstream legacy GM8-style fangames.
+This repository is an active Beta for a browser-playable IWanna engine targeting a curated legacy GM8-style fangame compatibility subset.
 
 The active pipeline is:
 
 1. detect whether an uploaded game package is likely a targetable GM8 fangame
 2. parse targetable packages on the backend/tooling side
 3. normalize them into a project-owned package format
-4. run that package through a browser-facing WASM-first runtime path
+4. validate and publish the generated package through the Rust API
+5. run that package through the browser-facing WASM-first runtime path
 
 The repository is no longer documentation-first. It now contains:
 
 - a Rust workspace
 - detector, parser, CLI, and runtime crates
-- a browser runtime shell under `runtime/`
+- a minimal user web at `/` and a retained diagnostic shell at `/shell`
+- a Rust upload/static service under `crates/iwm-api/`
+- a single-container Docker release path
 - tests covering detector, parser, runtime core, runtime host, runtime web bridge, and frontend shell behavior
 
 ## Source Of Truth
@@ -23,6 +26,7 @@ The repository is no longer documentation-first. It now contains:
 Read these files before making structural or workflow decisions:
 
 - `README.md`
+- `docs/notes/beta-release.md`
 - `docs/superpowers/specs/2026-05-19-iwanna-gm8-web-engine-design.md`
 - `docs/notes/package-format-v1-runtime.md`
 - `docs/notes/runtime-wasm-gap-analysis.md`
@@ -33,7 +37,7 @@ Read these files before making structural or workflow decisions:
 - `samples/README.md`
 - `vendor/README.md`
 
-Do not treat implementation plans as a source of truth. Keep the repo aligned through current specs, notes, and actual repository contents. Local plan files may be created under `docs/superpowers/plans/` to coordinate work, but they are working artifacts and do not need to be submitted with code changes.
+The 2026-05-19 design is the historical MVP baseline; current Beta deployment decisions live in `docs/notes/beta-release.md`. Do not treat implementation plans as a source of truth. Keep the repo aligned through current notes and actual repository contents. Local plan files may be created under `docs/superpowers/plans/` to coordinate work, but they are working artifacts and do not need to be submitted with code changes.
 
 ## Repository Layout
 
@@ -45,6 +49,8 @@ Do not treat implementation plans as a source of truth. Keep the repo aligned th
   GM8 parsing, package building, resource export, and logic extraction/lowering
 - `crates/iwm-cli/`
   Developer CLI for detection and package building
+- `crates/iwm-api/`
+  Upload API, package validation/publication, generated asset serving, and static web hosting
 - `crates/iwm-runtime-model/`
   Shared runtime package schema
 - `crates/iwm-runtime-host/`
@@ -54,15 +60,11 @@ Do not treat implementation plans as a source of truth. Keep the repo aligned th
 - `crates/iwm-runtime-web/`
   Browser/WASM bridge surface and JSON/FFI bridge helpers
 - `runtime/`
-  Browser shell, diagnostics UI, package loading, and rendering glue
+  Minimal user web, retained diagnostic shell, package loading, and rendering glue
 - `samples/local/iwanna-examples/`
   Local development sample corpus when populated
 - `vendor/`
   Upstream reference submodules used for parser/runtime study
-
-Planned later area:
-
-- `backend/`
 
 ## Development Workflow
 
@@ -70,8 +72,10 @@ Current expected workflow:
 
 1. keep detector and parser outputs stable enough to generate runtime-facing packages
 2. keep runtime work aligned to the parser-owned package contract instead of bypassing it
-3. treat the browser shell as a shell/diagnostics harness around the WASM-first runtime path
-4. update current notes whenever runtime/package/workflow reality changes
+3. keep `/` fail-closed on API/package/WASM errors and retain static fallback only in `/shell`
+4. validate generated packages before the API publishes them under `/games/{sha256}`
+5. keep the single-container Docker path reproducible from tracked lockfiles and submodules
+6. update current notes whenever runtime/package/workflow reality changes
 
 ## Setup Commands
 
@@ -81,6 +85,9 @@ Current expected setup commands:
 - `cargo test`
 - `npm --prefix runtime install`
 - `npm --prefix runtime test`
+- `npm --prefix runtime run build`
+- `cargo run -p iwm-api`
+- `.\scripts\build-beta.ps1`
 
 WASM bridge workflow commands:
 
@@ -153,9 +160,11 @@ Current testing layers:
 
 1. targeted crate tests for detector, parser, runtime model validator, runtime host, runtime core, or runtime web
 2. workspace-wide Rust verification with `cargo test`
-3. frontend shell verification with `npm --prefix runtime test`
-4. browser smoke verification with `npm --prefix runtime run test:browser` when local prerequisites are satisfied
-5. local sample smoke checks against `samples/local/iwanna-examples/` when relevant assets exist
+3. API upload-boundary and publication verification through `iwm-api` tests
+4. frontend user page and shell verification with `npm --prefix runtime test`
+5. browser smoke verification with `npm --prefix runtime run test:browser` when local prerequisites are satisfied
+6. Docker build and `/healthz` smoke for release changes
+7. local sample upload/play smoke against `samples/local/iwanna-examples/` when relevant assets exist
 
 When changing code, run the narrowest relevant test first, then the broader suite.
 

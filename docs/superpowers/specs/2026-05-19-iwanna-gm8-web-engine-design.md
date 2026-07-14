@@ -1,5 +1,10 @@
 # IWanna GM8 Web Engine MVP Design
 
+> **Status: Historical MVP baseline.** The current Beta product/deployment
+> contract is `docs/notes/beta-release.md`. Keep this document for original
+> architecture rationale; do not use its future-backend or milestone wording as
+> current repository status.
+
 ## Overview
 
 This document defines the first-phase design for a browser-playable IWanna engine targeting the mainstream legacy Game Maker 8.x fangame ecosystem.

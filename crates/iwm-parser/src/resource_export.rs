@@ -83,7 +83,7 @@ pub fn export_resources(assets: &GameAssets, output_dir: &Path) -> Result<Resour
                         bbox_right: collider.bbox_right,
                         bbox_top: collider.bbox_top,
                         bbox_bottom: collider.bbox_bottom,
-                        data: collider.data.iter().copied().collect(),
+                        data: collider.data.to_vec(),
                     })
                     .collect(),
                 per_frame_collision_masks: sprite.per_frame_colliders,

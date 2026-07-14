@@ -66,11 +66,10 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
         for event in &obj.events {
             let tag = &event.event_tag;
             // Group unsupported event types (trigger, timeline, etc.)
-            if tag.starts_with("trigger:") || tag.starts_with("other:user") {
-                if !seen_event_types.contains(tag) {
-                    seen_event_types.insert(tag.clone());
-                    warnings.push(format!("runtime-unsupported-event:{}", tag));
-                }
+            if (tag.starts_with("trigger:") || tag.starts_with("other:user"))
+                && seen_event_types.insert(tag.clone())
+            {
+                warnings.push(format!("runtime-unsupported-event:{}", tag));
             }
         }
     }
@@ -87,11 +86,9 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
                 if unsupported_action_prefixes
                     .iter()
                     .any(|p| lower.starts_with(p))
+                    && seen_actions.insert(lower.clone())
                 {
-                    if !seen_actions.contains(&lower) {
-                        seen_actions.insert(lower.clone());
-                        warnings.push(format!("runtime-unsupported-action:{}", fn_name));
-                    }
+                    warnings.push(format!("runtime-unsupported-action:{}", fn_name));
                 }
             }
         }
@@ -116,6 +113,14 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
         warnings.push("script-ir-partial".to_string());
     }
 
+    let mut unsupported_features = Vec::new();
+    if raw_statement_count > 0 {
+        unsupported_features.push("lowered-logic-raw-fallback".into());
+    }
+    if !dlls.is_empty() {
+        unsupported_features.push("external-dll-execution".into());
+    }
+
     let analysis = AnalysisReport {
         dlls: dlls.to_vec(),
         included_files: assets
@@ -124,7 +129,7 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
             .map(|f| f.file_name.to_string())
             .collect(),
         warnings: warnings.clone(),
-        unsupported_features: vec!["logic-execution-not-yet-implemented".into()],
+        unsupported_features,
     };
 
     let display = manifest_display_metadata(&assets.settings, &room_order, &rooms);

@@ -32,7 +32,7 @@ Rules:
 
 Purpose:
 
-- protect boundaries between crates and the browser shell
+- protect boundaries between crates, the upload API, and both browser surfaces
 - validate package shape, sparse ids, cross-file references, bridge JSON, and
   host import/export expectations
 
@@ -47,7 +47,8 @@ Current important contract areas:
 - `crates/iwm-runtime-model/` package validation
 - `crates/iwm-parser/` runtime package output shape
 - `crates/iwm-runtime-web/` bridge JSON and host-boundary behavior
-- `runtime/` package loading, WASM session input edges, and renderer commands
+- `crates/iwm-api/` upload limits, verdict mapping, validation, and publication
+- `runtime/` upload flow, package loading, WASM session input edges, and renderer commands
 
 ### Scenario Tests
 
@@ -89,6 +90,7 @@ For narrow changes, run the closest layer first:
 cargo test -p iwm-runtime-core
 cargo test -p iwm-parser
 cargo test -p iwm-runtime-web
+cargo test -p iwm-api
 npm --prefix runtime test
 ```
 
@@ -97,6 +99,7 @@ For broad parser/runtime/package changes, also run:
 ```powershell
 cargo test
 npm --prefix runtime run build
+docker build -t iwm-beta:test .
 ```
 
 Run browser smoke only when local prerequisites are available:
@@ -134,5 +137,5 @@ graphify update .
 4. Convert repeated expression/lowering/runtime helper cases into table-driven
    tests.
 5. Split large runtime-core implementation files after tests are easier to read.
-6. Keep frontend shell tests focused on bridge, session, renderer, and visible UI
-   contracts instead of duplicating package fixtures across layers.
+6. Keep frontend tests focused on the public upload-to-package handoff and the
+   retained shell's bridge, session, renderer, and visible UI contracts.

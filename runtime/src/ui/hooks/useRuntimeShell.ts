@@ -32,6 +32,11 @@ type ShellBackend =
 type KeyboardInputSource = KeyboardInputState | { current: KeyboardInputState };
 type RuntimeTelemetryMode = 'immediate' | 'throttled';
 
+type RuntimeShellOptions = {
+  allowStaticFallback?: boolean;
+  initialPackagePath?: string;
+};
+
 function currentKeyboardInput(source: KeyboardInputSource): KeyboardInputState {
   return 'current' in source ? source.current : source;
 }
@@ -123,8 +128,12 @@ async function renderRuntimeRoom(
   await renderStaticRoom(canvas, room, pkg.objects, backgroundPaths, spritePaths, cache);
 }
 
-export function useRuntimeShell() {
-  const [packagePath, setPackagePath] = useState('/packages/sample');
+export function useRuntimeShell(options: RuntimeShellOptions = {}) {
+  const {
+    allowStaticFallback = true,
+    initialPackagePath = '/packages/sample',
+  } = options;
+  const [packagePath, setPackagePath] = useState(initialPackagePath);
   const [loadedPackage, setLoadedPackage] = useState<RuntimePackage | null>(null);
   const [backendStatus, setBackendStatus] = useState(
     'Execution path: static room viewer until a WASM bridge is configured.'
@@ -424,8 +433,12 @@ export function useRuntimeShell() {
     }
   }, [autoTickRunning, scheduleAutoTickInterval, selectedRoomId, snapshot?.roomSpeed]);
 
-  const loadCurrentPackage = useCallback(async (keyboardSource?: KeyboardInputSource) => {
+  const loadCurrentPackage = useCallback(async (
+    keyboardSource?: KeyboardInputSource,
+    requestedPath = packagePath
+  ) => {
     setError(null);
+    setRuntimeReady(false);
     stopAutoTick();
     pendingSnapshotRef.current = null;
     pendingPerformanceRef.current = null;
@@ -433,10 +446,11 @@ export function useRuntimeShell() {
     currentRoomSpeedRef.current = null;
     lastTelemetryCommitMsRef.current = null;
     skippedAutoTickIntervalsRef.current = 0;
-    packagePathRef.current = packagePath;
+    packagePathRef.current = requestedPath;
+    setPackagePath(requestedPath);
 
     try {
-      const pkg = await loadPackage(packagePath);
+      const pkg = await loadPackage(requestedPath);
       loadedPackageRef.current = pkg;
       setLoadedPackage(pkg);
 
@@ -451,7 +465,7 @@ export function useRuntimeShell() {
 
       try {
         const wasmBridge = await loadDefaultWasmRuntimeBridge();
-        const bootSnapshot = await wasmBridge.boot(pkg, { basePath: packagePath });
+        const bootSnapshot = await wasmBridge.boot(pkg, { basePath: requestedPath });
         nextBackend = {
           kind: 'wasm',
           bridge: wasmBridge,
@@ -460,6 +474,9 @@ export function useRuntimeShell() {
         roomId = bootSnapshot.roomId ?? roomId;
         setRuntimeReady(true);
       } catch (bootError) {
+        if (!allowStaticFallback) {
+          throw new Error(`WASM runtime unavailable: ${formatErrorMessage(bootError)}`);
+        }
         wasmBridgeError = bootError;
         setRuntimeReady(false);
         nextBackend = {
@@ -480,7 +497,7 @@ export function useRuntimeShell() {
         )}`
       );
       setSelectedRoomId(roomId);
-      await draw(pkg, nextBackend, packagePath);
+      await draw(pkg, nextBackend, requestedPath);
       if (nextBackend.kind === 'wasm' && keyboardSource) {
         startAutoTick(keyboardSource);
       }
@@ -510,7 +527,7 @@ export function useRuntimeShell() {
       }
       throw loadError;
     }
-  }, [draw, packagePath, startAutoTick, stopAutoTick]);
+  }, [allowStaticFallback, draw, packagePath, startAutoTick, stopAutoTick]);
 
   const runExclusiveWithAutoTick = useCallback(async (operation: () => Promise<void>): Promise<void> => {
     // Hold a guard the auto-tick interval also honours, then wait for any
