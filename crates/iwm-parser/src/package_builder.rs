@@ -29,13 +29,18 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     let resource_index = export_resources(&assets, output_dir)?;
     let (mut rooms, objects, script_ir) =
         export_rooms_and_logic(&assets.rooms, &assets.objects, &assets.scripts);
+    let exported_background_ids = resource_index
+        .backgrounds
+        .iter()
+        .map(|background| background.id)
+        .collect::<std::collections::HashSet<_>>();
+    let mut warnings = Vec::new();
+    normalize_missing_background_references(&mut rooms, &exported_background_ids, &mut warnings);
+    let normalization_warning_count = warnings.len();
     let room_order = normalized_room_order(&assets.room_order, &rooms);
     sort_rooms_by_order(&mut rooms, &room_order);
     let raw_logic: RawLogicFile = export_raw_logic(&assets);
     let lowered_logic = lower_raw_logic_file(&raw_logic);
-
-    // Generate actionable warnings
-    let mut warnings = Vec::new();
 
     let lowered_entry_by_block_id = lowered_logic
         .entries
@@ -109,7 +114,7 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     }
 
     // Add a note about partial execution support
-    if !warnings.is_empty() {
+    if warnings.len() > normalization_warning_count {
         warnings.push("script-ir-partial".to_string());
     }
 
@@ -176,6 +181,40 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     )?;
 
     Ok(())
+}
+
+fn normalize_missing_background_references(
+    rooms: &mut [crate::models::RoomDefinition],
+    exported_background_ids: &std::collections::HashSet<usize>,
+    warnings: &mut Vec<String>,
+) {
+    for room in rooms {
+        for background in &mut room.backgrounds {
+            let Ok(source_bg) = usize::try_from(background.source_bg) else {
+                continue;
+            };
+            if background.visible_on_start && !exported_background_ids.contains(&source_bg) {
+                warnings.push(format!(
+                    "normalized-missing-room-background:{}:{}",
+                    room.id, background.source_bg
+                ));
+                background.source_bg = -1;
+            }
+        }
+
+        for tile in &mut room.tiles {
+            let Ok(source_bg) = usize::try_from(tile.source_bg) else {
+                continue;
+            };
+            if !exported_background_ids.contains(&source_bg) {
+                warnings.push(format!(
+                    "normalized-missing-room-tile-background:{}:{}:{}",
+                    room.id, tile.tile_id, tile.source_bg
+                ));
+                tile.source_bg = -1;
+            }
+        }
+    }
 }
 
 // Manifest display metadata source and dimensions.
@@ -278,7 +317,9 @@ fn write_json<T: Serialize>(path: impl AsRef<Path>, value: &T) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{RoomDefinition, RuntimeDisplaySource};
+    use crate::models::{
+        RoomBackgroundLayer, RoomDefinition, RoomTilePlacement, RuntimeDisplaySource,
+    };
     use gm8exe::settings::Settings;
 
     fn settings_with_resolution(set_resolution: bool, resolution: u32) -> Settings {
@@ -342,6 +383,38 @@ mod tests {
         }
     }
 
+    fn background(source_bg: i32, visible_on_start: bool) -> RoomBackgroundLayer {
+        RoomBackgroundLayer {
+            visible_on_start,
+            is_foreground: false,
+            source_bg,
+            xoffset: 0,
+            yoffset: 0,
+            tile_horz: false,
+            tile_vert: false,
+            hspeed: 0,
+            vspeed: 0,
+            stretch: false,
+        }
+    }
+
+    fn tile(tile_id: i32, source_bg: i32) -> RoomTilePlacement {
+        RoomTilePlacement {
+            tile_id,
+            source_bg,
+            x: 0,
+            y: 0,
+            tile_x: 0,
+            tile_y: 0,
+            width: 16,
+            height: 16,
+            depth: 0,
+            xscale: 1.0,
+            yscale: 1.0,
+            blend: 0,
+        }
+    }
+
     #[test]
     fn manifest_display_metadata_uses_exe_resolution_when_enabled() {
         let settings = settings_with_resolution(true, 2);
@@ -362,5 +435,58 @@ mod tests {
 
         assert_eq!(display.source, Some(RuntimeDisplaySource::DefaultRoom));
         assert_eq!(display.dimensions, Some((800, 600)));
+    }
+
+    #[test]
+    fn background_normalization_preserves_valid_and_hidden_references() {
+        let mut rooms = vec![room(7, 320, 240)];
+        rooms[0].backgrounds = vec![background(3, true), background(9, false)];
+        let exported_background_ids = std::collections::HashSet::from([3]);
+        let mut warnings = Vec::new();
+
+        normalize_missing_background_references(
+            &mut rooms,
+            &exported_background_ids,
+            &mut warnings,
+        );
+
+        assert_eq!(rooms[0].backgrounds[0].source_bg, 3);
+        assert_eq!(rooms[0].backgrounds[1].source_bg, 9);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn background_normalization_replaces_missing_visible_reference() {
+        let mut rooms = vec![room(65, 320, 240)];
+        rooms[0].backgrounds = vec![background(47, true)];
+        let mut warnings = Vec::new();
+
+        normalize_missing_background_references(
+            &mut rooms,
+            &std::collections::HashSet::new(),
+            &mut warnings,
+        );
+
+        assert_eq!(rooms[0].backgrounds[0].source_bg, -1);
+        assert_eq!(warnings, ["normalized-missing-room-background:65:47"]);
+    }
+
+    #[test]
+    fn background_normalization_replaces_missing_tile_reference() {
+        let mut rooms = vec![room(151, 320, 240)];
+        rooms[0].tiles = vec![tile(12, 62)];
+        let mut warnings = Vec::new();
+
+        normalize_missing_background_references(
+            &mut rooms,
+            &std::collections::HashSet::new(),
+            &mut warnings,
+        );
+
+        assert_eq!(rooms[0].tiles[0].source_bg, -1);
+        assert_eq!(
+            warnings,
+            ["normalized-missing-room-tile-background:151:12:62"]
+        );
     }
 }

@@ -116,7 +116,7 @@ cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sampl
 ```
 
 The validator is contract-oriented, not semantic. It checks package shape and cross-file references before browser smoke, while runtime behavior validation remains in `iwm-runtime-core`, `iwm-runtime-web`, and browser tests.
-Room background resource validation follows the current runtime drawing contract: visible room background layers and all tiles must resolve to exported background resources; hidden room background layers are preserved but do not currently block validation because neither runtime-core nor the browser static renderer draws them.
+Room background resource validation follows the current runtime drawing contract: visible room background layers and all tiles must resolve to exported background resources; hidden room background layers are preserved but do not currently block validation because neither runtime-core nor the browser static renderer draws them. When a GM8 room or tile references a deleted background slot that resource export cannot emit, the parser normalizes that hard reference to `source_bg = -1` and records a warning with the original room, tile, and source ids. The validator remains strict for any unresolved non-negative hard reference.
 
 After validation, the developer CLI can run a generated package through the headless runtime diagnostics path:
 
