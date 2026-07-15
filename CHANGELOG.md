@@ -8,6 +8,17 @@ All notable changes to this project are documented here.
 
 No changes yet.
 
+## [0.2.0-beta.2] - 2026-07-15
+
+### Changed
+
+- Release automation now publishes the English and Chinese changelog sections in the GitHub Release.
+- Machine-specific assistant skill and hook configuration is no longer tracked; local `.claude/` and `.codex/` directories are ignored.
+
+### Fixed
+
+- Normalize missing visible room backgrounds and tile references during package generation, preserving strict validation with explicit warnings.
+
 ## [0.2.0-beta.1] - 2026-07-14
 
 ### Added

@@ -8,6 +8,17 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 暂无更新。
 
+## [0.2.0-beta.2] - 2026-07-15
+
+### 变更
+
+- 发布自动化现在会把中英文更新日志一并写入 GitHub Release。
+- 不再跟踪机器相关的 assistant skill 和 hook 配置；本地 `.claude/`、`.codex/` 目录已加入忽略。
+
+### 修复
+
+- 生成 package 时归一化缺失的可见房间背景和 tile 引用，并通过明确警告保留严格校验。
+
 ## [0.2.0-beta.1] - 2026-07-14
 
 ### 新增

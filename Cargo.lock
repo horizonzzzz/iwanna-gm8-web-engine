@@ -722,7 +722,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "iwm-api"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -739,7 +739,7 @@ dependencies = [
 
 [[package]]
 name = "iwm-cli"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "clap",
  "iwm-detector",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "iwm-detector"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -764,7 +764,7 @@ dependencies = [
 
 [[package]]
 name = "iwm-parser"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "anyhow",
  "camino",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "iwm-runtime-core"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "iwm-runtime-host",
  "iwm-runtime-model",
@@ -791,14 +791,14 @@ dependencies = [
 
 [[package]]
 name = "iwm-runtime-host"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "iwm-runtime-model"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -806,7 +806,7 @@ dependencies = [
 
 [[package]]
 name = "iwm-runtime-web"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "iwm-runtime-core",
  "iwm-runtime-host",

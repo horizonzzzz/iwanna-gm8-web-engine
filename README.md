@@ -3,7 +3,7 @@
 [中文说明](README-CN.md)
 
 Browser-playable IWanna engine for a curated legacy GM8 compatibility subset.
-The current release line is `0.2.0-beta.1`.
+The current release line is `0.2.0-beta.2`.
 
 [Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md)
 
@@ -36,7 +36,7 @@ Initialize the parser dependency and build the image:
 ```powershell
 git submodule update --init --recursive
 .\scripts\build-beta.ps1
-docker run --rm --name iwm-beta -p 3000:3000 -v iwm-data:/data iwm-beta:0.2.0-beta.1
+docker run --rm --name iwm-beta -p 3000:3000 -v iwm-data:/data iwm-beta:0.2.0-beta.2
 ```
 
 Open `http://127.0.0.1:3000`. The health endpoint is
@@ -52,7 +52,7 @@ registry authorization fails.
 
 ## Publish A Release
 
-Push a tag such as `v0.2.0-beta.1` to run `.github/workflows/release.yml`.
+Push a tag such as `v0.2.0-beta.2` to run `.github/workflows/release.yml`.
 Configure the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`; the
 workflow validates the tag against the Cargo workspace version, publishes
 `${DOCKERHUB_USERNAME}/iwanna-gm8-web-engine:<version>` for `linux/amd64` and
@@ -119,7 +119,7 @@ cargo clippy -p iwm-api -p iwm-detector -p iwm-parser --all-targets --locked --n
 npm --prefix runtime test
 npm --prefix runtime run build
 npm --prefix runtime run test:browser
-docker build -t iwm-beta:0.2.0-beta.1 .
+docker build -t iwm-beta:0.2.0-beta.2 .
 ```
 
 Browser/sample tests require fresh release WASM and a freshly generated local

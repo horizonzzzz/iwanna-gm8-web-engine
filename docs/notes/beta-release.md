@@ -1,6 +1,6 @@
 # Beta Release 0.2
 
-> **Status:** Active deployment and product boundary for `0.2.0-beta.1`.
+> **Status:** Active deployment and product boundary for `0.2.0-beta.2`.
 
 This note supersedes the early MVP deployment assumptions. Runtime fidelity and
 package details remain owned by their dedicated current notes.
