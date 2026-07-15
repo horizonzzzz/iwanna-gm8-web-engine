@@ -38,6 +38,50 @@ jobs:
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare release notes
+        id: notes
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes_dir="$RUNNER_TEMP/iwanna-release-notes"
+          mkdir -p "$notes_dir"
+
+          extract_section() {
+            local file="$1"
+            awk -v heading="## [$VERSION]" '
+              $0 == heading || index($0, heading " -") == 1 { in_section=1; start=NR }
+              in_section && NR > start && /^## \[/ { exit }
+              in_section { print }
+            ' "$file"
+          }
+
+          for file in CHANGELOG.md CHANGELOG.zh-CN.md; do
+            if [[ ! -f "$file" ]]; then
+              echo "::error::Missing $file"
+              exit 1
+            fi
+          done
+
+          extract_section CHANGELOG.md > "$notes_dir/en.md"
+          extract_section CHANGELOG.zh-CN.md > "$notes_dir/zh-CN.md"
+
+          for file in "$notes_dir/en.md" "$notes_dir/zh-CN.md"; do
+            if [[ ! -s "$file" ]]; then
+              echo "::error::Missing CHANGELOG section for version $VERSION"
+              exit 1
+            fi
+          done
+
+          {
+            cat "$notes_dir/en.md"
+            printf '\n---\n\n'
+            cat "$notes_dir/zh-CN.md"
+          } > "$notes_dir/release.md"
+
+          echo "file=$notes_dir/release.md" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -76,12 +120,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
+          NOTES_FILE: ${{ steps.notes.outputs.file }}
         run: |
           set -euo pipefail
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release edit "$TAG_NAME" --title "$TAG_NAME"
+            gh release edit "$TAG_NAME" --title "$TAG_NAME" --notes-file "$NOTES_FILE"
           else
             gh release create "$TAG_NAME" \
               --title "$TAG_NAME" \
-              --generate-notes
+              --notes-file "$NOTES_FILE"
           fi

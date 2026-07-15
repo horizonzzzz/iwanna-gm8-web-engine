@@ -5,6 +5,8 @@
 Browser-playable IWanna engine for a curated legacy GM8 compatibility subset.
 The current release line is `0.2.0-beta.1`.
 
+[Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md)
+
 > [!IMPORTANT]
 > Beta means the upload-to-Canvas product path is available. It does not mean
 > arbitrary GM8 games are fully compatible or finishable.
@@ -54,7 +56,8 @@ Push a tag such as `v0.2.0-beta.1` to run `.github/workflows/release.yml`.
 Configure the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`; the
 workflow validates the tag against the Cargo workspace version, publishes
 `${DOCKERHUB_USERNAME}/iwanna-gm8-web-engine:<version>` for `linux/amd64` and
-`linux/arm64`, and creates the matching GitHub Release.
+`linux/arm64`, and creates the matching GitHub Release from the current version
+sections in both changelog files.
 
 ## Local Development
 
@@ -162,6 +165,7 @@ not promise universal playability.
 
 ## Current Documentation
 
+- `CHANGELOG.md` and `CHANGELOG.zh-CN.md`
 - `docs/notes/beta-release.md`
 - `docs/notes/package-format-v1-runtime.md`
 - `docs/notes/runtime-wasm-gap-analysis.md`
