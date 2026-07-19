@@ -135,8 +135,9 @@ cargo run -p iwm-cli -- runtime-scenario --input .\runtime\public\packages\candi
 ```
 
 Local copyrighted samples belong under `samples/local/iwanna-examples/` and
-must not be committed. `IWBT_Dife` remains the L1 regression target;
-ArioTrials is the current L2 development sample.
+must not be committed. `IWBT_Dife` and ArioTrials are the completed L1/L2
+regression targets; `I wanna be the Crimson ver.1.0` is the current L3
+compatibility-development sample.
 
 ## Repository Layout
 

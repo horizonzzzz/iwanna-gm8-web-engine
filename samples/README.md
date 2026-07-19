@@ -56,10 +56,11 @@ Important:
 
 ## Regression Workflow
 
-Samples are organized as L1/L2/L3 validation targets. IWBT_Dife is the stable
-L1 regression baseline. I Wanna Break Through ArioTrials is the current L2
-compatibility-development sample. Larger or extended games are L3 pressure tests
-until their earlier pipeline stages are stable.
+Samples are organized as L1/L2/L3 validation targets. IWBT_Dife and I Wanna
+Break Through ArioTrials are the completed L1/L2 regression baselines. `I wanna
+be the Crimson ver.1.0` is the current L3 compatibility-development sample.
+Other larger or extended games remain pressure tests until their earlier
+pipeline stages are stable.
 
 Run `sample-audit` first to compose detection, package generation, validation,
 and bounded runtime diagnostics. Keep generated reports under

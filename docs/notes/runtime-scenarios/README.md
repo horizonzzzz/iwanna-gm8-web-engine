@@ -3,7 +3,7 @@
 These files are small `iwm-cli runtime-diagnostics --input-script` fixtures for
 local behavior checks. They contain only key timing data, not sample game assets.
 
-Current scripts target the local `IWBT_Dife` package at:
+Most detailed behavior scripts target the local `IWBT_Dife` package at:
 
 - `runtime/public/packages/sample/`
 
@@ -26,6 +26,18 @@ Current Dife scenarios:
 - `dife-room143-shoot.json`
 - `dife-room151-death-right.json`
 - `dife-room151-r-reset.json` (historical raw-key reference)
+
+Sample-level regression and development baselines:
+
+- `ariotrials-title-idle.json`
+- `ariotrials-select-stage-player.json`
+- `crimson-v1-title-idle.json`
+
+The current Crimson L3 title baseline uses:
+
+```powershell
+cargo run -p iwm-cli -- runtime-scenario --input ".\runtime\public\packages\gm8-core\I wanna be the Crimson ver.1.0" --scenario .\docs\notes\runtime-scenarios\crimson-v1-title-idle.json --ticks 600
+```
 
 The room 151 raw-`R` reset scripts predate the browser keyboard change that
 treats physical `R` as package-owned raw keyboard input. They are useful only as

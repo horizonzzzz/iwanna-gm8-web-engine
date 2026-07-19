@@ -12,7 +12,7 @@ Important local-path note:
 - `runtime/public/packages/sample/` is the intended local output path for a generated smoke package, not a tracked artifact
 - a fresh clone keeps `runtime/public/packages/` empty except for `.gitkeep`
 
-## Primary Gold Sample
+## Completed L1 Regression Sample
 
 **Path:** `samples/local/iwanna-examples/gm8-core/IWBT_Dife`
 
@@ -20,7 +20,7 @@ IWBT_Dife is the L1 regression baseline: later sample work must preserve its
 established movement, collision, death, save/load, savepoint, view, and rendering
 behavior.
 
-## Current L2 Development Sample
+## Completed L2 Regression Sample
 
 **Path:** `samples/local/iwanna-examples/gm8-core/I Wanna Break Through ArioTrials`
 
@@ -32,7 +32,7 @@ remains stable through tick 600, and reports no runtime blockers.
 `docs/notes/runtime-scenarios/ariotrials-title-idle.json` records this repeatable
 baseline.
 
-The current L2 gameplay baseline is the endurance room `room156` when entered
+The completed L2 gameplay baseline is the endurance room `room156` when entered
 with the package flow that carries the persistent player state. Its placed
 `Taiko` starts timeline 18 from `other:room-start`; moment 856 creates
 `RandomMaker1`, whose structured DnD Dice/Begin/End actions create moving
@@ -58,7 +58,7 @@ matching instances, and lets the package-owned alarm event decrement the timer.
 The regression is covered by in-memory runtime tests rather than a sample-specific
 runtime rule.
 
-The first L2 compatibility fix covers GM8 zero-value reads for uninitialized
+A L2 compatibility fix covers GM8 zero-value reads for uninitialized
 global members. ArioTrials relies on `global.grav` reading as `0` in a
 savePoint `other:room-start` condition before it has been assigned. With the
 general runtime behavior restored, direct room 109 selection creates the
@@ -74,9 +74,34 @@ host replaces the active music track when another `Multimedia` or
 
 Why it still matters:
 
-- it remains the intended first sample for validating boot, movement, death/reset, and room transition semantics
-- it is the sample that should decide whether parser/package/runtime gaps are actually on the critical gameplay path
-- it should stay ahead of secondary samples when priorities conflict
+- it remains the L2 regression sample for boot, movement, death/reset, room transitions, timelines, DnD actions, and multi-BGM behavior
+- its scenarios continue to protect the general parser/package/runtime semantics established during L2 development
+- L3 changes must preserve its proven title, player-spawn, endurance-room, and audio behavior
+
+## Current L3 Development Sample
+
+**Path:** `samples/local/iwanna-examples/gm8-core/I wanna be the Crimson ver.1.0`
+
+The first structured L3 audit succeeds through detection, package generation,
+validation, and a 600-tick runtime run. The package contains 50 rooms, 405
+objects, 261 sprites, 39 backgrounds, 36 sounds, 2,240 script blocks, and 2,440
+lowered entries. It transitions from room 2 to `rTitle` (room 111) at tick 1,
+remains stable through tick 600, and reports no runtime blockers.
+`docs/notes/runtime-scenarios/crimson-v1-title-idle.json` records this repeatable
+baseline.
+
+The current generated package still reports one raw lowering fallback in room
+166 instance creation code (`vspd  -6`), one normalized missing room background,
+and the resulting partial script-IR warning. None is proven to sit on the title
+boot path. Promote one only after a reproducible Crimson gameplay path reaches
+it or ties it to a visible spawn, movement, death/reset, transition, rendering,
+or boss-pattern failure.
+
+Current L3 work should proceed from the original package flow instead of broad
+manual room selection: first establish title-to-gameplay navigation, then add
+the smallest scenarios for the first playable room, death/reset, room
+transition, and a representative complex encounter. Dife and ArioTrials remain
+the L1/L2 regression gates for every L3 change.
 
 Important local-environment note:
 

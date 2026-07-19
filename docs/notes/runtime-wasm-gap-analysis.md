@@ -19,10 +19,12 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 ## Current Baseline
 
 - The CLI provides `sample-audit` for staged local compatibility audits and
-  `runtime-scenario` for input-script replay with declarative assertions. Dife is
-  the L1 regression sample. The first ArioTrials L2 audit reaches `rTitle` (room
-  111), remains stable for 600 ticks, and reports no runtime blockers; this does
-  not yet claim menu navigation or gameplay-room compatibility.
+  `runtime-scenario` for input-script replay with declarative assertions. Dife
+  and ArioTrials are the completed L1/L2 regression samples. Crimson v1 is the
+  current L3 compatibility-development sample; its first audit reaches `rTitle`
+  (room 111), remains stable for 600 ticks, and reports no runtime blockers.
+  This title-idle baseline does not yet claim menu navigation or gameplay-room
+  compatibility.
 - Uninitialized `global.member` reads now use GM8's numeric zero fallback, the
   same class of behavior already used for ordinary uninitialized instance
   variables. This allows package-owned room-start conditions such as
@@ -389,14 +391,14 @@ The Beta route sets the next implementation order as:
 1. keep upload-to-validated-package-to-Canvas regression coverage fresh
 2. use unsupported diagnostics and behavior traces before adding GM helpers
 3. keep the lowered parser contract stable except where sample evidence requires expansion
-4. close visible runtime compatibility gaps on L1/L2 paths
+4. close visible runtime compatibility gaps on the active Crimson L3 path while preserving L1/L2 regressions
 5. revisit catch-up timing, workers, queues, or multi-instance storage only from measured need
 
 Current gameplay-blocker workflow:
 
-1. Validate the local package before debugging browser symptoms: `cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample`.
-2. Run targeted diagnostics against the active Dife room. If `runtime_blockers` is non-empty, rank by first room/tick/block/object and add the smallest runtime/parser slice needed for that proven path.
+1. Validate the active local package before debugging browser symptoms. Dife uses `runtime/public/packages/sample/`; the current Crimson L3 package uses `runtime/public/packages/gm8-core/I wanna be the Crimson ver.1.0/`.
+2. Run targeted diagnostics against the active sample path. If `runtime_blockers` is non-empty, rank by first room/tick/block/object and add the smallest runtime/parser slice needed for that proven path.
 3. If `runtime_blockers` is empty, switch from unsupported-helper work to behavior validation. Capture `--trace-player` with controlled inputs, compare `trace_summary` first for quick drift detection, then inspect full `player_trace` rows for room/tick, `x/y`, `hspeed/vspeed`, alive state, grounded state, jump phase, active keys, and room transitions against browser observations or a reference run.
-Use `--input-script` when the behavior depends on more than a single one-tick press or an always-held key, and use `runtime_events` to quickly spot whether a restart, room change, death, or runtime instance churn happened on the expected frame. The current checked-in Dife input scripts live under `docs/notes/runtime-scenarios/` and cover room 143 tap jump, held jump, release cut, right movement, and shoot, plus room 151 rightward hazard death. The older room151 raw-`R` reset scripts are historical fallback-host checks now that browser physical `R` is treated as package-owned raw keyboard input.
+Use `--input-script` when the behavior depends on more than a single one-tick press or an always-held key, and use `runtime_events` to quickly spot whether a restart, room change, death, or runtime instance churn happened on the expected frame. The checked-in L1/L2 scripts remain regression fixtures, while new Crimson scenarios should cover only paths proven during L3 development. The older Dife room151 raw-`R` reset scripts are historical fallback-host checks now that browser physical `R` is treated as package-owned raw keyboard input.
 4. For browser-only problems, use the shell frame timings to separate runtime-core work (`tick` / `step` / `collision` / `renderSubmit`) from snapshot serialization and canvas rendering. Treat sustained large-room frame spikes as a performance blocker only after unsupported diagnostics are clean.
-5. Promote a missing API or lowered construct only when it is tied to spawn, movement, death/reset, room transition, savepoint, camera, or another visible gameplay failure on the gold-sample path. Keep BGM create-time dispatch in the audio backlog unless it gates gameplay state.
+5. Promote a missing API or lowered construct only when it is tied to spawn, movement, death/reset, room transition, savepoint, camera, or another visible gameplay failure on a reproducible active-sample path. Keep BGM create-time dispatch in the audio backlog unless it gates gameplay state.
