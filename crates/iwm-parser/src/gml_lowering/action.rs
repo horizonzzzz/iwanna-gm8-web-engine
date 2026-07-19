@@ -105,6 +105,17 @@ fn lower_condition(action: &RawCodeAction) -> LoweredLogicExpr {
             };
             lower_expr(&format!("instance_number({object}) {operator} {number}"))
         }
+        "action_if_variable" => {
+            let variable = action.args.first().map(String::as_str).unwrap_or("0");
+            let value = action.args.get(1).map(String::as_str).unwrap_or("0");
+            let comparator = action.args.get(2).map(String::as_str).unwrap_or("0");
+            let operator = match comparator.trim() {
+                "1" => "<",
+                "2" => ">",
+                _ => "==",
+            };
+            lower_expr(&format!("{variable} {operator} {value}"))
+        }
         _ if !action.fn_code.trim().is_empty() => lower_expr(action.fn_code.trim()),
         _ if !action.fn_name.is_empty() => {
             lower_expr(&format!("{}({})", action.fn_name, action.args.join(", ")))

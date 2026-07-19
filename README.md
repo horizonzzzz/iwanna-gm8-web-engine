@@ -137,7 +137,11 @@ cargo run -p iwm-cli -- runtime-scenario --input .\runtime\public\packages\candi
 Local copyrighted samples belong under `samples/local/iwanna-examples/` and
 must not be committed. `IWBT_Dife` and ArioTrials are the completed L1/L2
 regression targets; `I wanna be the Crimson ver.1.0` is the current L3
-compatibility-development sample.
+compatibility-development sample. Its first three P0 gaps are now implemented:
+DnD `action_if_variable` lowering, lowered-script arguments/return values, and
+package-backed `path_start` movement. A fresh 50-room one-tick Crimson scan now
+leaves only the non-P0 `power()` helper in room 190; this is diagnostic coverage,
+not a full playability claim.
 
 ## Repository Layout
 

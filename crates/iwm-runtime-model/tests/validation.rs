@@ -229,6 +229,7 @@ fn valid_sparse_package() -> RuntimePackageContract {
             }],
             sounds: vec![],
             fonts: vec![],
+            paths: vec![],
         },
     }
 }

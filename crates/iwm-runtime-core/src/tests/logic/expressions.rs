@@ -227,6 +227,72 @@ fn core_executes_zero_arg_script_calls_from_lowered_step_events() {
 }
 
 #[test]
+fn core_binds_script_arguments_and_returns_values_from_expressions() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![assign_var(
+            "result",
+            LoweredLogicExpr::Call {
+                name: "doubleValue".into(),
+                args: vec![LoweredLogicExpr::LiteralNumber(6.0)],
+            },
+        )],
+    );
+    add_script_block(
+        &mut package,
+        14,
+        "doubleValue",
+        vec![
+            LoweredLogicStatement::Return {
+                value: Some(LoweredLogicExpr::BinaryExpr {
+                    op: "*".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("argument0".into())),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(2.0)),
+                }),
+            },
+            assign_var("after_return", LoweredLogicExpr::LiteralBool(true)),
+        ],
+    );
+
+    let core = tick_package(package);
+
+    assert_eq!(
+        player_var(&core, "result"),
+        Some(&RuntimeValue::Number(12.0))
+    );
+    assert_eq!(player_var(&core, "after_return"), None);
+}
+
+#[test]
+fn core_binds_arguments_for_statement_script_calls() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "setValue".into(),
+            args: vec![LoweredLogicExpr::LiteralNumber(9.0)],
+        }],
+    );
+    add_script_block(
+        &mut package,
+        15,
+        "setValue",
+        vec![assign_var(
+            "script_value",
+            LoweredLogicExpr::Identifier("argument0".into()),
+        )],
+    );
+
+    let core = tick_package(package);
+
+    assert_eq!(
+        player_var(&core, "script_value"),
+        Some(&RuntimeValue::Number(9.0))
+    );
+}
+
+#[test]
 fn core_preserves_script_applied_vspeed_without_step_player_overwrite() {
     let mut package = sample_package();
     add_step_block(

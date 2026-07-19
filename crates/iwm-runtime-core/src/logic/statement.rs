@@ -4,7 +4,7 @@ use std::path::Path;
 use iwm_runtime_host::{
     Rgba8, RuntimeDrawCommand, RuntimeHost, RuntimeHostErrorKind, RuntimeSoundMode,
 };
-use iwm_runtime_model::{FontResource, ObjectDefinition, SpriteResource};
+use iwm_runtime_model::{FontResource, ObjectDefinition, PathResource, SpriteResource};
 
 use super::assignment::{assign_runtime_value, next_room_id, runtime_value_to_room_id};
 use super::calls::{
@@ -35,6 +35,7 @@ use super::instances::{
 use super::overlay::RuntimeSparseInstanceOverlay;
 use crate::event_dispatch::{inherited_event_block_id, RuntimeEventSelector};
 use crate::helpers::{as_number, record_host_diagnostic};
+use crate::path::start_path;
 use crate::tick_context::RuntimeObjectQueryScratch;
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeInstance, RuntimeValue,
@@ -66,6 +67,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) room_instance_creates: &'a mut Vec<RuntimeInstanceCreateRequest>,
     pub(crate) objects: &'a [ObjectDefinition],
     pub(crate) sprites: &'a [SpriteResource],
+    pub(crate) paths: &'a [PathResource],
     pub(crate) sprite_index: &'a HashMap<usize, usize>,
     pub(crate) sprite_ids_by_name: &'a HashMap<String, usize>,
     pub(crate) fonts: &'a [FontResource],
@@ -128,7 +130,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     destroy_event_entries: &HashMap<usize, Vec<LoweredLogicEntry>>,
     eval_context: Option<&RuntimeEvalContext<'_>>,
     env: &mut RuntimeStatementEnvironment<'_, H>,
-) {
+) -> Option<RuntimeValue> {
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
             if let Some(value) = evaluate_with_diagnostics(
@@ -148,7 +150,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     eval_context,
                     env,
                 ) {
-                    return;
+                    return None;
                 }
                 if let Some(key) = assignable_key(
                     target,
@@ -189,7 +191,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 else_branch
             };
             for nested in branch {
-                apply_runtime_statement(
+                if let Some(value) = apply_runtime_statement(
                     nested,
                     instance,
                     instance_index,
@@ -197,7 +199,9 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     destroy_event_entries,
                     eval_context,
                     env,
-                );
+                ) {
+                    return Some(value);
+                }
             }
         }
         LoweredLogicStatement::VariableDeclaration { names } => {
@@ -205,7 +209,23 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 scope.declare(name);
             }
         }
-        LoweredLogicStatement::Return { .. } => {}
+        LoweredLogicStatement::Return { value } => {
+            return Some(
+                value
+                    .as_ref()
+                    .and_then(|value| {
+                        evaluate_with_diagnostics(
+                            value,
+                            Some(instance),
+                            Some(scope),
+                            eval_context,
+                            env,
+                            instance,
+                        )
+                    })
+                    .unwrap_or(RuntimeValue::Number(0.0)),
+            );
+        }
         LoweredLogicStatement::FunctionCall { name, args } => match name.as_str() {
             "room_goto" => {
                 if let Some(room_id) = args
@@ -267,25 +287,19 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 *env.pending_game_restart = true;
             }
             "draw_set_color" => {
-                let Some(colour) = args.first().and_then(draw_colour_arg) else {
-                    return;
-                };
+                let colour = args.first().and_then(draw_colour_arg)?;
                 if let Some(draw) = env.draw.as_deref_mut() {
                     draw.colour = colour;
                 }
             }
             "draw_set_halign" => {
-                let Some(align) = args.first().and_then(draw_align_arg) else {
-                    return;
-                };
+                let align = args.first().and_then(draw_align_arg)?;
                 if let Some(draw) = env.draw.as_deref_mut() {
                     draw.align = align;
                 }
             }
             "draw_set_font" => {
-                let Some(font) = args.first().and_then(|arg| draw_font_arg(arg, env)) else {
-                    return;
-                };
+                let font = args.first().and_then(|arg| draw_font_arg(arg, env))?;
                 if let Some(draw) = env.draw.as_deref_mut() {
                     draw.size = font.size;
                     draw.font_name = font.name;
@@ -366,17 +380,17 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             "move_contact_solid" => {
                 dispatch_move_contact_solid(env, args, instance, scope, eval_context);
             }
+            "path_start" => {
+                if let Some((path, speed, end_action, absolute)) =
+                    evaluate_path_start_args(args, instance, scope, eval_context, env)
+                {
+                    start_path(instance, &path, speed, end_action, absolute);
+                }
+            }
             "file_bin_write_byte" => {
-                let Some(handle) =
-                    evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)
-                else {
-                    return;
-                };
-                let Some(byte) =
-                    evaluate_file_bin_byte(args.get(1), instance, scope, eval_context, env)
-                else {
-                    return;
-                };
+                let handle =
+                    evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
+                let byte = evaluate_file_bin_byte(args.get(1), instance, scope, eval_context, env)?;
                 env.binary_files.write_byte(handle, byte);
             }
             "file_delete" => {
@@ -390,7 +404,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         instance,
                     )
                 }) else {
-                    return;
+                    return None;
                 };
                 if let Err(error) = env.host.remove_temp(Path::new(&path)) {
                     if error.kind() != RuntimeHostErrorKind::NotFound {
@@ -410,11 +424,8 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
             }
             "file_bin_close" => {
-                let Some(handle) =
-                    evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)
-                else {
-                    return;
-                };
+                let handle =
+                    evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
                 if let Err(error) = env.binary_files.close(env.host, handle) {
                     record_host_diagnostic(
                         env.host,
@@ -431,9 +442,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
             }
             "__iwm_action_wrap" => {
-                let Some(context) = eval_context else {
-                    return;
-                };
+                let context = eval_context?;
                 let mode = args
                     .first()
                     .and_then(|arg| {
@@ -533,32 +542,24 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
             }
             _ => {
-                if let Some(entry) = env.script_entries.get(name) {
-                    let mut script_scope = RuntimeExecutionScope::default();
-                    let previous_trace = env.trace.clone();
-                    env.trace.block_id.clone_from(&entry.block_id);
-                    env.trace.event_tag = "script".into();
-                    for nested in &entry.statements {
-                        apply_runtime_statement(
-                            nested,
-                            instance,
-                            instance_index,
-                            &mut script_scope,
-                            destroy_event_entries,
-                            eval_context,
-                            env,
-                        );
-                    }
-                    env.trace = previous_trace;
-                } else {
+                if execute_runtime_script(
+                    name,
+                    args,
+                    instance,
+                    instance_index,
+                    scope,
+                    destroy_event_entries,
+                    eval_context,
+                    env,
+                )
+                .is_none()
+                {
                     record_unsupported_function(env, name, instance);
                 }
             }
         },
         LoweredLogicStatement::With { target, body } => {
-            let Some(context) = eval_context else {
-                return;
-            };
+            let context = eval_context?;
             write_with_target_indices(
                 target,
                 instance_index,
@@ -580,7 +581,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             instance,
                         );
                         let with_context = context.with_other_and_overlay(&other_snapshot, overlay);
-                        apply_runtime_statement(
+                        if let Some(value) = apply_runtime_statement(
                             nested,
                             instance,
                             instance_index,
@@ -588,7 +589,15 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             destroy_event_entries,
                             Some(&with_context),
                             env,
-                        );
+                        ) {
+                            sync_instance_from_updates(
+                                instance_index,
+                                instance,
+                                env.room_instance_updates,
+                            );
+                            *env.with_target_indices = target_indices;
+                            return Some(value);
+                        }
                         sync_instance_from_updates(
                             instance_index,
                             instance,
@@ -623,7 +632,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         &target_instance,
                     );
                     let with_context = context.with_other_and_overlay(&other_snapshot, overlay);
-                    apply_runtime_statement(
+                    if let Some(value) = apply_runtime_statement(
                         nested,
                         &mut target_instance,
                         target_index,
@@ -631,7 +640,11 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         destroy_event_entries,
                         Some(&with_context),
                         env,
-                    );
+                    ) {
+                        env.room_instance_updates.set(target_index, target_instance);
+                        *env.with_target_indices = target_indices;
+                        return Some(value);
+                    }
                     sync_instance_from_updates(
                         target_index,
                         &mut target_instance,
@@ -665,7 +678,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 instance,
             )) {
                 for nested in body {
-                    apply_runtime_statement(
+                    if let Some(value) = apply_runtime_statement(
                         nested,
                         instance,
                         instance_index,
@@ -673,7 +686,9 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         destroy_event_entries,
                         eval_context,
                         env,
-                    );
+                    ) {
+                        return Some(value);
+                    }
                     if env_has_pending_scene_change(env) {
                         break;
                     }
@@ -714,7 +729,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             let capped_count = repeat_count.min(10_000);
             for _ in 0..capped_count {
                 for nested in body {
-                    apply_runtime_statement(
+                    if let Some(value) = apply_runtime_statement(
                         nested,
                         instance,
                         instance_index,
@@ -722,7 +737,9 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         destroy_event_entries,
                         eval_context,
                         env,
-                    );
+                    ) {
+                        return Some(value);
+                    }
                     if env_has_pending_scene_change(env) {
                         break;
                     }
@@ -744,10 +761,188 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 );
             }
         }
+        LoweredLogicStatement::While { condition, body } => {
+            let mut iteration_count = 0usize;
+            while is_truthy(evaluate_with_diagnostics(
+                condition,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )) {
+                for nested in body {
+                    if let Some(value) = apply_runtime_statement(
+                        nested,
+                        instance,
+                        instance_index,
+                        scope,
+                        destroy_event_entries,
+                        eval_context,
+                        env,
+                    ) {
+                        return Some(value);
+                    }
+                    if env_has_pending_scene_change(env) {
+                        break;
+                    }
+                }
+                if env_has_pending_scene_change(env) {
+                    break;
+                }
+                iteration_count += 1;
+                if iteration_count >= 10_000 {
+                    record_host_diagnostic(
+                        env.host,
+                        env.diagnostics,
+                        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                        "runtime-while-iteration-limit",
+                        format!(
+                            "{} iteration_limit=10000",
+                            trace_message(&env.trace, instance)
+                        ),
+                    );
+                    break;
+                }
+            }
+        }
         _ => {
             record_unsupported_statement(env, statement, instance);
         }
     }
+    None
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "shared runtime statement context"
+)]
+fn execute_runtime_script<H: RuntimeHost>(
+    name: &str,
+    args: &[LoweredLogicExpr],
+    instance: &mut RuntimeInstance,
+    instance_index: usize,
+    caller_scope: &RuntimeExecutionScope,
+    destroy_event_entries: &HashMap<usize, Vec<LoweredLogicEntry>>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) -> Option<RuntimeValue> {
+    let entry = env.script_entries.get(name)?.clone();
+    let values = args
+        .iter()
+        .map(|arg| {
+            evaluate_with_diagnostics(
+                arg,
+                Some(instance),
+                Some(caller_scope),
+                eval_context,
+                env,
+                instance,
+            )
+            .unwrap_or(RuntimeValue::Number(0.0))
+        })
+        .collect::<Vec<_>>();
+    let mut script_scope = RuntimeExecutionScope::default();
+    script_scope.bind("argument_count", RuntimeValue::Number(values.len() as f64));
+    for index in 0..16 {
+        script_scope.bind(
+            format!("argument{index}"),
+            values
+                .get(index)
+                .cloned()
+                .unwrap_or(RuntimeValue::Number(0.0)),
+        );
+    }
+
+    let previous_trace = env.trace.clone();
+    env.trace.block_id.clone_from(&entry.block_id);
+    env.trace.event_tag = "script".into();
+    let mut result = RuntimeValue::Number(0.0);
+    for nested in &entry.statements {
+        if let Some(value) = apply_runtime_statement(
+            nested,
+            instance,
+            instance_index,
+            &mut script_scope,
+            destroy_event_entries,
+            eval_context,
+            env,
+        ) {
+            result = value;
+            break;
+        }
+    }
+    env.trace = previous_trace;
+    Some(result)
+}
+
+fn evaluate_path_start_args<'a, H: RuntimeHost>(
+    args: &[LoweredLogicExpr],
+    instance: &RuntimeInstance,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'a, H>,
+) -> Option<(iwm_runtime_model::PathResource, f64, i32, bool)> {
+    let path = match args.first()? {
+        LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) => env
+            .paths
+            .iter()
+            .find(|path| path.name.eq_ignore_ascii_case(name)),
+        expr => evaluate_with_diagnostics(
+            expr,
+            Some(instance),
+            Some(scope),
+            eval_context,
+            env,
+            instance,
+        )
+        .and_then(|value| as_number(&value))
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .map(|value| value.round() as usize)
+        .and_then(|path_id| env.paths.iter().find(|path| path.id == path_id)),
+    }?
+    .clone();
+    let speed = args
+        .get(1)
+        .and_then(|arg| {
+            evaluate_with_diagnostics(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .and_then(|value| as_number(&value))?;
+    let end_action = args
+        .get(2)
+        .and_then(|arg| {
+            evaluate_with_diagnostics(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .and_then(|value| as_number(&value))?
+        .round() as i32;
+    let absolute = args
+        .get(3)
+        .and_then(|arg| {
+            evaluate_with_diagnostics(
+                arg,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .is_some_and(|value| is_truthy(Some(value)));
+    Some((path, speed, end_action, absolute))
 }
 
 fn dispatch_draw_text<H: RuntimeHost>(
@@ -1272,6 +1467,20 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
                 .and_then(|value| runtime_value_to_i32(&value))?;
             let byte = env.binary_files.read_byte(handle);
             return Some(RuntimeValue::Number(byte as f64));
+        }
+        if env.script_entries.contains_key(name) {
+            let mut instance = instance?.clone();
+            let instance_index = instance.runtime_id;
+            return execute_runtime_script(
+                name,
+                args,
+                &mut instance,
+                instance_index,
+                scope?,
+                &HashMap::new(),
+                eval_context,
+                env,
+            );
         }
     }
     if let Some((target, member)) =

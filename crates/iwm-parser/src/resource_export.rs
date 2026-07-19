@@ -1,6 +1,6 @@
 use crate::models::{
-    BackgroundResource, FontGlyphResource, FontResource, ResourceIndex, SoundResource,
-    SpriteCollisionMask, SpriteResource,
+    BackgroundResource, FontGlyphResource, FontResource, PathPointResource, PathResource,
+    ResourceIndex, SoundResource, SpriteCollisionMask, SpriteResource,
 };
 use anyhow::{Context, Result};
 use gm8exe::GameAssets;
@@ -169,11 +169,35 @@ pub fn export_resources(assets: &GameAssets, output_dir: &Path) -> Result<Resour
         })
         .collect::<Result<Vec<_>>>()?;
 
+    let paths = assets
+        .paths
+        .iter()
+        .enumerate()
+        .filter_map(|(id, path)| path.as_ref().map(|path| (id, path)))
+        .map(|(id, path)| PathResource {
+            id,
+            name: path.name.to_string(),
+            smooth: path.connection == gm8exe::asset::path::ConnectionKind::SmoothCurve,
+            precision: path.precision,
+            closed: path.closed,
+            points: path
+                .points
+                .iter()
+                .map(|point| PathPointResource {
+                    x: point.x,
+                    y: point.y,
+                    speed: point.speed,
+                })
+                .collect(),
+        })
+        .collect();
+
     Ok(ResourceIndex {
         sprites,
         backgrounds,
         sounds,
         fonts,
+        paths,
     })
 }
 

@@ -182,6 +182,18 @@ impl RuntimeCore {
         vars.insert("timeline_speed".into(), crate::RuntimeValue::Number(1.0));
         vars.insert("timeline_running".into(), crate::RuntimeValue::Bool(false));
         vars.insert("timeline_loop".into(), crate::RuntimeValue::Bool(false));
+        vars.insert("path_index".into(), crate::RuntimeValue::Number(-1.0));
+        vars.insert("path_position".into(), crate::RuntimeValue::Number(0.0));
+        vars.insert(
+            "path_positionprevious".into(),
+            crate::RuntimeValue::Number(0.0),
+        );
+        vars.insert("path_speed".into(), crate::RuntimeValue::Number(0.0));
+        vars.insert("path_scale".into(), crate::RuntimeValue::Number(1.0));
+        vars.insert("path_orientation".into(), crate::RuntimeValue::Number(0.0));
+        vars.insert("path_endaction".into(), crate::RuntimeValue::Number(0.0));
+        vars.insert("path_xstart".into(), crate::RuntimeValue::Number(x));
+        vars.insert("path_ystart".into(), crate::RuntimeValue::Number(y));
         Some(RuntimeInstance {
             runtime_id,
             instance_id: -1 - runtime_id as i32,

@@ -1,15 +1,23 @@
 use super::*;
 
 #[test]
-fn core_reports_unsupported_statement_with_execution_context() {
+fn core_executes_while_statement_without_unsupported_diagnostic() {
     let mut package = sample_package();
     add_step_block(
         &mut package,
         vec![LoweredLogicStatement::While {
-            condition: LoweredLogicExpr::LiteralBool(false),
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: "<".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("loop_count".into())),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(2.0)),
+            },
             body: vec![LoweredLogicStatement::Assignment {
-                target: LoweredLogicExpr::Identifier("x".into()),
-                value: LoweredLogicExpr::LiteralNumber(99.0),
+                target: LoweredLogicExpr::Identifier("loop_count".into()),
+                value: LoweredLogicExpr::BinaryExpr {
+                    op: "+".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("loop_count".into())),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                },
             }],
         }],
     );
@@ -18,18 +26,14 @@ fn core_reports_unsupported_statement_with_execution_context() {
 
     core.tick(&mut host).unwrap();
 
-    let diagnostics = core.diagnostics();
-    let unsupported = diagnostics
+    assert_eq!(
+        player_var(&core, "loop_count"),
+        Some(&RuntimeValue::Number(2.0))
+    );
+    assert!(!core
+        .diagnostics()
         .iter()
-        .find(|entry| entry.code == "runtime-unsupported-statement")
-        .expect("unsupported while statement should be diagnosed");
-    assert!(unsupported.message.contains("room=7"));
-    assert!(unsupported.message.contains("tick=1"));
-    assert!(unsupported.message.contains("block_id=object:0:event:3:0"));
-    assert!(unsupported.message.contains("object=obj_player"));
-    assert!(unsupported.message.contains("event_tag=step"));
-    assert!(unsupported.message.contains("statement_kind=while"));
-    assert!(unsupported.message.contains("runtime_id=0"));
+        .any(|entry| entry.code == "runtime-unsupported-statement"));
 }
 
 #[test]

@@ -38,13 +38,14 @@ Included in this phase:
 - browser-ready background exports
 - audio file exports
 - parsed font metadata in `resources/index.json`, including GM font name, system font name, size, bold, italic, character range, atlas path, atlas dimensions, and glyph metrics
+- parsed GM path metadata in `resources/index.json`, including sparse path id, name, straight/smooth connection, precision, closed state, and point position/speed records
 - normalized room instance placements with runtime categorization hints
 - parser-normalized GM room order in `manifest.room_order`
 - normalized object event table with event tags and collision target ids for dispatch
 - logic envelope in `scripts.ir.json` with executable/source-only distinction
 - raw parser-owned GML preservation in `logic.raw.json`
 - structured parser-owned lowered logic in `logic.lowered.json` for the current IWanna-critical subset
-- the current lowered contract also preserves common comment stripping, `var` declarations, unary expressions, and `return` statements on the current critical path
+- the current lowered contract also preserves common comment stripping, `var` declarations, unary expressions, `return` statements, and DnD variable comparisons such as `action_if_variable` on the current critical path
 - control-flow heads in `logic.lowered.json` are represented as lowered expressions so the WASM bridge can deserialize them directly
 - runtime categorization: hazard, checkpoint, player-controlled hints
 
@@ -85,6 +86,7 @@ The execution notes below describe the current package contract and shell/runtim
 - Object-level `is_hazard`, `is_checkpoint`, `is_player` hints
 - Event entries with normalized `event_tag` for runtime dispatch
 - Resource index with paths to browser-loadable assets
+- Resource index path records consumed by runtime-core for `path_start` and per-tick path movement
 - Manifest with default room, source room order, and compatibility metadata
 
 ### Runtime Contract Invariants
@@ -105,6 +107,7 @@ Important current invariants:
 - sprite PNG frame exports are browser RGBA data; gm8exe BGRA frame buffers are converted during resource export, matching the background export path
 - font resources are records in `resources/index.json` with a browser-loadable atlas PNG under `resources/fonts/` plus 256 gm8exe-derived glyph metric records; runtime draw commands may reference these records by GM font name after lowered `draw_set_font(...)` calls
 - font glyph `offset` is the draw-position offset from the current cursor, while `advance` is the cursor movement after drawing; this matches the GM/OpenGMK draw loop rather than the raw `dmap` field comments
+- `resources.index.json -> paths[*].id` is the GM path id; `path_start` may resolve either this sparse id or the exported path name, while point `speed` is the GM percentage multiplier used during path advancement
 - runtime consumers should validate cross-file references explicitly instead of silently assuming contiguous ids
 
 This matters because normalized package ids may remain sparse even when the emitted JSON arrays are dense. Runtime code must resolve identities by `id` rather than by array offset.

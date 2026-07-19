@@ -27,6 +27,7 @@ impl RuntimeCore {
             apply_gm_motion_vars(instance);
             instance.x += instance.hspeed;
             instance.y += instance.vspeed;
+            crate::path::advance_path(instance, &self.package.resources.paths);
         }
 
         Ok(())
@@ -126,6 +127,10 @@ impl RuntimeCore {
 
         player.previous_x = player.x;
         player.previous_y = player.y;
+
+        if crate::path::advance_path(player, &self.package.resources.paths) {
+            return Ok(());
+        }
 
         player.hspeed = match (left_pressed, right_pressed) {
             (true, false) => {

@@ -116,6 +116,7 @@ export function makeResourceIndex(overrides: Partial<ResourceIndex> = {}): Resou
     backgrounds: [],
     sounds: [],
     fonts: [],
+    paths: [],
     ...overrides,
   };
 }

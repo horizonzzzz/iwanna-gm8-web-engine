@@ -1,4 +1,59 @@
 use super::*;
+use iwm_runtime_model::{PathPointResource, PathResource};
+
+#[test]
+fn creation_code_path_start_initializes_and_moves_instance_on_tick() {
+    let mut package = sample_package();
+    package.resources.paths.push(PathResource {
+        id: 4,
+        name: "pathCrimson".into(),
+        smooth: false,
+        precision: 4,
+        closed: false,
+        points: vec![
+            PathPointResource {
+                x: 0.0,
+                y: 0.0,
+                speed: 100.0,
+            },
+            PathPointResource {
+                x: 100.0,
+                y: 0.0,
+                speed: 100.0,
+            },
+        ],
+    });
+    package.rooms[0].instances[1].creation_block_id = Some("instance:1:create".into());
+    append_lowered_entry(
+        &mut package,
+        "instance:1:create".into(),
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "path_start".into(),
+            args: vec![
+                LoweredLogicExpr::Identifier("pathCrimson".into()),
+                LoweredLogicExpr::LiteralNumber(10.0),
+                LoweredLogicExpr::LiteralNumber(0.0),
+                LoweredLogicExpr::LiteralBool(false),
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let initial_x = core.current_room().unwrap().instances[1].x;
+    assert_eq!(
+        core.current_room().unwrap().instances[1]
+            .vars
+            .get("path_index"),
+        Some(&RuntimeValue::Number(4.0))
+    );
+
+    core.tick(&mut host()).unwrap();
+
+    assert_eq!(
+        core.current_room().unwrap().instances[1].x,
+        initial_x + 10.0
+    );
+}
 
 #[test]
 fn core_applies_lowered_create_assignments_to_player_vars_and_movement() {

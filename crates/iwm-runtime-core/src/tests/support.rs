@@ -344,6 +344,7 @@ fn sample_resources() -> ResourceIndex {
             kind: "normal".into(),
         }],
         fonts: vec![],
+        paths: vec![],
     }
 }
 

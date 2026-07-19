@@ -1216,6 +1216,7 @@ impl RuntimeCore {
                     room_instance_creates: &mut instance_creates,
                     objects,
                     sprites: &self.package.resources.sprites,
+                    paths: &self.package.resources.paths,
                     sprite_index: &self.sprite_index,
                     sprite_ids_by_name: &self.sprite_ids_by_name,
                     fonts: &self.package.resources.fonts,

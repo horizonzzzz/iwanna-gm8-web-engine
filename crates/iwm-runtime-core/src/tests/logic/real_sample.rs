@@ -2,6 +2,23 @@ use super::*;
 
 use crate::RuntimeInstance;
 
+#[test]
+fn crimson_count_killed_bosses_script_returns_without_unsupported_diagnostics() {
+    let Some(package) = local_sample_package("gm8-core/I wanna be the Crimson ver.1.0") else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    core.reload_room(163).unwrap();
+    let mut host = HeadlessHost::new("sandbox");
+
+    core.tick(&mut host).unwrap();
+
+    assert!(!core.diagnostics().iter().any(|diagnostic| {
+        diagnostic.code == "runtime-unsupported-function"
+            && diagnostic.message.contains("countKilledBosses")
+    }));
+}
+
 fn move_real_sample_player_onto_savepoint(core: &mut RuntimeCore) {
     move_real_sample_player_onto_target(
         core,

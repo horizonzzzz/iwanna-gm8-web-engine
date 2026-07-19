@@ -868,6 +868,52 @@ fn lowered_logic_file_translates_timeline_start_action() {
 }
 
 #[test]
+fn lowered_logic_file_lowers_dnd_variable_condition_comparator() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawLogicEventBinding, RawLogicFile};
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
+
+    let mut condition = dnd_action(0, "action_if_variable", &["global.grav", "1", "0"]);
+    condition.is_condition = true;
+    condition.invert_condition = true;
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".into(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 1,
+            object_name: "CrimsonObject".into(),
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            collision_object_id: None,
+            block_id: "object:1:event:3:0".into(),
+            actions: vec![
+                condition,
+                dnd_action(1, "", &[]),
+                dnd_action(0, "game_restart", &[]),
+                dnd_action(2, "", &[]),
+            ],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let LoweredLogicStatement::Conditional { condition, .. } = &lowered.entries[0].statements[0]
+    else {
+        panic!("expected DnD condition");
+    };
+    assert!(matches!(condition, LoweredLogicExpr::UnaryExpr { op, .. } if op == "!"));
+    let json = serde_json::to_string(condition).unwrap();
+    assert!(json.contains("\"op\":\"==\""));
+    assert!(json.contains("global"));
+    assert!(json.contains("grav"));
+    assert!(!json.contains("action_if_variable"));
+}
+
+#[test]
 fn lowered_logic_file_preserves_dnd_condition_block_and_relative_motion_create() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
     use iwm_parser::models::{RawLogicEventBinding, RawLogicFile};

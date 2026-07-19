@@ -257,6 +257,82 @@ impl RuntimeCore {
                         visible_instances,
                     );
                 }
+                "path_start" => {
+                    let path = match args.first() {
+                        Some(LoweredLogicExpr::Identifier(name))
+                        | Some(LoweredLogicExpr::LiteralText(name)) => self
+                            .package
+                            .resources
+                            .paths
+                            .iter()
+                            .find(|path| path.name.eq_ignore_ascii_case(name)),
+                        Some(expr) => evaluate_expr_with_sprite_constants(
+                            expr,
+                            Some(&instance_snapshot),
+                            &self.globals,
+                            None,
+                            None,
+                            &self.sprite_ids_by_name,
+                        )
+                        .and_then(|value| as_number(&value))
+                        .map(|value| value.round() as usize)
+                        .and_then(|id| {
+                            self.package
+                                .resources
+                                .paths
+                                .iter()
+                                .find(|path| path.id == id)
+                        }),
+                        None => None,
+                    }
+                    .cloned();
+                    let speed = args.get(1).and_then(|expr| {
+                        evaluate_expr_with_sprite_constants(
+                            expr,
+                            Some(&instance_snapshot),
+                            &self.globals,
+                            None,
+                            None,
+                            &self.sprite_ids_by_name,
+                        )
+                        .and_then(|value| as_number(&value))
+                    });
+                    let end_action = args.get(2).and_then(|expr| {
+                        evaluate_expr_with_sprite_constants(
+                            expr,
+                            Some(&instance_snapshot),
+                            &self.globals,
+                            None,
+                            None,
+                            &self.sprite_ids_by_name,
+                        )
+                        .and_then(|value| as_number(&value))
+                        .map(|value| value.round() as i32)
+                    });
+                    let absolute = args.get(3).and_then(|expr| {
+                        evaluate_expr_with_sprite_constants(
+                            expr,
+                            Some(&instance_snapshot),
+                            &self.globals,
+                            None,
+                            None,
+                            &self.sprite_ids_by_name,
+                        )
+                    });
+                    if let (Some(path), Some(speed), Some(end_action), Some(absolute)) =
+                        (path, speed, end_action, absolute)
+                    {
+                        if let Some(instance) = room_state.instances.get_mut(instance_index) {
+                            crate::path::start_path(
+                                instance,
+                                &path,
+                                speed,
+                                end_action,
+                                is_truthy(Some(absolute)),
+                            );
+                        }
+                    }
+                }
                 _ => {
                     let script_entries = self.lowered_script_entries();
                     if let Some(entry) = script_entries.get(name) {

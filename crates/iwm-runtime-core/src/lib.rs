@@ -5,6 +5,7 @@ mod event_dispatch;
 mod helpers;
 mod logic;
 mod movement;
+mod path;
 mod render;
 mod room_builder;
 mod room_transitions;

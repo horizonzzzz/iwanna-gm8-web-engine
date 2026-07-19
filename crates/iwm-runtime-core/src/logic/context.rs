@@ -191,6 +191,10 @@ impl<'a> RuntimeRoomInstanceOverlay<'a> {
 }
 
 impl RuntimeExecutionScope {
+    pub(super) fn bind(&mut self, name: impl Into<String>, value: RuntimeValue) {
+        self.locals.insert(name.into(), Some(value));
+    }
+
     pub(super) fn declare(&mut self, name: &str) {
         self.locals.entry(name.to_string()).or_insert(None);
     }

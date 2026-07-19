@@ -86,6 +86,14 @@ export type ResourceIndex = {
       advance: number;
     }>;
   }>;
+  paths?: Array<{
+    id: number;
+    name: string;
+    smooth: boolean;
+    precision: number;
+    closed: boolean;
+    points: Array<{ x: number; y: number; speed: number }>;
+  }>;
 };
 
 export type RoomDefinition = {

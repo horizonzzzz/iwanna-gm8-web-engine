@@ -55,6 +55,25 @@ pub struct ResourceIndex {
     pub sounds: Vec<SoundResource>,
     #[serde(default)]
     pub fonts: Vec<FontResource>,
+    #[serde(default)]
+    pub paths: Vec<PathResource>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathResource {
+    pub id: usize,
+    pub name: String,
+    pub smooth: bool,
+    pub precision: u32,
+    pub closed: bool,
+    pub points: Vec<PathPointResource>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct PathPointResource {
+    pub x: f64,
+    pub y: f64,
+    pub speed: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

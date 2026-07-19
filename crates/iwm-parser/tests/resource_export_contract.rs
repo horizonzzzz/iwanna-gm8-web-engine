@@ -2,12 +2,45 @@ use std::fs;
 
 use gm8exe::{
     asset::font::Font,
+    asset::path::{ConnectionKind, Path, Point},
     asset::sound::{Sound, SoundFX, SoundKind},
     asset::sprite::{CollisionMap, Frame},
     asset::Sprite,
     settings::{GameHelpDialog, Settings},
     Colour, GameAssets, GameVersion,
 };
+
+#[test]
+fn exported_path_resources_preserve_geometry_and_metadata() {
+    let mut assets = game_assets_with_sprite_frame(vec![0, 0, 0, 0], 1, 1);
+    assets.paths.push(Some(Box::new(Path {
+        name: "pathCrimson".into(),
+        connection: ConnectionKind::SmoothCurve,
+        precision: 4,
+        closed: true,
+        points: vec![
+            Point {
+                x: 0.0,
+                y: 0.0,
+                speed: 100.0,
+            },
+            Point {
+                x: 32.0,
+                y: 16.0,
+                speed: 50.0,
+            },
+        ],
+    })));
+    let temp = tempfile::tempdir().unwrap();
+
+    let index = iwm_parser::resource_export::export_resources(&assets, temp.path()).unwrap();
+
+    assert_eq!(index.paths[0].name, "pathCrimson");
+    assert!(index.paths[0].smooth);
+    assert!(index.paths[0].closed);
+    assert_eq!(index.paths[0].precision, 4);
+    assert_eq!(index.paths[0].points[1].speed, 50.0);
+}
 
 #[test]
 fn exported_sound_resources_preserve_gm8_sound_kind() {

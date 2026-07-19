@@ -25,7 +25,7 @@ pub(super) fn record_unsupported_expr_functions<H: RuntimeHost>(
 ) {
     match expr {
         LoweredLogicExpr::Call { name, args } => {
-            if !is_supported_eval_function(name) {
+            if !is_supported_eval_function(name) && !env.script_entries.contains_key(name) {
                 record_unsupported_function(env, name, instance);
             }
             for arg in args {
