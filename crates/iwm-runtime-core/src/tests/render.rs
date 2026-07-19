@@ -46,26 +46,27 @@ fn runtime_core_emits_browser_consumable_draw_commands() {
 }
 
 #[test]
-fn runtime_core_orders_instance_sprites_by_gm_depth() {
+fn runtime_core_orders_tiles_and_instance_sprites_by_gm_depth() {
     let mut package = sample_package();
     package
         .objects
         .iter_mut()
         .find(|object| object.id == 0)
         .unwrap()
-        .depth = -999_999_999;
+        .depth = 0;
     package
         .objects
         .iter_mut()
         .find(|object| object.id == 705)
         .unwrap()
-        .depth = 100;
+        .depth = 200;
+    package.rooms[0].tiles[0].depth = 100;
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();
 
     core.render(&mut host).unwrap();
 
-    let sprite_ids = host
+    let render_order = host
         .renderer
         .submitted_frames
         .last()
@@ -73,11 +74,13 @@ fn runtime_core_orders_instance_sprites_by_gm_depth() {
         .commands
         .iter()
         .filter_map(|command| match command {
-            RuntimeDrawCommand::DrawSprite { sprite_id, .. } => Some(*sprite_id),
+            RuntimeDrawCommand::DrawTile { .. } => Some("tile"),
+            RuntimeDrawCommand::DrawSprite { sprite_id: 1, .. } => Some("high-sprite"),
+            RuntimeDrawCommand::DrawSprite { sprite_id: 0, .. } => Some("low-sprite"),
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(sprite_ids, vec![1, 0]);
+    assert_eq!(render_order, vec!["high-sprite", "tile", "low-sprite"]);
 }
 
 #[test]

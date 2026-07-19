@@ -154,59 +154,47 @@ impl RuntimeCore {
                 }),
         );
 
-        commands.extend(
-            source_room
-                .tiles
-                .iter()
-                .filter(|tile| tile.source_bg >= 0)
-                .filter(|tile| {
-                    active_bounds.is_none_or(|(left, top, right, bottom)| {
-                        rect_intersects_view(
-                            tile.x,
-                            tile.y,
-                            tile.x + tile.width as i32,
-                            tile.y + tile.height as i32,
-                            left,
-                            top,
-                            right,
-                            bottom,
-                        )
-                    })
+        let mut depth_commands = source_room
+            .tiles
+            .iter()
+            .filter(|tile| tile.source_bg >= 0)
+            .filter(|tile| {
+                active_bounds.is_none_or(|(left, top, right, bottom)| {
+                    rect_intersects_view(
+                        tile.x,
+                        tile.y,
+                        tile.x + tile.width as i32,
+                        tile.y + tile.height as i32,
+                        left,
+                        top,
+                        right,
+                        bottom,
+                    )
                 })
-                .map(|tile| RuntimeDrawCommand::DrawTile {
-                    background_id: tile.source_bg as usize,
-                    x: active_view
-                        .map(|view| view.translate_x(tile.x))
-                        .unwrap_or(tile.x),
-                    y: active_view
-                        .map(|view| view.translate_y(tile.y))
-                        .unwrap_or(tile.y),
-                    tile_x: tile.tile_x,
-                    tile_y: tile.tile_y,
-                    width: tile.width,
-                    height: tile.height,
-                    xscale: tile.xscale,
-                    yscale: tile.yscale,
-                }),
-        );
+            })
+            .map(|tile| {
+                (
+                    tile.depth,
+                    RuntimeDrawCommand::DrawTile {
+                        background_id: tile.source_bg as usize,
+                        x: active_view
+                            .map(|view| view.translate_x(tile.x))
+                            .unwrap_or(tile.x),
+                        y: active_view
+                            .map(|view| view.translate_y(tile.y))
+                            .unwrap_or(tile.y),
+                        tile_x: tile.tile_x,
+                        tile_y: tile.tile_y,
+                        width: tile.width,
+                        height: tile.height,
+                        xscale: tile.xscale,
+                        yscale: tile.yscale,
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
 
-        let mut instance_indices = (0..room.instances.len()).collect::<Vec<_>>();
-        instance_indices.sort_by(|left, right| {
-            let left_depth = runtime_instance_depth(
-                &room.instances[*left],
-                &self.package.objects,
-                &self.object_index,
-            );
-            let right_depth = runtime_instance_depth(
-                &room.instances[*right],
-                &self.package.objects,
-                &self.object_index,
-            );
-            right_depth.cmp(&left_depth)
-        });
-
-        for instance_index in instance_indices {
-            let instance = &room.instances[instance_index];
+        for instance in &room.instances {
             if !instance.alive {
                 continue;
             }
@@ -244,24 +232,30 @@ impl RuntimeCore {
                         continue;
                     }
                 }
-                commands.push(RuntimeDrawCommand::DrawSprite {
-                    sprite_id: sprite_id as usize,
-                    frame_index: runtime_instance_frame_index(instance),
-                    x: active_view
-                        .map(|view| view.translate_x(instance.x.round() as i32))
-                        .unwrap_or(instance.x.round() as i32),
-                    y: active_view
-                        .map(|view| view.translate_y(instance.y.round() as i32))
-                        .unwrap_or(instance.y.round() as i32),
-                    origin_x: sprite.map(|sprite| sprite.origin_x).unwrap_or(0),
-                    origin_y: sprite.map(|sprite| sprite.origin_y).unwrap_or(0),
-                    xscale: runtime_instance_xscale(instance),
-                    yscale: runtime_instance_yscale(instance),
-                    alpha: runtime_instance_alpha(instance),
-                    angle_degrees: 0.0,
-                });
+                depth_commands.push((
+                    runtime_instance_depth(instance, &self.package.objects, &self.object_index),
+                    RuntimeDrawCommand::DrawSprite {
+                        sprite_id: sprite_id as usize,
+                        frame_index: runtime_instance_frame_index(instance),
+                        x: active_view
+                            .map(|view| view.translate_x(instance.x.round() as i32))
+                            .unwrap_or(instance.x.round() as i32),
+                        y: active_view
+                            .map(|view| view.translate_y(instance.y.round() as i32))
+                            .unwrap_or(instance.y.round() as i32),
+                        origin_x: sprite.map(|sprite| sprite.origin_x).unwrap_or(0),
+                        origin_y: sprite.map(|sprite| sprite.origin_y).unwrap_or(0),
+                        xscale: runtime_instance_xscale(instance),
+                        yscale: runtime_instance_yscale(instance),
+                        alpha: runtime_instance_alpha(instance),
+                        angle_degrees: 0.0,
+                    },
+                ));
             }
         }
+
+        depth_commands.sort_by_key(|(depth, _)| std::cmp::Reverse(*depth));
+        commands.extend(depth_commands.into_iter().map(|(_, command)| command));
 
         commands.extend(draw_commands);
 
