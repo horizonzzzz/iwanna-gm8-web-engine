@@ -23,6 +23,7 @@ export type RuntimeManifest = {
   display_width?: number;
   /** Manifest display height, from EXE resolution or default-room fallback. */
   display_height?: number;
+  zero_uninitialized_vars?: boolean;
 };
 
 export type ResourceIndex = {
@@ -103,6 +104,8 @@ export type RoomDefinition = {
   height: number;
   speed: number;
   persistent: boolean;
+  background_colour?: number;
+  clear_screen?: boolean;
   backgrounds: Array<{
     visible_on_start: boolean;
     is_foreground: boolean;

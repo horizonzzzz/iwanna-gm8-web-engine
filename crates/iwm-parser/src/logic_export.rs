@@ -107,6 +107,8 @@ pub fn export_rooms_and_logic(
                 height: room.height,
                 speed: room.speed,
                 persistent: room.persistent,
+                background_colour: room.bg_colour.into(),
+                clear_screen: room.clear_screen,
                 backgrounds: room
                     .backgrounds
                     .iter()

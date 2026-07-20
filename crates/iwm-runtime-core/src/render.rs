@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use iwm_runtime_host::RuntimeHost;
-use iwm_runtime_host::{Rgba8, RuntimeDrawCommand, RuntimeRenderFrame};
+use iwm_runtime_host::{RuntimeDrawCommand, RuntimeRenderFrame};
 use iwm_runtime_model::RuntimeDisplaySource;
 
 use crate::event_dispatch::{
@@ -10,9 +10,9 @@ use crate::event_dispatch::{
 };
 use crate::helpers::as_number;
 use crate::logic::{
-    apply_runtime_statement, commit_instance_updates, sync_current_instance_from_updates,
-    RuntimeDrawContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay,
-    RuntimeSparseInstanceOverlay, RuntimeStatementEnvironment,
+    apply_runtime_statement, commit_instance_updates, gm_colour_number_to_rgba,
+    sync_current_instance_from_updates, RuntimeDrawContext, RuntimeExecutionScope,
+    RuntimeRoomInstanceOverlay, RuntimeSparseInstanceOverlay, RuntimeStatementEnvironment,
 };
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState};
 
@@ -123,14 +123,11 @@ impl RuntimeCore {
         let estimated_commands =
             8 + source_room.backgrounds.len() + source_room.tiles.len() + room.instances.len();
         let mut commands = Vec::with_capacity(estimated_commands);
-        commands.push(RuntimeDrawCommand::Clear {
-            colour: Rgba8 {
-                r: 12,
-                g: 16,
-                b: 22,
-                a: 255,
-            },
-        });
+        if source_room.clear_screen {
+            commands.push(RuntimeDrawCommand::Clear {
+                colour: gm_colour_number_to_rgba(source_room.background_colour),
+            });
+        }
 
         commands.extend(
             source_room
@@ -414,6 +411,7 @@ impl RuntimeCore {
                         sprite_ids_by_name: &self.sprite_ids_by_name,
                         fonts: &self.package.resources.fonts,
                         font_index_by_name: &self.font_index_by_name,
+                        zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
                         lowered_entries,
                         event_selector: Some(RuntimeEventSelector::Draw),
                         event_owner_id: Some(event_owner_id),

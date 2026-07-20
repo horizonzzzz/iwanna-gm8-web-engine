@@ -38,7 +38,8 @@ pub(crate) use context::{
 };
 pub(crate) use overlay::RuntimeSparseInstanceOverlay;
 pub(crate) use statement::{
-    apply_runtime_statement, RuntimeDrawContext, RuntimeExecutionTrace, RuntimeStatementEnvironment,
+    apply_runtime_statement, gm_colour_number_to_rgba, RuntimeDrawContext, RuntimeExecutionTrace,
+    RuntimeStatementEnvironment,
 };
 
 impl RuntimeCore {
@@ -182,6 +183,7 @@ impl RuntimeCore {
                         sprite_ids_by_name: &self.sprite_ids_by_name,
                         fonts: &self.package.resources.fonts,
                         font_index_by_name: &self.font_index_by_name,
+                        zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
                         lowered_entries,
                         event_selector: Some(RuntimeEventSelector::Step),
                         event_owner_id: Some(event_owner_id),
@@ -417,6 +419,7 @@ impl RuntimeCore {
                             sprite_ids_by_name: &self.sprite_ids_by_name,
                             fonts: &self.package.resources.fonts,
                             font_index_by_name: &self.font_index_by_name,
+                            zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
                             lowered_entries,
                             event_selector: None,
                             event_owner_id: Some(event_owner_id),

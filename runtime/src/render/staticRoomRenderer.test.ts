@@ -114,6 +114,7 @@ describe('renderStaticRoom', () => {
     const room = makeRoomDefinition({
       width: 640,
       height: 480,
+      background_colour: 0x00332211,
       backgrounds: [
         {
           visible_on_start: true,
@@ -164,6 +165,7 @@ describe('renderStaticRoom', () => {
     expect(canvas.width).toBe(640);
     expect(canvas.height).toBe(480);
     expect(clearRect).toHaveBeenCalledWith(0, 0, 640, 480);
+    expect(context.fillStyle).toBe('rgb(17, 34, 51)');
     expect(fillRect).toHaveBeenNthCalledWith(1, 0, 0, 640, 480);
     expect(drawImage).toHaveBeenNthCalledWith(1, stretchedImage, 0, 0, 640, 480);
     expect(drawImage).toHaveBeenNthCalledWith(2, tiledImage, -50, 20);

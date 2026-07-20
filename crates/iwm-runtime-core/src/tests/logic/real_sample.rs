@@ -463,6 +463,41 @@ fn real_sample_title_shift_enters_save_menu() {
 }
 
 #[test]
+fn real_sample_title_starts_opbgm_loop() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let opbgm_id = package
+        .resources
+        .sounds
+        .iter()
+        .find(|sound| sound.name.eq_ignore_ascii_case("opbgm"))
+        .expect("sample package should include opbgm")
+        .id as i32;
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let title_room = real_sample_room_id(&core, "rTitle");
+
+    tick_real_sample_until_room(&mut core, &mut host, title_room, "rTitle");
+    core.tick(&mut host).unwrap();
+
+    assert!(
+        host.audio
+            .played
+            .contains(&(opbgm_id, RuntimeSoundMode::Loop)),
+        "rTitle should dispatch its package-owned BGM; played={:?}; music={:?}; diagnostics={:?}",
+        host.audio.played,
+        core.current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .find(|instance| instance.object_id == 3)
+            .map(|instance| &instance.vars),
+        core.diagnostics()
+    );
+}
+
+#[test]
 fn real_sample_new_game_starts_at_stage_spawn_and_writes_initial_save() {
     let Some(package) = real_sample_package() else {
         return;

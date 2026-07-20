@@ -76,7 +76,9 @@ pub(super) fn resolve_runtime_sound_id(
 ) -> Option<i32> {
     match expr {
         LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) => {
-            sound_index.get(&name.to_ascii_lowercase()).copied()
+            evaluate_expr(expr, Some(instance), globals, scope, eval_context)
+                .and_then(|value| runtime_value_to_sound_id(value, sound_index))
+                .or_else(|| sound_index.get(&name.to_ascii_lowercase()).copied())
         }
         LoweredLogicExpr::LiteralNumber(number) => finite_sound_number_to_id(*number),
         _ => evaluate_expr(expr, Some(instance), globals, scope, eval_context)

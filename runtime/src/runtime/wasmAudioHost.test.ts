@@ -14,6 +14,10 @@ class FakeBufferSource {
 class FakeAudioContext {
   readonly destination = {};
   readonly createdSources: FakeBufferSource[] = [];
+  state: AudioContextState = 'running';
+  resume = vi.fn(async () => {
+    this.state = 'running';
+  });
   decodeAudioData = vi.fn(async (bytes: ArrayBuffer) => ({ byteLength: bytes.byteLength }));
 
   createBufferSource(): FakeBufferSource {
@@ -38,6 +42,36 @@ const packageWithSound = makeRuntimePackage({
 });
 
 describe('wasm web audio host', () => {
+  it('resumes a suspended browser audio context before starting music', async () => {
+    const context = new FakeAudioContext();
+    context.state = 'suspended';
+    const host = createWebAudioHost({
+      audioContext: context as unknown as AudioContext,
+      fetch: vi.fn(async () => new Response(new Uint8Array([1, 2, 3])))
+    });
+
+    host.configurePackage(packageWithSound, '/packages/sample');
+    await host.playSound(42, 'loop');
+
+    expect(context.resume).toHaveBeenCalledTimes(1);
+    expect(context.createdSources[0].start).toHaveBeenCalledTimes(1);
+  });
+
+  it('queues music on the suspended context when autoplay resume is blocked', async () => {
+    const context = new FakeAudioContext();
+    context.state = 'suspended';
+    context.resume.mockRejectedValueOnce(new DOMException('blocked', 'NotAllowedError'));
+    const host = createWebAudioHost({
+      audioContext: context as unknown as AudioContext,
+      fetch: vi.fn(async () => new Response(new Uint8Array([1, 2, 3])))
+    });
+
+    host.configurePackage(packageWithSound, '/packages/sample');
+    await host.playSound(42, 'loop');
+
+    expect(context.createdSources[0].start).toHaveBeenCalledTimes(1);
+  });
+
   it('replaces the active GM exclusive music channel', async () => {
     const context = new FakeAudioContext();
     const fetchSound = vi.fn(async () => new Response(new Uint8Array([1, 2, 3])));
@@ -103,5 +137,27 @@ describe('wasm web audio host', () => {
     host.stopAllSounds();
     expect(host.isSoundPlaying(42)).toBe(false);
     expect(context.createdSources[0].stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks a loading loop active and starts it only once', async () => {
+    const context = new FakeAudioContext();
+    let resolveFetch: (response: Response) => void;
+    const fetchSound = vi.fn(() => new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    }));
+    const host = createWebAudioHost({
+      audioContext: context as unknown as AudioContext,
+      fetch: fetchSound
+    });
+
+    host.configurePackage(packageWithSound, '/packages/sample');
+    const first = host.playSound(42, 'loop');
+    const duplicate = host.playSound(42, 'loop');
+
+    expect(host.isSoundPlaying(42)).toBe(true);
+    resolveFetch!(new Response(new Uint8Array([1, 2, 3])));
+    await Promise.all([first, duplicate]);
+
+    expect(context.createdSources).toHaveLength(1);
   });
 });

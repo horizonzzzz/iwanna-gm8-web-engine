@@ -23,6 +23,33 @@ pub(super) fn evaluate_expr_with_sprite_constants(
     })
 }
 
+pub(super) fn evaluate_expr_with_resource_constants(
+    expr: &LoweredLogicExpr,
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    sprite_ids_by_name: &HashMap<String, usize>,
+    sound_ids_by_name: &HashMap<String, i32>,
+) -> Option<RuntimeValue> {
+    evaluate_expr_with_sprite_constants(
+        expr,
+        instance,
+        globals,
+        scope,
+        eval_context,
+        sprite_ids_by_name,
+    )
+    .or_else(|| {
+        let LoweredLogicExpr::Identifier(name) = expr else {
+            return None;
+        };
+        sound_ids_by_name
+            .get(&name.to_ascii_lowercase())
+            .map(|sound_id| RuntimeValue::Number(*sound_id as f64))
+    })
+}
+
 pub(crate) fn assignable_key(
     expr: &LoweredLogicExpr,
     instance: Option<&RuntimeInstance>,

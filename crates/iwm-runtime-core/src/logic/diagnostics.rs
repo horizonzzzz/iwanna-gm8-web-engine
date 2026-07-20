@@ -95,6 +95,8 @@ fn is_supported_eval_function(name: &str) -> bool {
             | "random_range"
             | "choose"
             | "string"
+            | "string_width"
+            | "string_height"
             | "file_bin_open"
             | "file_bin_read_byte"
             | "file_bin_write_byte"

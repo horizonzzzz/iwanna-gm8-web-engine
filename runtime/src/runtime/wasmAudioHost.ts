@@ -20,11 +20,20 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
   const fetchSound = options.fetch ?? fetch.bind(globalThis);
   const buffers = new Map<number, Promise<AudioBuffer>>();
   const activeLoops = new Map<number, AudioBufferSourceNode>();
+  const loadingLoops = new Map<number, symbol>();
   const playingSounds = new Set<number>();
   let packageBasePath = '';
   let packageSounds = new Map<number, string>();
   let packageSoundKinds = new Map<number, string>();
   let activeBackgroundMusic: { soundId: number; source: AudioBufferSourceNode } | undefined;
+
+  const resumeContext = () => {
+    if (context?.state === 'suspended') {
+      void context.resume().catch(() => undefined);
+    }
+  };
+  globalThis.addEventListener?.('pointerdown', resumeContext, { once: true });
+  globalThis.addEventListener?.('keydown', resumeContext, { once: true });
 
   async function loadBuffer(soundId: number): Promise<AudioBuffer | null> {
     const path = packageSounds.get(soundId);
@@ -105,18 +114,44 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
       packageSoundKinds = new Map(pkg.resources.sounds.map((sound) => [sound.id, sound.kind ?? 'normal']));
       buffers.clear();
       activeLoops.clear();
+      loadingLoops.clear();
       playingSounds.clear();
       activeBackgroundMusic = undefined;
     },
     async playSound(soundId, mode) {
-      const buffer = await loadBuffer(soundId);
-      if (buffer) {
-        startSource(soundId, buffer, mode);
+      resumeContext();
+      const loopToken = mode === 'loop' ? Symbol() : undefined;
+      if (loopToken) {
+        if (loadingLoops.has(soundId)) {
+          return;
+        }
+        loadingLoops.set(soundId, loopToken);
+        playingSounds.add(soundId);
+      }
+      try {
+        const buffer = await loadBuffer(soundId);
+        if (loopToken) {
+          if (loadingLoops.get(soundId) !== loopToken) {
+            return;
+          }
+          loadingLoops.delete(soundId);
+        }
+        if (buffer) {
+          startSource(soundId, buffer, mode);
+        } else if (loopToken) {
+          playingSounds.delete(soundId);
+        }
+      } catch {
+        if (loopToken && loadingLoops.get(soundId) === loopToken) {
+          loadingLoops.delete(soundId);
+          playingSounds.delete(soundId);
+        }
       }
     },
     stopSound(soundId) {
       stopSource(activeLoops.get(soundId));
       activeLoops.delete(soundId);
+      loadingLoops.delete(soundId);
       playingSounds.delete(soundId);
       if (activeBackgroundMusic?.soundId === soundId) {
         activeBackgroundMusic = undefined;
@@ -127,6 +162,7 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
         stopSource(source);
       }
       activeLoops.clear();
+      loadingLoops.clear();
       playingSounds.clear();
       activeBackgroundMusic = undefined;
     },

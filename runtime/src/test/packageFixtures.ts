@@ -43,6 +43,7 @@ export function makeRuntimePackage({
       sound_count: 0,
       resource_index_path: 'resources/index.json',
       warnings: [],
+      zero_uninitialized_vars: false,
     },
     rooms: [
       {
@@ -52,6 +53,8 @@ export function makeRuntimePackage({
         height,
         speed: roomSpeed,
         persistent: false,
+        background_colour: 0,
+        clear_screen: true,
         backgrounds: [],
         views_enabled: false,
         views: [],
@@ -98,6 +101,8 @@ export function makeRoomDefinition(overrides: Partial<RoomDefinition> = {}): Roo
     height: 240,
     speed: 30,
     persistent: false,
+    background_colour: 0,
+    clear_screen: true,
     backgrounds: [],
     views_enabled: false,
     views: [],

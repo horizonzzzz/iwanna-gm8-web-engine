@@ -29,6 +29,7 @@ fn valid_sparse_package() -> RuntimePackageContract {
             display_source: None,
             display_width: None,
             display_height: None,
+            zero_uninitialized_vars: false,
         },
         rooms: vec![RoomDefinition {
             id: 300,
@@ -37,6 +38,8 @@ fn valid_sparse_package() -> RuntimePackageContract {
             height: 480,
             speed: 50,
             persistent: false,
+            background_colour: 0,
+            clear_screen: true,
             backgrounds: vec![RoomBackgroundLayer {
                 visible_on_start: true,
                 is_foreground: false,

@@ -167,16 +167,19 @@ export async function renderStaticRoom(
   spritePaths: SpriteFrameMap,
   cache: ResourceCache = new ResourceCache()
 ): Promise<void> {
-  canvas.width = room.width;
-  canvas.height = room.height;
+  if (canvas.width !== room.width) canvas.width = room.width;
+  if (canvas.height !== room.height) canvas.height = room.height;
   const context = canvas.getContext('2d');
   if (!context) {
     throw new Error('Canvas 2d context unavailable');
   }
 
-  context.clearRect(0, 0, room.width, room.height);
-  context.fillStyle = '#0c1118';
-  context.fillRect(0, 0, room.width, room.height);
+  if (room.clear_screen !== false) {
+    const colour = room.background_colour ?? 0;
+    context.clearRect(0, 0, room.width, room.height);
+    context.fillStyle = `rgb(${colour & 0xff}, ${(colour >>> 8) & 0xff}, ${(colour >>> 16) & 0xff})`;
+    context.fillRect(0, 0, room.width, room.height);
+  }
 
   const backgroundDraws = resolveBackgroundDraws(room, backgroundPaths);
   const tileDraws = resolveTileDraws(room, backgroundPaths);

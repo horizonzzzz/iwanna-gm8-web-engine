@@ -25,6 +25,7 @@ fn runtime_manifest_serializes_expected_fields() {
         display_source: None,
         display_width: None,
         display_height: None,
+        zero_uninitialized_vars: false,
     };
 
     let json = serde_json::to_value(&manifest).unwrap();
@@ -172,6 +173,8 @@ fn room_definition_includes_playability_metadata() {
         height: 480,
         speed: 30,
         persistent: false,
+        background_colour: 0,
+        clear_screen: true,
         backgrounds: vec![],
         views_enabled: false,
         views: vec![],
@@ -434,8 +437,8 @@ fn export_rooms_and_logic_assigns_transition_targets_to_the_source_room() {
             height: 240,
             speed: 30,
             persistent: false,
-            bg_colour: 0.into(),
-            clear_screen: true,
+            bg_colour: 0x0033_2211.into(),
+            clear_screen: false,
             clear_region: true,
             creation_code: "".into(),
             backgrounds: vec![],
@@ -481,6 +484,8 @@ fn export_rooms_and_logic_assigns_transition_targets_to_the_source_room() {
     let (room_defs, _, _) = export_rooms_and_logic(&rooms, &objects, &empty_scripts);
 
     assert_eq!(room_defs[0].transition_targets, vec![1]);
+    assert_eq!(room_defs[0].background_colour, 0x0033_2211);
+    assert!(!room_defs[0].clear_screen);
     assert!(room_defs[1].transition_targets.is_empty());
 }
 

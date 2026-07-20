@@ -27,7 +27,7 @@ use super::eval_functions::{
     evaluate_collision_line_with_scratch, evaluate_distance_to_object_with_scratch,
     evaluate_instance_number_with_scratch,
 };
-use super::eval_variables::{evaluate_expr_with_sprite_constants, instance_member_access};
+use super::eval_variables::{evaluate_expr_with_resource_constants, instance_member_access};
 use super::instances::{
     assign_runtime_member_reference, pending_create_member_value,
     pending_create_member_value_by_object_target, runtime_instance_create_request,
@@ -72,6 +72,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) sprite_ids_by_name: &'a HashMap<String, usize>,
     pub(crate) fonts: &'a [FontResource],
     pub(crate) font_index_by_name: &'a HashMap<String, usize>,
+    pub(crate) zero_uninitialized_vars: bool,
     pub(crate) lowered_entries: &'a [LoweredLogicEntry],
     pub(crate) event_selector: Option<RuntimeEventSelector>,
     pub(crate) event_owner_id: Option<usize>,
@@ -1207,7 +1208,7 @@ fn draw_sprite_id_arg<H: RuntimeHost>(
     }
 }
 
-fn gm_colour_number_to_rgba(value: u32) -> Rgba8 {
+pub(crate) fn gm_colour_number_to_rgba(value: u32) -> Rgba8 {
     rgba(
         (value & 0xff) as u8,
         ((value >> 8) & 0xff) as u8,
@@ -1364,6 +1365,26 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
         return eval_runtime_binary_expr(op, &left, &right);
     }
     if let LoweredLogicExpr::Call { name, args } = expr {
+        if matches!(name.as_str(), "string_width" | "string_height") {
+            let text = args
+                .first()
+                .and_then(|arg| {
+                    evaluate_runtime_expr(arg, instance, scope, eval_context, env, trace_instance)
+                })
+                .map(|value| runtime_value_to_string_text(&value))?;
+            let (width, height) = runtime_text_dimensions(&text, env);
+            return Some(RuntimeValue::Number(if name == "string_width" {
+                width
+            } else {
+                height
+            }));
+        }
+        if name == "string" {
+            let value = args.first().and_then(|arg| {
+                evaluate_runtime_expr(arg, instance, scope, eval_context, env, trace_instance)
+            })?;
+            return Some(RuntimeValue::Text(runtime_value_to_string_text(&value)));
+        }
         match name.as_str() {
             "instance_number" => {
                 if let Some(scratch) = env.object_query_scratch.as_deref_mut() {
@@ -1506,13 +1527,73 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
         }
     }
 
-    evaluate_expr_with_sprite_constants(
+    evaluate_expr_with_resource_constants(
         expr,
         instance,
         env.globals,
         scope,
         eval_context,
         env.sprite_ids_by_name,
+        env.sound_index,
+    )
+    .or_else(|| {
+        (env.zero_uninitialized_vars
+            && matches!(
+                expr,
+                LoweredLogicExpr::Identifier(_)
+                    | LoweredLogicExpr::MemberAccess { .. }
+                    | LoweredLogicExpr::IndexAccess { .. }
+            ))
+        .then_some(RuntimeValue::Number(0.0))
+    })
+}
+
+fn runtime_text_dimensions<H: RuntimeHost>(
+    text: &str,
+    env: &RuntimeStatementEnvironment<'_, H>,
+) -> (f64, f64) {
+    if text.is_empty() {
+        return (0.0, 0.0);
+    }
+    let draw = env.draw.as_deref();
+    let size = draw.map(|draw| draw.size).unwrap_or(16);
+    let font = draw
+        .and_then(|draw| draw.font_name.as_deref())
+        .and_then(|name| env.font_index_by_name.get(&name.to_ascii_lowercase()))
+        .and_then(|index| env.fonts.get(*index));
+    let line_height = font
+        .and_then(|font| font.glyphs.iter().map(|glyph| glyph.height).max())
+        .filter(|height| *height > 0)
+        .unwrap_or(size) as f64;
+    let mut line_count = 1usize;
+    let mut line_width = 0i32;
+    let mut max_width = 0i32;
+    let mut characters = text.chars().peekable();
+    while let Some(mut character) = characters.next() {
+        if character == '\\' && characters.peek() == Some(&'#') {
+            characters.next();
+            character = '#';
+        } else if character == '\r' && characters.peek() == Some(&'\n') {
+            characters.next();
+        }
+        if matches!(character, '#' | '\r' | '\n') {
+            max_width = max_width.max(line_width);
+            line_width = 0;
+            line_count += 1;
+            continue;
+        }
+        line_width += font
+            .and_then(|font| {
+                font.glyphs
+                    .get(character as usize)
+                    .or_else(|| font.glyphs.get(32))
+            })
+            .map(|glyph| glyph.advance)
+            .unwrap_or_else(|| (size as f64 * 0.6).round() as i32);
+    }
+    (
+        max_width.max(line_width) as f64,
+        line_count as f64 * line_height,
     )
 }
 

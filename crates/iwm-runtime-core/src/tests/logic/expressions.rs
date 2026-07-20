@@ -41,6 +41,27 @@ fn core_resolves_named_sprite_constants_in_expressions() {
 }
 
 #[test]
+fn core_resolves_named_sound_constants_in_expressions() {
+    let mut package = sample_package();
+    package.resources.sounds[0].id = 42;
+    package.resources.sounds[0].name = "opbgm".into();
+    add_step_block(
+        &mut package,
+        vec![assign_var(
+            "stage_bgm",
+            LoweredLogicExpr::Identifier("opbgm".into()),
+        )],
+    );
+
+    let core = tick_package(package);
+
+    assert_eq!(
+        player_var(&core, "stage_bgm"),
+        Some(&RuntimeValue::Number(42.0))
+    );
+}
+
+#[test]
 fn core_instance_variables_shadow_named_sprite_constants() {
     let mut package = sample_package();
     package.resources.sprites[1].name = "spr_running".into();
@@ -671,6 +692,8 @@ fn core_executes_lowered_step_room_goto_next_calls() {
         height: 120,
         speed: 60,
         persistent: false,
+        background_colour: 0,
+        clear_screen: true,
         backgrounds: vec![],
         views_enabled: false,
         views: vec![],
@@ -707,6 +730,8 @@ fn core_executes_room_goto_next_using_manifest_room_order() {
         height: 120,
         speed: 60,
         persistent: false,
+        background_colour: 0,
+        clear_screen: true,
         backgrounds: vec![],
         views_enabled: false,
         views: vec![],
@@ -857,6 +882,8 @@ fn core_evaluates_room_identifier_against_named_room_constants() {
         height: 120,
         speed: 60,
         persistent: false,
+        background_colour: 0,
+        clear_screen: true,
         backgrounds: vec![],
         views_enabled: false,
         views: vec![],

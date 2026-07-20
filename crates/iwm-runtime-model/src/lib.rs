@@ -46,6 +46,8 @@ pub struct RuntimeManifest {
     pub display_width: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_height: Option<u32>,
+    #[serde(default)]
+    pub zero_uninitialized_vars: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,6 +173,10 @@ pub struct RoomDefinition {
     pub height: u32,
     pub speed: u32,
     pub persistent: bool,
+    #[serde(default)]
+    pub background_colour: u32,
+    #[serde(default = "default_true")]
+    pub clear_screen: bool,
     pub backgrounds: Vec<RoomBackgroundLayer>,
     pub views_enabled: bool,
     pub views: Vec<RoomView>,
@@ -179,6 +185,10 @@ pub struct RoomDefinition {
     pub creation_block_id: Option<String>,
     pub playable: bool,
     pub transition_targets: Vec<usize>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

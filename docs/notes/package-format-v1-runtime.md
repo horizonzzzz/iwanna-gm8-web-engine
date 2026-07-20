@@ -41,6 +41,10 @@ Included in this phase:
 - parsed GM path metadata in `resources/index.json`, including sparse path id, name, straight/smooth connection, precision, closed state, and point position/speed records
 - normalized room instance placements with runtime categorization hints
 - parser-normalized GM room order in `manifest.room_order`
+- GM room clear metadata in `rooms[*].background_colour` and
+  `rooms[*].clear_screen`
+- GM's uninitialized-variable compatibility setting in
+  `manifest.zero_uninitialized_vars`
 - normalized object event table with event tags and collision target ids for dispatch
 - logic envelope in `scripts.ir.json` with executable/source-only distinction
 - raw parser-owned GML preservation in `logic.raw.json`
@@ -78,8 +82,9 @@ The execution notes below describe the current package contract and shell/runtim
 
 ### Runtime-Consumable Static Data
 
-- Room dimensions, backgrounds, view source rectangles, view ports, GM8 follow
-  target/border/speed metadata, and instance placements
+- Room dimensions, packed GM background colour, clear-screen flag, backgrounds,
+  view source rectangles, view ports, GM8 follow target/border/speed metadata,
+  and instance placements
 - Instance-level `is_solid`, `is_hazard`, `is_checkpoint` flags
 - Room-level `playable` flag and `transition_targets` hints
 - Object definitions with sprite references and event tables
@@ -87,7 +92,8 @@ The execution notes below describe the current package contract and shell/runtim
 - Event entries with normalized `event_tag` for runtime dispatch
 - Resource index with paths to browser-loadable assets
 - Resource index path records consumed by runtime-core for `path_start` and per-tick path movement
-- Manifest with default room, source room order, and compatibility metadata
+- Manifest with default room, source room order, uninitialized-variable mode,
+  and compatibility metadata
 
 ### Runtime Contract Invariants
 
@@ -99,6 +105,11 @@ Important current invariants:
 - `objects[*].sprite_index` refers to `resources.index.json -> sprites[*].id` when non-negative
 - room background and tile references refer to `resources.index.json -> backgrounds[*].id`
 - `manifest.room_order` is optional for older packages, but when present each room id must resolve to `rooms[*].id`; parser-built packages use this order for `default_room_id` and runtime `room_goto_next()` semantics
+- `rooms[*].background_colour` stores GM's packed BGR colour value and
+  `rooms[*].clear_screen` controls whether runtime emits a frame clear; older
+  packages default to black with clearing enabled
+- `manifest.zero_uninitialized_vars` preserves the GM executable setting used
+  when unresolved variable/member/index reads should produce numeric zero
 - `rooms[*].views[*]` preserves GM8 view rectangle and port fields plus
   `target`, `hborder`, `vborder`, `hspeed`, and `vspeed`; runtime consumers may
   use view port dimensions as the browser frame size when views are enabled
@@ -162,7 +173,7 @@ The current `iwm-runtime-web` bridge can now:
 - accept browser-submitted keyboard input snapshots
 - return runtime snapshots
 - return browser-consumable frame snapshots
-- return browser-consumable text draw commands, including resolved font metadata, when runtime logic emits text commands; the browser renderer can use package-owned font atlases and glyph metrics for GM bitmap-font drawing, and package-owned death feedback such as Dife `GAMEOVER` / blood sprites flows through ordinary runtime sprite commands
+- return browser-consumable text draw commands, including resolved font metadata, when runtime logic emits text commands; runtime `string_width()` / `string_height()` use the same package glyph advances and line height used by browser bitmap-font drawing, and package-owned death feedback such as Dife `GAMEOVER` / blood sprites flows through ordinary runtime sprite commands
 - advance deterministic ticks
 - reset the runtime
 - switch rooms by room id
@@ -175,7 +186,9 @@ The current `iwm-runtime-web` bridge can now:
 
 It does **not** yet provide:
 
-- full GM8 audio parity, including autoplay/user-gesture policy handling, volume/pan/mixing controls, channel/priority semantics, and broader sound APIs
+- full GM8 audio parity, including volume/pan/mixing controls,
+  channel/priority semantics, advanced suspended-context lifecycle, and broader
+  sound APIs; initial pointer/key autoplay recovery is implemented
 - DLL/external support
 - gameplay-fidelity parity with OpenGMK runner semantics
 - a fully catch-up-capable real-time gameplay loop in the shell; if a tick/render cycle takes longer than the active room-speed interval, the shell reports skipped intervals but does not yet run accumulator catch-up ticks

@@ -1221,6 +1221,7 @@ impl RuntimeCore {
                     sprite_ids_by_name: &self.sprite_ids_by_name,
                     fonts: &self.package.resources.fonts,
                     font_index_by_name: &self.font_index_by_name,
+                    zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
                     lowered_entries,
                     event_selector: Some(event_selector.clone()),
                     event_owner_id: Some(event_owner_id),

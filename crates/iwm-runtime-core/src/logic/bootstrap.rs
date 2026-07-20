@@ -5,7 +5,9 @@ use iwm_runtime_model::RoomDefinition;
 use super::assignment::{assign_instance_or_global, assign_room_speed};
 use super::context::RuntimeEvalContext;
 use super::eval::{assignable_key, is_truthy};
-use super::eval_variables::evaluate_expr_with_sprite_constants;
+use super::eval_variables::{
+    evaluate_expr_with_resource_constants, evaluate_expr_with_sprite_constants,
+};
 use crate::helpers::as_number;
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeInstance,
@@ -172,13 +174,14 @@ impl RuntimeCore {
                     None,
                     Some(&eval_context),
                 ) {
-                    if let Some(value) = evaluate_expr_with_sprite_constants(
+                    if let Some(value) = evaluate_expr_with_resource_constants(
                         value,
                         Some(&instance_snapshot),
                         &self.globals,
                         None,
                         Some(&eval_context),
                         &self.sprite_ids_by_name,
+                        &self.sound_index,
                     ) {
                         if let Some(instance) = room_state.instances.get_mut(instance_index) {
                             assign_instance_or_global(
@@ -221,13 +224,14 @@ impl RuntimeCore {
                     room_ids_by_name: &self.room_ids_by_name,
                     view_zero: super::RuntimeViewValues::from_room(room_state),
                 };
-                let condition_value = evaluate_expr_with_sprite_constants(
+                let condition_value = evaluate_expr_with_resource_constants(
                     condition,
                     Some(&instance_snapshot),
                     &self.globals,
                     None,
                     Some(&eval_context),
                     &self.sprite_ids_by_name,
+                    &self.sound_index,
                 );
                 let branch = if is_truthy(condition_value) {
                     then_branch

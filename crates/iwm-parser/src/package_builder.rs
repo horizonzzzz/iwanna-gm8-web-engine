@@ -166,6 +166,7 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
         display_source: display.source,
         display_width: display.dimensions.map(|(w, _)| w),
         display_height: display.dimensions.map(|(_, h)| h),
+        zero_uninitialized_vars: assets.settings.zero_uninitialized_vars,
     };
 
     write_json(output_dir.join("manifest.json"), &manifest)?;
@@ -372,6 +373,8 @@ mod tests {
             height,
             speed: 60,
             persistent: false,
+            background_colour: 0,
+            clear_screen: true,
             backgrounds: vec![],
             views_enabled: false,
             views: vec![],

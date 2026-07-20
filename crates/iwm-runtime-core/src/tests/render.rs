@@ -1,6 +1,7 @@
 use iwm_runtime_host::RuntimeDrawCommand;
 use iwm_runtime_model::{
-    ObjectDefinition, ObjectEventEntry, RoomInstancePlacement, RuntimeDisplaySource,
+    FontGlyphResource, FontResource, ObjectDefinition, ObjectEventEntry, RoomInstancePlacement,
+    RuntimeDisplaySource,
 };
 
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore};
@@ -392,6 +393,150 @@ fn runtime_core_uses_exe_display_size_for_room_without_active_view() {
 }
 
 #[test]
+fn runtime_core_clears_with_the_gm_room_background_colour() {
+    let mut package = sample_package();
+    package.rooms[0].background_colour = 0x0033_2211;
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::Clear { colour }
+            if (colour.r, colour.g, colour.b, colour.a) == (0x11, 0x22, 0x33, 0xff)
+    )));
+}
+
+#[test]
+fn runtime_core_measures_text_with_the_current_gm_font() {
+    let mut package = sample_package();
+    package.manifest.zero_uninitialized_vars = true;
+    package.resources.fonts.push(FontResource {
+        id: 4,
+        name: "font12".into(),
+        system_name: "Arial".into(),
+        size: 12,
+        bold: false,
+        italic: false,
+        range_start: 0,
+        range_end: 255,
+        map_width: 128,
+        map_height: 128,
+        image_path: "resources/fonts/4.png".into(),
+        glyphs: (0..256)
+            .map(|code| FontGlyphResource {
+                code,
+                x: 0,
+                y: 0,
+                width: 8,
+                height: 12,
+                offset: 0,
+                advance: 8,
+            })
+            .collect(),
+    });
+    package.objects.push(ObjectDefinition {
+        id: 8,
+        name: "obj_label".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 8,
+            sub_event: 0,
+            event_tag: "draw".into(),
+            block_id: "object:8:event:8:0".into(),
+            action_count: 0,
+        }],
+    });
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 99,
+        object_id: 8,
+        x: 0,
+        y: 0,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    let measure = |name: &str| LoweredLogicExpr::Call {
+        name: name.into(),
+        args: vec![LoweredLogicExpr::LiteralText("Medium".into())],
+    };
+    append_lowered_entry(
+        &mut package,
+        "object:8:event:8:0".into(),
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "draw_set_font".into(),
+                args: vec![LoweredLogicExpr::Identifier("font12".into())],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "draw_text".into(),
+                args: vec![
+                    LoweredLogicExpr::BinaryExpr {
+                        op: "-".into(),
+                        left: Box::new(LoweredLogicExpr::LiteralNumber(100.0)),
+                        right: Box::new(LoweredLogicExpr::BinaryExpr {
+                            op: "/".into(),
+                            left: Box::new(measure("string_width")),
+                            right: Box::new(LoweredLogicExpr::LiteralNumber(2.0)),
+                        }),
+                    },
+                    LoweredLogicExpr::BinaryExpr {
+                        op: "-".into(),
+                        left: Box::new(LoweredLogicExpr::LiteralNumber(50.0)),
+                        right: Box::new(measure("string_height")),
+                    },
+                    LoweredLogicExpr::LiteralText("Medium".into()),
+                ],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "draw_text".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::Call {
+                        name: "string".into(),
+                        args: vec![LoweredLogicExpr::IndexAccess {
+                            target: Box::new(LoweredLogicExpr::Identifier("menuDeath".into())),
+                            index: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                        }],
+                    },
+                ],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawText { text, x: 76, y: 38, .. } if text == "Medium"
+    )));
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawText { text, .. } if text == "0"
+    )));
+}
+
+#[test]
 fn runtime_core_executes_draw_events_for_text_commands() {
     let mut package = sample_package();
     package.objects.push(ObjectDefinition {
@@ -536,12 +681,54 @@ fn real_sample_menu_draws_slot_text_and_cursor_sprite() {
     assert!(texts.contains(&"Data1"), "rMenu texts: {texts:?}");
     assert!(texts.contains(&"Data2"), "rMenu texts: {texts:?}");
     assert!(texts.contains(&"Data3"), "rMenu texts: {texts:?}");
+    assert!(texts.contains(&"Death"), "rMenu texts: {texts:?}");
+    assert!(texts.contains(&"Time"), "rMenu texts: {texts:?}");
+    assert!(texts.contains(&"0"), "rMenu texts: {texts:?}");
+    assert!(texts.contains(&"0:00:00"), "rMenu texts: {texts:?}");
     assert!(frame.commands.iter().any(|command| matches!(
         command,
         RuntimeDrawCommand::DrawSprite {
             sprite_id,
             ..
         } if *sprite_id == cursor_sprite_id
+    )));
+}
+
+#[test]
+#[cfg(feature = "local-sample-tests")]
+fn real_sample_difficulty_room_draws_labels_and_room_colour() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let room = package
+        .rooms
+        .iter()
+        .find(|room| room.name.eq_ignore_ascii_case("rSelectStage"))
+        .expect("sample package should include rSelectStage");
+    assert_eq!(room.background_colour, 0x0040_80ff);
+    let room_id = room.id;
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.reload_room(room_id).unwrap();
+    core.render(&mut host).unwrap();
+
+    let frame = host.renderer.submitted_frames.last().unwrap();
+    let texts = frame
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RuntimeDrawCommand::DrawText { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    for label in ["Medium", "Hard", "VeryHard", "Impossible", "LoadGame"] {
+        assert!(texts.contains(&label), "rSelectStage texts: {texts:?}");
+    }
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::Clear { colour }
+            if (colour.r, colour.g, colour.b, colour.a) == (0xff, 0x80, 0x40, 0xff)
     )));
 }
 

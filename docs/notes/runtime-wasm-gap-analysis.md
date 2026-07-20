@@ -42,7 +42,25 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - Sound resources now preserve GM8 `SoundKind` metadata in the package. The Web
   Audio host treats `background-music` and `multimedia` as GM8's exclusive music
   channels: starting a different music track stops the previous one, while
-  normal and 3D looping sounds remain independently playable.
+  normal and 3D looping sounds remain independently playable. The browser host
+  also resumes a suspended `AudioContext` on the first pointer/key gesture and
+  marks a loading loop as playing, so a GM `sound_isplaying()` guard cannot
+  enqueue the same track once per Step while MP3 decoding is pending. Named
+  sound resources are also normal runtime expression constants: Crimson's
+  `playMusic` stores `opbgm` as id `120` in `stageBGM`, and a later
+  `sound_isplaying(stageBGM)` / `sound_loop(stageBGM)` resolves that variable
+  rather than looking only for a resource literally named `stageBGM`.
+- Parser-built rooms now preserve GM8 `bg_colour` and `clear_screen`; runtime
+  frames and the retained static renderer use the packed GM colour instead of a
+  project hardcoded dark clear. Crimson `rSelectStage` has `clear_screen=true`
+  and packed GM colour `0x004080ff`, which is GM ABGR / Canvas
+  `rgb(255, 128, 64)`; it must not be treated as web RGB `#4080ff`.
+- Runtime expression execution now implements `string_width()` and
+  `string_height()` from the current package font's GM glyph advances and line
+  height. The package also preserves `zero_uninitialized_vars`, allowing
+  Crimson's empty save-slot arrays to render numeric zero values. The local
+  sample regression verifies `Death`, `Time`, `0:00:00`, and all five difficulty
+  labels are emitted through ordinary draw events without Crimson-specific code.
 
 - The browser shell can load packages, boot the WASM bridge, auto-run it at the active runtime room speed, pause/resume that loop, reset, select rooms, and show telemetry. Runtime `room_speed` assignments override static room metadata for both snapshots and browser auto-tick scheduling.
 - The parser now preserves raw logic in `logic.raw.json` and emits a structured lowered contract in `logic.lowered.json` for the current IWanna-critical subset.
@@ -152,7 +170,11 @@ Background music and sound effects now have a first browser-hosted path.
 
 Runtime-core resolves package sound identifiers for `sound_play()`, `sound_loop()`, `sound_stop()`, `sound_stop_all()`, and `sound_isplaying()` and dispatches them through `RuntimeAudioHost`. The browser runtime-web path now forwards those host calls through WASM imports to a minimal Web Audio host that loads package sound resources, plays one-shot sounds, loops sounds, queries active sound state, stops active loops, and stops all active sounds.
 
-Remaining audio gaps include browser autoplay/user-gesture handling, volume/pan/mixing controls, channel/priority semantics, and broader GM sound API coverage.
+The browser host now handles the initial autoplay/user-gesture boundary by
+queuing sources on a suspended context and resuming it from the first pointer or
+keyboard gesture. Remaining audio gaps include volume/pan/mixing controls,
+channel/priority semantics, suspended-context lifecycle beyond initial startup,
+and broader GM sound API coverage.
 
 Deferred backlog: Dife background music currently exposes a create-time host-dispatch gap, not a Web Audio decode/playback gap. The package contains room-instance create blocks such as `sound_loop(track01)`, `sound_loop(PPPPPP)`, and `sound_stop_all()`, but room construction and create-time bootstrap logic are still largely hostless. Step-time sound effects can already reach `RuntimeAudioHost`, which is why jump SFX can play in the browser while BGM does not start when entering rooms whose music is launched from instance creation code. Keep this deferred until the main runtime gameplay path is more complete, unless `sound_isplaying()` or another sound query is proven to gate non-audio gameplay state.
 

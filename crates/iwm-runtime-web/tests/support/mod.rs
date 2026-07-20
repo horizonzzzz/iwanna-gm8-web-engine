@@ -38,6 +38,7 @@ fn sample_manifest() -> RuntimeManifest {
         display_source: None,
         display_width: None,
         display_height: None,
+        zero_uninitialized_vars: false,
     }
 }
 
@@ -49,6 +50,8 @@ fn primary_room() -> RoomDefinition {
         height: 240,
         speed: 60,
         persistent: false,
+        background_colour: 0,
+        clear_screen: true,
         backgrounds: vec![visible_background_layer(0)],
         views_enabled: false,
         views: vec![full_room_view(320, 240)],
@@ -84,6 +87,8 @@ fn secondary_room() -> RoomDefinition {
         height: 480,
         speed: 30,
         persistent: false,
+        background_colour: 0,
+        clear_screen: true,
         backgrounds: vec![],
         views_enabled: false,
         views: vec![],

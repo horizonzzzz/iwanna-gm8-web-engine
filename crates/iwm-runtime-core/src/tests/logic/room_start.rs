@@ -11,6 +11,8 @@ fn core_does_not_inject_player_into_rooms_without_spawn_logic() {
         height: 240,
         speed: 60,
         persistent: false,
+        background_colour: 0,
+        clear_screen: true,
         backgrounds: vec![],
         views_enabled: false,
         views: vec![],
