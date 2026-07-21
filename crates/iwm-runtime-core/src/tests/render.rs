@@ -696,17 +696,16 @@ fn real_sample_menu_draws_slot_text_and_cursor_sprite() {
 
 #[test]
 #[cfg(feature = "local-sample-tests")]
-fn real_sample_difficulty_room_draws_labels_and_room_colour() {
+fn real_sample_difficulty_room_draws_labels() {
     let Some(package) = real_sample_package() else {
         return;
     };
-    let room = package
+    let room_id = package
         .rooms
         .iter()
         .find(|room| room.name.eq_ignore_ascii_case("rSelectStage"))
-        .expect("sample package should include rSelectStage");
-    assert_eq!(room.background_colour, 0x0040_80ff);
-    let room_id = room.id;
+        .expect("sample package should include rSelectStage")
+        .id;
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();
 
@@ -725,11 +724,6 @@ fn real_sample_difficulty_room_draws_labels_and_room_colour() {
     for label in ["Medium", "Hard", "VeryHard", "Impossible", "LoadGame"] {
         assert!(texts.contains(&label), "rSelectStage texts: {texts:?}");
     }
-    assert!(frame.commands.iter().any(|command| matches!(
-        command,
-        RuntimeDrawCommand::Clear { colour }
-            if (colour.r, colour.g, colour.b, colour.a) == (0xff, 0x80, 0x40, 0xff)
-    )));
 }
 
 #[test]

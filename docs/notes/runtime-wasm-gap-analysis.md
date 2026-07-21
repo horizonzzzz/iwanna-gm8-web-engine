@@ -51,16 +51,15 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
   `sound_isplaying(stageBGM)` / `sound_loop(stageBGM)` resolves that variable
   rather than looking only for a resource literally named `stageBGM`.
 - Parser-built rooms now preserve GM8 `bg_colour` and `clear_screen`; runtime
-  frames and the retained static renderer use the packed GM colour instead of a
-  project hardcoded dark clear. Crimson `rSelectStage` has `clear_screen=true`
-  and packed GM colour `0x004080ff`, which is GM ABGR / Canvas
-  `rgb(255, 128, 64)`; it must not be treated as web RGB `#4080ff`.
+  frames and the retained static renderer clear with the packed GM BGR colour
+  instead of a project hardcoded dark fill. Packed values decode as
+  `rgb(b&0xff, (b>>8)&0xff, (b>>16)&0xff)`, not as web `#RRGGBB`.
 - Runtime expression execution now implements `string_width()` and
   `string_height()` from the current package font's GM glyph advances and line
-  height. The package also preserves `zero_uninitialized_vars`, allowing
-  Crimson's empty save-slot arrays to render numeric zero values. The local
-  sample regression verifies `Death`, `Time`, `0:00:00`, and all five difficulty
-  labels are emitted through ordinary draw events without Crimson-specific code.
+  height. The package also preserves `zero_uninitialized_vars`, allowing empty
+  save-slot arrays to render numeric zero values. The local sample regression
+  verifies Crimson menu texts (`Death`, `Time`, `0:00:00`) and difficulty labels
+  through ordinary draw events without sample-specific code.
 
 - The browser shell can load packages, boot the WASM bridge, auto-run it at the active runtime room speed, pause/resume that loop, reset, select rooms, and show telemetry. Runtime `room_speed` assignments override static room metadata for both snapshots and browser auto-tick scheduling.
 - The parser now preserves raw logic in `logic.raw.json` and emits a structured lowered contract in `logic.lowered.json` for the current IWanna-critical subset.
