@@ -122,3 +122,42 @@ fn core_dispatches_sound_stop_all_to_audio_host() {
     assert_eq!(host.audio.stopped_all_count, 1);
     assert!(!host.audio.is_sound_playing(42).unwrap());
 }
+
+#[test]
+fn core_treats_uninitialized_sound_var_as_zero_when_enabled() {
+    let mut package = sample_package();
+    package.manifest.zero_uninitialized_vars = true;
+    package.resources.sounds[0].id = 0;
+    package.resources.sounds[0].name = "track01".into();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::UnaryExpr {
+                op: "!".into(),
+                child: Box::new(LoweredLogicExpr::Call {
+                    name: "sound_isplaying".into(),
+                    args: vec![LoweredLogicExpr::Identifier("stageBGM".into())],
+                }),
+            },
+            then_branch: vec![
+                LoweredLogicStatement::FunctionCall {
+                    name: "sound_stop_all".into(),
+                    args: vec![],
+                },
+                LoweredLogicStatement::FunctionCall {
+                    name: "sound_loop".into(),
+                    args: vec![LoweredLogicExpr::Identifier("stageBGM".into())],
+                },
+            ],
+            else_branch: vec![],
+        }],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(host.audio.stopped_all_count, 1);
+    assert_eq!(host.audio.played, vec![(0, RuntimeSoundMode::Loop)]);
+    assert!(host.audio.is_sound_playing(0).unwrap());
+}

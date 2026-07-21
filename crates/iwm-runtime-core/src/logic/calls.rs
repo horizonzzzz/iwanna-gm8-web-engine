@@ -26,6 +26,7 @@ pub(super) fn dispatch_runtime_sound_call<H: RuntimeHost>(
             eval_context,
             env.globals,
             env.sound_index,
+            env.zero_uninitialized_vars,
         )
     }) else {
         record_host_diagnostic(
@@ -73,16 +74,33 @@ pub(super) fn resolve_runtime_sound_id(
     eval_context: Option<&RuntimeEvalContext<'_>>,
     globals: &HashMap<String, RuntimeValue>,
     sound_index: &HashMap<String, i32>,
+    zero_uninitialized_vars: bool,
 ) -> Option<i32> {
     match expr {
         LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) => {
             evaluate_expr(expr, Some(instance), globals, scope, eval_context)
                 .and_then(|value| runtime_value_to_sound_id(value, sound_index))
                 .or_else(|| sound_index.get(&name.to_ascii_lowercase()).copied())
+                // GM treats uninitialized identifiers as 0 when zero_uninitialized_vars is set.
+                // Crimson room001's playMusic leaves stageBGM unset and relies on id 0 (track01).
+                .or_else(|| zero_uninitialized_vars.then_some(0))
         }
         LoweredLogicExpr::LiteralNumber(number) => finite_sound_number_to_id(*number),
         _ => evaluate_expr(expr, Some(instance), globals, scope, eval_context)
-            .and_then(|value| runtime_value_to_sound_id(value, sound_index)),
+            .and_then(|value| runtime_value_to_sound_id(value, sound_index))
+            .or_else(|| {
+                if zero_uninitialized_vars
+                    && matches!(
+                        expr,
+                        LoweredLogicExpr::MemberAccess { .. }
+                            | LoweredLogicExpr::IndexAccess { .. }
+                    )
+                {
+                    Some(0)
+                } else {
+                    None
+                }
+            }),
     }
 }
 

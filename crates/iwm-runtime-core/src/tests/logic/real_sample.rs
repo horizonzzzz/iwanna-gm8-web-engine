@@ -498,6 +498,107 @@ fn real_sample_title_starts_opbgm_loop() {
 }
 
 #[test]
+fn crimson_stage_entry_switches_bgm_from_opbgm_to_track01() {
+    let Some(package) = local_sample_package("gm8-core/I wanna be the Crimson ver.1.0") else {
+        return;
+    };
+    let opbgm_id = package
+        .resources
+        .sounds
+        .iter()
+        .find(|sound| sound.name.eq_ignore_ascii_case("opbgm"))
+        .expect("Crimson package should include opbgm")
+        .id as i32;
+    let track01_id = package
+        .resources
+        .sounds
+        .iter()
+        .find(|sound| sound.name.eq_ignore_ascii_case("track01"))
+        .expect("Crimson package should include track01")
+        .id as i32;
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let title_room = real_sample_room_id(&core, "rTitle");
+    // Explicit stageBGM=track01 create code.
+    let stage_with_bgm = real_sample_room_id(&core, "rStage01");
+    // Medium-difficulty first room is room001; playMusic has no creation_code so stageBGM
+    // is uninitialized and must resolve as 0 under zero_uninitialized_vars (track01).
+    let stage_unset_bgm = 148usize;
+
+    tick_real_sample_until_room(&mut core, &mut host, title_room, "rTitle");
+    core.tick(&mut host).unwrap();
+    assert!(
+        host.audio
+            .played
+            .contains(&(opbgm_id, RuntimeSoundMode::Loop)),
+        "rTitle should start opbgm before stage entry; played={:?}",
+        host.audio.played
+    );
+
+    for stage_room in [stage_with_bgm, stage_unset_bgm] {
+        host.audio.played.clear();
+        host.audio.stopped_all_count = 0;
+        host.audio.playing.clear();
+        host.audio
+            .play_sound(opbgm_id, RuntimeSoundMode::Loop)
+            .unwrap();
+
+        core.request_room_transition(stage_room);
+        core.tick(&mut host).unwrap();
+        core.tick(&mut host).unwrap();
+
+        let play_music = core
+            .current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .find(|instance| {
+                instance.object_name.eq_ignore_ascii_case("playMusic") && instance.alive
+            })
+            .map(|instance| {
+                (
+                    instance.vars.get("stageBGM").cloned(),
+                    instance.vars.get("stageName").cloned(),
+                )
+            });
+        let played_loops = host
+            .audio
+            .played
+            .iter()
+            .filter(|(_, mode)| *mode == RuntimeSoundMode::Loop)
+            .copied()
+            .collect::<Vec<_>>();
+
+        assert_eq!(core.snapshot().room_id, Some(stage_room));
+        assert!(
+            play_music.is_some(),
+            "room {stage_room} should place playMusic; playMusic={play_music:?}"
+        );
+        assert_eq!(
+            play_music.as_ref().and_then(|(_, stage)| stage.clone()),
+            Some(RuntimeValue::Number(stage_room as f64)),
+            "playMusic create should assign stageName=room; room={stage_room}; playMusic={play_music:?}"
+        );
+        assert!(
+            played_loops.contains(&(track01_id, RuntimeSoundMode::Loop)),
+            "room {stage_room} should sound_loop(track01); played_loops={played_loops:?}; playMusic={play_music:?}; stopped_all={}; is_playing_opbgm={}; is_playing_track01={}; diagnostics={:?}",
+            host.audio.stopped_all_count,
+            host.audio.is_sound_playing(opbgm_id).unwrap(),
+            host.audio.is_sound_playing(track01_id).unwrap(),
+            core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+        );
+        assert!(
+            host.audio.stopped_all_count > 0,
+            "room {stage_room} should sound_stop_all before stage BGM; playMusic={play_music:?}"
+        );
+        assert!(
+            !host.audio.is_sound_playing(opbgm_id).unwrap(),
+            "room {stage_room} should stop opbgm; playMusic={play_music:?}"
+        );
+    }
+}
+
+#[test]
 fn real_sample_new_game_starts_at_stage_spawn_and_writes_initial_save() {
     let Some(package) = real_sample_package() else {
         return;

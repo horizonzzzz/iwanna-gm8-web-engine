@@ -1441,6 +1441,7 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
                     eval_context,
                     env.globals,
                     env.sound_index,
+                    env.zero_uninitialized_vars,
                 )
             })?;
             return env

@@ -49,7 +49,10 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
   sound resources are also normal runtime expression constants: Crimson's
   `playMusic` stores `opbgm` as id `120` in `stageBGM`, and a later
   `sound_isplaying(stageBGM)` / `sound_loop(stageBGM)` resolves that variable
-  rather than looking only for a resource literally named `stageBGM`.
+  rather than looking only for a resource literally named `stageBGM`. When
+  `zero_uninitialized_vars` is set, an unset `stageBGM` also resolves as sound
+  id `0` (Crimson `track01`), so rooms whose `playMusic` creation code is empty
+  still switch BGM on stage entry instead of leaving menu music playing forever.
 - Parser-built rooms now preserve GM8 `bg_colour` and `clear_screen`; runtime
   frames and the retained static renderer clear with the packed GM BGR colour
   instead of a project hardcoded dark fill. Packed values decode as
