@@ -12,9 +12,9 @@ describe('runtime app bootstrap', () => {
     window.history.replaceState({}, '', '/');
     render(<RootApp />);
 
-    expect(screen.getByRole('heading', { name: '在浏览器中运行 IWanna 游戏' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '在浏览器中运行 I Wanna 游戏' })).toBeInTheDocument();
     expect(screen.getByLabelText('游戏包')).toHaveAttribute('accept', expect.stringContaining('.exe'));
-    expect(screen.getByRole('button', { name: '开始游戏' })).toBeDisabled();
+    expect(screen.getByText('拖入游戏包，或点击选择文件')).toBeInTheDocument();
   });
 
   it('keeps the diagnostic shell at /shell', () => {
