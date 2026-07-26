@@ -34,6 +34,31 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
   be entered for a one-tick diagnostic scan with only room 190's non-P0
   `power()` helper remaining as a runtime blocker. This scan does not prove
   multi-tick room behavior, menu progression, boss logic, or finishability.
+- Crimson's remaining runtime builtins are now implemented, which clears the
+  last unsupported-function blocker across all 50 rooms (previously only
+  `power()` in room 190 remained on a no-input scan, but `power()` also sits on
+  the player/save path). Expression evaluation now covers the GM math helpers
+  `power`, `min`, `max`, `sign`, `sqr`, `sqrt`, `round`, `ceil`, `sin`, `cos`,
+  `tan`, `arctan`, `arctan2`, `degtorad`, and `radtodeg`, aligned with OpenGMK
+  `kernel.rs` semantics (`sign` uses the `1e-13` compare epsilon; `round` is
+  banker's rounding). `power` is what makes Crimson's binary save codec
+  (`saveGame`/`saveExe`/`loadGame`) decode `savingRoom`/`savingX`/`savingY`/
+  `boss`/`secret` bytes with `file_bin_read_byte(f) * power(256, i-1)` and pack
+  them with `min(tem div power(256, i-1), 255)` instead of collapsing to unset
+  values. Runtime-core also implements `instance_position(x, y, obj)`, which
+  returns the id of a bbox/mask-containing instance (child objects included) or
+  GM `noone` (-4); this resolves Crimson's gameplay room transitions, whose
+  player boundary event reads `roomTo = instance_position(x, y, roomChanger).roomTo`
+  against the `warp`/`warpInvisible` children of `roomChanger`. Headless
+  diagnostics now drive the original flow (title -> menu -> select-stage) through
+  `keyboard_check_pressed(global.buttonJump)` and reach the `warpStart` collision
+  path that runs `loadGame()`; boss-pattern trig helpers (`sin`/`cos`/`degtorad`/
+  `arctan2`) also execute rather than returning unset. Menu boss-icon display
+  still depends on 2D array access (`bossIconNumber[i, j]`), which remains
+  unlowered, and `game_end()` (Escape / Alt+S) is still unimplemented; neither is
+  on the gameplay path. Room 166 instance 154285's `vspd  -6` is a GML typo
+  (missing `=`) that GM8 evaluates as a discarded expression, so the runtime's
+  raw no-op matches GM behavior.
 - Uninitialized `global.member` reads now use GM8's numeric zero fallback, the
   same class of behavior already used for ordinary uninitialized instance
   variables. This allows package-owned room-start conditions such as

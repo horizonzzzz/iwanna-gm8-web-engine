@@ -42,7 +42,7 @@ fn core_reports_unsupported_function_with_execution_context() {
     add_step_block(
         &mut package,
         vec![LoweredLogicStatement::FunctionCall {
-            name: "instance_position".into(),
+            name: "instance_nearest".into(),
             args: vec![
                 LoweredLogicExpr::Identifier("x".into()),
                 LoweredLogicExpr::Identifier("y".into()),
@@ -65,7 +65,7 @@ fn core_reports_unsupported_function_with_execution_context() {
     assert!(unsupported.message.contains("block_id=object:0:event:3:0"));
     assert!(unsupported.message.contains("object=obj_player"));
     assert!(unsupported.message.contains("event_tag=step"));
-    assert!(unsupported.message.contains("function=instance_position"));
+    assert!(unsupported.message.contains("function=instance_nearest"));
     assert!(unsupported.message.contains("runtime_id=0"));
 }
 
@@ -76,7 +76,7 @@ fn core_reports_unsupported_expression_function_with_execution_context() {
         &mut package,
         vec![LoweredLogicStatement::Conditional {
             condition: LoweredLogicExpr::Call {
-                name: "instance_position".into(),
+                name: "instance_nearest".into(),
                 args: vec![
                     LoweredLogicExpr::Identifier("x".into()),
                     LoweredLogicExpr::Identifier("y".into()),
@@ -105,7 +105,7 @@ fn core_reports_unsupported_expression_function_with_execution_context() {
     assert!(unsupported.message.contains("block_id=object:0:event:3:0"));
     assert!(unsupported.message.contains("object=obj_player"));
     assert!(unsupported.message.contains("event_tag=step"));
-    assert!(unsupported.message.contains("function=instance_position"));
+    assert!(unsupported.message.contains("function=instance_nearest"));
     assert!(unsupported.message.contains("runtime_id=0"));
 }
 
@@ -148,7 +148,7 @@ fn core_does_not_report_supported_abs_or_string_functions() {
             },
             LoweredLogicStatement::Conditional {
                 condition: LoweredLogicExpr::Call {
-                    name: "instance_position".into(),
+                    name: "instance_nearest".into(),
                     args: vec![
                         LoweredLogicExpr::Identifier("x".into()),
                         LoweredLogicExpr::Identifier("y".into()),
@@ -179,7 +179,7 @@ fn core_does_not_report_supported_abs_or_string_functions() {
         .all(|message| !message.contains("function=string")));
     assert!(unsupported_functions
         .iter()
-        .any(|message| message.contains("function=instance_position")));
+        .any(|message| message.contains("function=instance_nearest")));
 }
 
 #[test]

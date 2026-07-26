@@ -95,7 +95,28 @@ The current generated package still reports one raw lowering fallback in room
 and the resulting partial script-IR warning. None is proven to sit on the title
 boot path. Promote one only after a reproducible Crimson gameplay path reaches
 it or ties it to a visible spawn, movement, death/reset, transition, rendering,
-or boss-pattern failure.
+or boss-pattern failure. The `vspd  -6` fallback is a GML typo (missing `=`)
+that GM8 evaluates as a discarded expression statement, so the runtime keeping
+it as a no-op raw statement matches GM behavior; it is not a runtime blocker.
+
+Crimson's remaining runtime builtins are now implemented, so a headless scan of
+all 50 rooms reports zero `runtime_blockers`. Expression evaluation covers the
+GM math helpers `power`, `min`, `max`, `sign`, `sqr`, `sqrt`, `round`, `ceil`,
+`sin`, `cos`, `tan`, `arctan`, `arctan2`, `degtorad`, and `radtodeg` (aligned
+with OpenGMK `kernel.rs`), and `instance_position(x, y, obj)` resolves the
+instance whose bbox/mask contains the point, including `roomChanger` child
+objects. `power` unblocks Crimson's binary save codec (`saveGame`/`saveExe`/
+`loadGame` byte packing with `power(256, i-1)` / `power(2, i-1)`), and
+`instance_position(...).roomTo` is the player boundary room-transition mechanism.
+Scripted diagnostics now drive the original title -> menu -> select-stage flow
+(`keyboard_check_pressed(global.buttonJump)` advances title and menu; the player
+spawns from `playerStart`, moves/jumps/dies/respawns, and reaching a `warpStart`
+runs its collision `loadGame()` path). Still open on the Crimson path: 2D array
+access for the difficulty menu's boss-completion icons (cosmetic, menu-only),
+`game_end()` (Escape / Alt+S, non-gameplay), and full save-restore round-tripping
+which additionally depends on the file host retaining `save*.dat`/`temp.dat`
+across `game_restart` (the browser localStorage host, not the headless memory
+host, is the representative environment for that path).
 
 Current L3 work should proceed from the original package flow instead of broad
 manual room selection: first establish title-to-gameplay navigation, then add

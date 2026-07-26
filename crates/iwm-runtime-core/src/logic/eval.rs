@@ -4,8 +4,9 @@ use super::context::{RuntimeEvalContext, RuntimeExecutionScope};
 use super::eval_functions::{
     evaluate_choose_call, evaluate_collision_line, evaluate_distance_to_object,
     evaluate_instance_exists, evaluate_instance_number, evaluate_instance_place,
-    evaluate_irandom_call, evaluate_keyboard_query, evaluate_ord_call, evaluate_place_query,
-    evaluate_point_direction, evaluate_random_call, evaluate_random_range_call,
+    evaluate_instance_position, evaluate_irandom_call, evaluate_keyboard_query, evaluate_ord_call,
+    evaluate_place_query, evaluate_point_direction, evaluate_random_call,
+    evaluate_random_range_call,
 };
 pub(super) use super::eval_values::is_truthy;
 use super::eval_values::{eval_binary_expr, runtime_value_to_string_text};
@@ -52,6 +53,51 @@ pub(super) fn evaluate_expr(
                 .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
                 .and_then(|value| as_number(&value))
                 .map(|value| RuntimeValue::Number(value.floor())),
+            "round" => eval_number_arg(args.first(), instance, globals, scope, eval_context)
+                .map(|value| RuntimeValue::Number(gm_round(value))),
+            "ceil" => eval_number_arg(args.first(), instance, globals, scope, eval_context)
+                .map(|value| RuntimeValue::Number(value.ceil())),
+            "sqrt" => eval_number_arg(args.first(), instance, globals, scope, eval_context)
+                .map(|value| RuntimeValue::Number(value.sqrt())),
+            "sqr" => eval_number_arg(args.first(), instance, globals, scope, eval_context)
+                .map(|value| RuntimeValue::Number(value * value)),
+            "sign" => eval_number_arg(args.first(), instance, globals, scope, eval_context)
+                .map(|value| RuntimeValue::Number(gm_sign(value))),
+            "sin" => eval_number_arg(args.first(), instance, globals, scope, eval_context)
+                .map(|value| RuntimeValue::Number(value.sin())),
+            "cos" => eval_number_arg(args.first(), instance, globals, scope, eval_context)
+                .map(|value| RuntimeValue::Number(value.cos())),
+            "tan" => eval_number_arg(args.first(), instance, globals, scope, eval_context)
+                .map(|value| RuntimeValue::Number(value.tan())),
+            "arctan" => eval_number_arg(args.first(), instance, globals, scope, eval_context)
+                .map(|value| RuntimeValue::Number(value.atan())),
+            "degtorad" => eval_number_arg(args.first(), instance, globals, scope, eval_context)
+                .map(|value| RuntimeValue::Number(value.to_radians())),
+            "radtodeg" => eval_number_arg(args.first(), instance, globals, scope, eval_context)
+                .map(|value| RuntimeValue::Number(value.to_degrees())),
+            "power" => {
+                let base = eval_number_arg(args.first(), instance, globals, scope, eval_context)?;
+                let exponent =
+                    eval_number_arg(args.get(1), instance, globals, scope, eval_context)?;
+                Some(RuntimeValue::Number(base.powf(exponent)))
+            }
+            "arctan2" => {
+                let y = eval_number_arg(args.first(), instance, globals, scope, eval_context)?;
+                let x = eval_number_arg(args.get(1), instance, globals, scope, eval_context)?;
+                Some(RuntimeValue::Number(y.atan2(x)))
+            }
+            "min" | "max" => {
+                let mut accumulator: Option<f64> = None;
+                for arg in args {
+                    let value = eval_number_arg(Some(arg), instance, globals, scope, eval_context)?;
+                    accumulator = Some(match accumulator {
+                        None => value,
+                        Some(current) if name == "min" => current.min(value),
+                        Some(current) => current.max(value),
+                    });
+                }
+                Some(RuntimeValue::Number(accumulator.unwrap_or(0.0)))
+            }
             "random" => evaluate_random_call(args, instance, globals, scope, eval_context),
             "irandom" => evaluate_irandom_call(args, instance, globals, scope, eval_context),
             "random_range" => {
@@ -70,6 +116,9 @@ pub(super) fn evaluate_expr(
             "instance_number" => evaluate_instance_number(args, eval_context),
             "instance_place" => {
                 evaluate_instance_place(args, instance, globals, scope, eval_context)
+            }
+            "instance_position" => {
+                evaluate_instance_position(args, instance, globals, scope, eval_context)
             }
             "distance_to_object" => {
                 evaluate_distance_to_object(args, instance, globals, scope, eval_context)
@@ -133,6 +182,47 @@ fn evaluate_binary_operand(
 ) -> Option<RuntimeValue> {
     evaluate_expr(expr, instance, globals, scope, eval_context)
         .or_else(|| uninitialized_instance_operand(expr, instance, scope))
+}
+
+fn eval_number_arg(
+    arg: Option<&LoweredLogicExpr>,
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<f64> {
+    arg.and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))
+}
+
+/// GM8 `sign` uses the engine comparison epsilon (`1e-13`), so values in the
+/// dead zone around zero return `0` rather than `±1`.
+fn gm_sign(value: f64) -> f64 {
+    const CMP_EPSILON: f64 = 1e-13;
+    if value >= CMP_EPSILON {
+        1.0
+    } else if value <= -CMP_EPSILON {
+        -1.0
+    } else {
+        0.0
+    }
+}
+
+/// GM8 `round` uses banker's rounding (round half to even), matching OpenGMK's
+/// `Real::round`.
+fn gm_round(value: f64) -> f64 {
+    let rounded = value.round();
+    if (value - value.trunc()).abs() == 0.5 {
+        // `f64::round` rounds half away from zero; GM rounds half to even.
+        let floor = value.floor();
+        if (floor as i64) % 2 == 0 {
+            floor
+        } else {
+            floor + 1.0
+        }
+    } else {
+        rounded
+    }
 }
 
 fn uninitialized_instance_operand(

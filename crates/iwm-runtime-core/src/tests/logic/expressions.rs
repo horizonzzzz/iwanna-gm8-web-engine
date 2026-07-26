@@ -1750,3 +1750,126 @@ fn core_evaluates_instance_place_result_member_accesses() {
         Some(&RuntimeValue::Bool(true))
     );
 }
+
+fn call(name: &str, args: Vec<LoweredLogicExpr>) -> LoweredLogicExpr {
+    LoweredLogicExpr::Call {
+        name: name.into(),
+        args,
+    }
+}
+
+fn number(value: f64) -> LoweredLogicExpr {
+    LoweredLogicExpr::LiteralNumber(value)
+}
+
+#[test]
+fn core_evaluates_gm_math_builtins() {
+    let core = run_step(vec![
+        // Crimson's save codec packs bytes with `min(tem div power(256, i-1), 255)`.
+        assign_var("packed", call("power", vec![number(256.0), number(2.0)])),
+        assign_var(
+            "byte",
+            call(
+                "min",
+                vec![
+                    LoweredLogicExpr::BinaryExpr {
+                        op: "div".into(),
+                        left: Box::new(number(600.0)),
+                        right: Box::new(call("power", vec![number(256.0), number(1.0)])),
+                    },
+                    number(255.0),
+                ],
+            ),
+        ),
+        assign_var(
+            "hi",
+            call("max", vec![number(7.0), number(3.0), number(9.0)]),
+        ),
+        assign_var("neg", call("sign", vec![number(-4.0)])),
+        assign_var("zero", call("sign", vec![number(0.0)])),
+        assign_var("cos0", call("cos", vec![number(0.0)])),
+        assign_var("half_pi", call("degtorad", vec![number(90.0)])),
+        assign_var("diag", call("arctan2", vec![number(1.0), number(1.0)])),
+    ]);
+
+    assert_eq!(
+        player_var(&core, "packed"),
+        Some(&RuntimeValue::Number(65536.0))
+    );
+    assert_eq!(player_var(&core, "byte"), Some(&RuntimeValue::Number(2.0)));
+    assert_eq!(player_var(&core, "hi"), Some(&RuntimeValue::Number(9.0)));
+    assert_eq!(player_var(&core, "neg"), Some(&RuntimeValue::Number(-1.0)));
+    assert_eq!(player_var(&core, "zero"), Some(&RuntimeValue::Number(0.0)));
+    assert_eq!(player_var(&core, "cos0"), Some(&RuntimeValue::Number(1.0)));
+    match player_var(&core, "half_pi") {
+        Some(RuntimeValue::Number(value)) => {
+            assert!((value - std::f64::consts::FRAC_PI_2).abs() < 1e-9)
+        }
+        other => panic!("expected radians, got {other:?}"),
+    }
+    match player_var(&core, "diag") {
+        Some(RuntimeValue::Number(value)) => {
+            assert!((value - std::f64::consts::FRAC_PI_4).abs() < 1e-9)
+        }
+        other => panic!("expected arctan2 result, got {other:?}"),
+    }
+    assert_no_runtime_blockers(&core);
+}
+
+#[test]
+fn core_instance_position_resolves_instance_and_member_at_point() {
+    // Mirrors Crimson's boundary transition:
+    // `roomTo = instance_position(x, y, roomChanger).roomTo`.
+    // `obj_sparse_sprite` (id 705) has one placed instance (id 15) at (96, 96)
+    // with a 16x16 mask-less bounding box, so a point inside it resolves to that
+    // instance and a point outside resolves to GM `noone` (-4).
+    let core = run_step(vec![
+        assign_var(
+            "hit_id",
+            call(
+                "instance_position",
+                vec![
+                    number(96.0),
+                    number(96.0),
+                    LoweredLogicExpr::Identifier("obj_sparse_sprite".into()),
+                ],
+            ),
+        ),
+        assign_var(
+            "hit_obj",
+            LoweredLogicExpr::MemberAccess {
+                target: Box::new(call(
+                    "instance_position",
+                    vec![
+                        number(100.0),
+                        number(100.0),
+                        LoweredLogicExpr::Identifier("obj_sparse_sprite".into()),
+                    ],
+                )),
+                member: "object_index".into(),
+            },
+        ),
+        assign_var(
+            "miss",
+            call(
+                "instance_position",
+                vec![
+                    number(300.0),
+                    number(300.0),
+                    LoweredLogicExpr::Identifier("obj_sparse_sprite".into()),
+                ],
+            ),
+        ),
+    ]);
+
+    assert_eq!(
+        player_var(&core, "hit_id"),
+        Some(&RuntimeValue::Number(15.0))
+    );
+    assert_eq!(
+        player_var(&core, "hit_obj"),
+        Some(&RuntimeValue::Number(705.0))
+    );
+    assert_eq!(player_var(&core, "miss"), Some(&RuntimeValue::Number(-4.0)));
+    assert_no_runtime_blockers(&core);
+}

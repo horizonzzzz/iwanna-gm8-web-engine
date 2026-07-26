@@ -253,6 +253,50 @@ pub(super) fn evaluate_instance_place(
     Some(RuntimeValue::Number(hit))
 }
 
+pub(super) fn evaluate_instance_position(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let context = eval_context?;
+    let x = args
+        .first()
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?;
+    let y = args
+        .get(1)
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?;
+    let target_object_ids = instance_target_object_ids(args.get(2)?, context)?;
+    let point_x = x.round() as i32;
+    let point_y = y.round() as i32;
+    let hit = context
+        .room_instances_matching_object_ids(&target_object_ids)
+        .find(|(_, candidate)| {
+            candidate.alive && instance_contains_point(candidate, point_x, point_y)
+        })
+        .map(|(_, candidate)| candidate.instance_id as f64)
+        .unwrap_or(-4.0);
+    Some(RuntimeValue::Number(hit))
+}
+
+/// GM `check_collision_point(handle, x, y, true)`: the point must fall inside the
+/// instance's bounding box, and additionally inside its precise mask when one is
+/// available. Marker objects such as `warpInvisible` have no mask, so the bbox
+/// alone decides for them.
+fn instance_contains_point(instance: &RuntimeInstance, world_x: i32, world_y: i32) -> bool {
+    let (left, top, right, bottom) = inclusive_bounds_at(instance);
+    if world_x < left || world_x > right || world_y < top || world_y > bottom {
+        return false;
+    }
+    if instance.collision_masks.is_empty() {
+        return true;
+    }
+    instance_mask_contains_point(instance, world_x, world_y)
+}
+
 pub(super) fn evaluate_instance_exists(
     args: &[LoweredLogicExpr],
     eval_context: Option<&RuntimeEvalContext<'_>>,
