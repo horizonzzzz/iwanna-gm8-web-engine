@@ -124,6 +124,116 @@ fn core_dispatches_sound_stop_all_to_audio_host() {
 }
 
 #[test]
+fn core_stops_all_sounds_when_restart_button_resets_room() {
+    let mut package = sample_package();
+    package.manifest.zero_uninitialized_vars = true;
+    package.resources.sounds[0].id = 42;
+    package.resources.sounds[0].name = "sndDeath".into();
+    // Play the death jingle exactly once, guarded by a global so the rebuilt
+    // room does not replay it after the reset.
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::UnaryExpr {
+                op: "!".into(),
+                child: Box::new(LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                    member: "deathsoundplayed".into(),
+                }),
+            },
+            then_branch: vec![
+                LoweredLogicStatement::FunctionCall {
+                    name: "sound_play".into(),
+                    args: vec![LoweredLogicExpr::Identifier("sndDeath".into())],
+                },
+                LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::MemberAccess {
+                        target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                        member: "deathsoundplayed".into(),
+                    },
+                    value: LoweredLogicExpr::LiteralNumber(1.0),
+                },
+            ],
+            else_branch: vec![],
+        }],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+    assert_eq!(host.audio.played, vec![(42, RuntimeSoundMode::Once)]);
+    assert!(host.audio.is_sound_playing(42).unwrap());
+    assert_eq!(host.audio.stopped_all_count, 0);
+
+    host.input.set_button_state(
+        RuntimeButton::Restart,
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(host.audio.stopped_all_count, 1);
+    assert!(!host.audio.is_sound_playing(42).unwrap());
+    assert_eq!(host.audio.played, vec![(42, RuntimeSoundMode::Once)]);
+}
+
+#[test]
+fn core_stops_all_sounds_when_game_restart_reloads_first_room() {
+    let mut package = sample_package();
+    package.resources.sounds[0].id = 42;
+    package.resources.sounds[0].name = "sndDeath".into();
+    add_keyboard_block(
+        &mut package,
+        65,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "sound_play".into(),
+            args: vec![LoweredLogicExpr::Identifier("sndDeath".into())],
+        }],
+    );
+    add_keyboard_block(
+        &mut package,
+        82,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "game_restart".into(),
+            args: vec![],
+        }],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(65),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+    assert_eq!(host.audio.played, vec![(42, RuntimeSoundMode::Once)]);
+    assert!(host.audio.is_sound_playing(42).unwrap());
+    assert_eq!(host.audio.stopped_all_count, 0);
+
+    host.input.set_button_state(RuntimeButton::Keyboard(65), ButtonState::default());
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(82),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(host.audio.stopped_all_count, 1);
+    assert!(!host.audio.is_sound_playing(42).unwrap());
+    assert_eq!(host.audio.played, vec![(42, RuntimeSoundMode::Once)]);
+}
+
+#[test]
 fn core_treats_uninitialized_sound_var_as_zero_when_enabled() {
     let mut package = sample_package();
     package.manifest.zero_uninitialized_vars = true;

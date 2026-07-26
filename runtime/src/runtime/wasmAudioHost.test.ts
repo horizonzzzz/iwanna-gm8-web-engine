@@ -118,6 +118,45 @@ describe('wasm web audio host', () => {
     expect(context.createdSources[0].stop).toHaveBeenCalledTimes(1);
     expect(context.createdSources[1].loop).toBe(false);
     expect(context.createdSources[1].start).toHaveBeenCalledTimes(1);
+    expect(context.createdSources[1].stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops active one-shot sounds when stopping all sounds', async () => {
+    const context = new FakeAudioContext();
+    const host = createWebAudioHost({
+      audioContext: context as unknown as AudioContext,
+      fetch: vi.fn(async () => new Response(new Uint8Array([1, 2, 3])))
+    });
+
+    host.configurePackage(packageWithSound, '/packages/sample');
+    await host.playSound(42, 'once');
+    await host.playSound(42, 'once');
+    expect(host.isSoundPlaying(42)).toBe(true);
+
+    host.stopAllSounds();
+
+    expect(context.createdSources).toHaveLength(2);
+    expect(context.createdSources[0].stop).toHaveBeenCalledTimes(1);
+    expect(context.createdSources[1].stop).toHaveBeenCalledTimes(1);
+    expect(host.isSoundPlaying(42)).toBe(false);
+  });
+
+  it('keeps a sound marked playing until all of its one-shot sources end', async () => {
+    const context = new FakeAudioContext();
+    const host = createWebAudioHost({
+      audioContext: context as unknown as AudioContext,
+      fetch: vi.fn(async () => new Response(new Uint8Array([1, 2, 3])))
+    });
+
+    host.configurePackage(packageWithSound, '/packages/sample');
+    await host.playSound(42, 'once');
+    await host.playSound(42, 'once');
+
+    context.createdSources[0].onended?.();
+    expect(host.isSoundPlaying(42)).toBe(true);
+
+    context.createdSources[1].onended?.();
+    expect(host.isSoundPlaying(42)).toBe(false);
   });
 
   it('reports active loop state and stops all sounds', async () => {

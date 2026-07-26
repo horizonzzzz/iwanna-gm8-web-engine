@@ -20,6 +20,7 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
   const fetchSound = options.fetch ?? fetch.bind(globalThis);
   const buffers = new Map<number, Promise<AudioBuffer>>();
   const activeLoops = new Map<number, AudioBufferSourceNode>();
+  const activeOneShots = new Map<number, Set<AudioBufferSourceNode>>();
   const loadingLoops = new Map<number, symbol>();
   const playingSounds = new Set<number>();
   let packageBasePath = '';
@@ -70,6 +71,7 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
         stopSource(activeBackgroundMusic?.source);
         if (activeBackgroundMusic) {
           activeLoops.delete(activeBackgroundMusic.soundId);
+          discardOneShot(activeBackgroundMusic.soundId, activeBackgroundMusic.source);
           playingSounds.delete(activeBackgroundMusic.soundId);
         }
       }
@@ -80,7 +82,10 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
     source.loop = mode === 'loop';
     source.onended = () => {
       if (mode !== 'loop') {
-        playingSounds.delete(soundId);
+        discardOneShot(soundId, source);
+        if (!activeOneShots.has(soundId) && !activeLoops.has(soundId)) {
+          playingSounds.delete(soundId);
+        }
       }
     };
     source.connect(context.destination);
@@ -88,6 +93,13 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
     source.start();
     if (mode === 'loop') {
       activeLoops.set(soundId, source);
+    } else {
+      let sources = activeOneShots.get(soundId);
+      if (!sources) {
+        sources = new Set();
+        activeOneShots.set(soundId, sources);
+      }
+      sources.add(source);
     }
     if (isExclusiveMusicKind(packageSoundKinds.get(soundId))) {
       activeBackgroundMusic = { soundId, source };
@@ -104,11 +116,39 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
     }
   }
 
+  function discardOneShot(soundId: number, source: AudioBufferSourceNode): void {
+    const sources = activeOneShots.get(soundId);
+    if (!sources) {
+      return;
+    }
+    sources.delete(source);
+    if (sources.size === 0) {
+      activeOneShots.delete(soundId);
+    }
+  }
+
+  function stopOneShots(soundId: number): void {
+    for (const source of activeOneShots.get(soundId) ?? []) {
+      stopSource(source);
+    }
+    activeOneShots.delete(soundId);
+  }
+
+  function stopAllOneShots(): void {
+    for (const sources of activeOneShots.values()) {
+      for (const source of sources) {
+        stopSource(source);
+      }
+    }
+    activeOneShots.clear();
+  }
+
   return {
     configurePackage(pkg, basePath) {
       for (const source of activeLoops.values()) {
         stopSource(source);
       }
+      stopAllOneShots();
       packageBasePath = basePath.replace(/\/$/, '');
       packageSounds = new Map(pkg.resources.sounds.map((sound) => [sound.id, sound.file_path]));
       packageSoundKinds = new Map(pkg.resources.sounds.map((sound) => [sound.id, sound.kind ?? 'normal']));
@@ -150,6 +190,7 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
     },
     stopSound(soundId) {
       stopSource(activeLoops.get(soundId));
+      stopOneShots(soundId);
       activeLoops.delete(soundId);
       loadingLoops.delete(soundId);
       playingSounds.delete(soundId);
@@ -161,6 +202,7 @@ export function createWebAudioHost(options: WebAudioHostOptions = {}): WasmAudio
       for (const source of activeLoops.values()) {
         stopSource(source);
       }
+      stopAllOneShots();
       activeLoops.clear();
       loadingLoops.clear();
       playingSounds.clear();
