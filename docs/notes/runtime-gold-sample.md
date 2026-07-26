@@ -111,12 +111,21 @@ objects. `power` unblocks Crimson's binary save codec (`saveGame`/`saveExe`/
 Scripted diagnostics now drive the original title -> menu -> select-stage flow
 (`keyboard_check_pressed(global.buttonJump)` advances title and menu; the player
 spawns from `playerStart`, moves/jumps/dies/respawns, and reaching a `warpStart`
-runs its collision `loadGame()` path). Still open on the Crimson path: 2D array
-access for the difficulty menu's boss-completion icons (cosmetic, menu-only),
-`game_end()` (Escape / Alt+S, non-gameplay), and full save-restore round-tripping
-which additionally depends on the file host retaining `save*.dat`/`temp.dat`
-across `game_restart` (the browser localStorage host, not the headless memory
-host, is the representative environment for that path).
+runs its collision `loadGame()` path). Save-restore round-tripping is now
+proven: the actual blocker was not file-host retention but a parser lowering
+defect where the top-level scanners in `gml_lowering/syntax.rs` were not
+string-literal aware, so `"temp.dat"` lowered as a member access and
+`file_bin_open`/`file_exists` never saw a file name. With string literals kept
+opaque, the R-key `loadGame()` -> `game_restart()` -> `rInit` -> `tempExe()`
+chain returns to the saved room headlessly, and the browser localStorage host
+round-trips shoot-save/R-load and select-stage `loadGame` warps. The fix is a
+general scanner change covered by `gml_lowering_string_literals.rs` parser
+regressions, and the Dife L1 save gates
+(`real_sample_s_key_savepoint_writes_save_file_and_spawns_feedback`,
+`real_sample_r_load_after_s_save_restores_saved_player_position`) still pass on
+a package rebuilt with the fixed parser. Still open on the Crimson path: 2D
+array access for the difficulty menu's boss-completion icons (cosmetic,
+menu-only) and `game_end()` (Escape / Alt+S, non-gameplay).
 
 Current L3 work should proceed from the original package flow instead of broad
 manual room selection: first establish title-to-gameplay navigation, then add

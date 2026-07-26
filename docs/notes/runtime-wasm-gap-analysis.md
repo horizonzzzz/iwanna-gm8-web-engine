@@ -59,6 +59,21 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
   on the gameplay path. Room 166 instance 154285's `vspd  -6` is a GML typo
   (missing `=`) that GM8 evaluates as a discarded expression, so the runtime's
   raw no-op matches GM behavior.
+- The GML lowering top-level scanners (`find_top_level_dot`,
+  `split_top_level_statements`, `split_top_level_csv`,
+  `split_top_level_operator`, and the block/index/paren helpers in
+  `gml_lowering/syntax.rs`) now treat string literals as opaque. Previously a
+  `.` inside `"temp.dat"` lowered the literal into a member access, so
+  Crimson's whole save/load subsystem (`saveGame`/`loadGame`/`tempExe`/
+  `saveExe` plus the `rInit` `file_exists("temp.dat")` routing) silently
+  degraded: `file_bin_open` received a non-text argument, no file was ever
+  written, and `game_restart` always fell through to `rTitle`. Commas and
+  semicolons inside strings split arguments and statements the same way. GM8
+  string literals have no escape sequences, so a shared quote-tracking scanner
+  is sufficient; the regression suite is
+  `crates/iwm-parser/tests/gml_lowering_string_literals.rs`, and both the
+  Crimson R-load path and the Dife L1 save gates pass on packages rebuilt with
+  the fixed parser.
 - Uninitialized `global.member` reads now use GM8's numeric zero fallback, the
   same class of behavior already used for ordinary uninitialized instance
   variables. This allows package-owned room-start conditions such as

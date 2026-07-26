@@ -1,7 +1,42 @@
+/// Tracks whether a scan position sits inside a GML string literal.
+///
+/// GM8 string literals are delimited by `"` or `'` and have no escape
+/// sequences, so a literal simply runs to the next matching quote. Every
+/// top-level scanner below consults this so punctuation inside a string is
+/// never mistaken for syntax.
+#[derive(Default)]
+struct StringScanner {
+    quote: Option<char>,
+}
+
+impl StringScanner {
+    /// Feeds the next character and reports whether it belongs to a string
+    /// literal, counting the delimiting quotes themselves as inside.
+    fn consume(&mut self, ch: char) -> bool {
+        match self.quote {
+            Some(open) => {
+                if ch == open {
+                    self.quote = None;
+                }
+                true
+            }
+            None if ch == '"' || ch == '\'' => {
+                self.quote = Some(ch);
+                true
+            }
+            None => false,
+        }
+    }
+}
+
 pub(super) fn extract_parenthesized_block(input: &str) -> Option<(String, String)> {
     let mut depth = 0usize;
     let mut start = None;
+    let mut strings = StringScanner::default();
     for (index, ch) in input.char_indices() {
+        if strings.consume(ch) {
+            continue;
+        }
         match ch {
             '(' => {
                 depth += 1;
@@ -27,7 +62,11 @@ pub(super) fn extract_parenthesized_block(input: &str) -> Option<(String, String
 pub(super) fn extract_braced_block(input: &str) -> Option<(String, String)> {
     let mut depth = 0usize;
     let mut start = None;
+    let mut strings = StringScanner::default();
     for (index, ch) in input.char_indices() {
+        if strings.consume(ch) {
+            continue;
+        }
         match ch {
             '{' => {
                 depth += 1;
@@ -88,7 +127,11 @@ pub(super) fn strip_balanced_outer_parens(s: &str) -> &str {
         let inner = &trimmed[1..trimmed.len() - 1];
         let mut depth = 0usize;
         let mut valid = true;
+        let mut strings = StringScanner::default();
         for ch in inner.chars() {
+            if strings.consume(ch) {
+                continue;
+            }
             match ch {
                 '(' => depth += 1,
                 ')' => {
@@ -113,8 +156,13 @@ pub(super) fn split_top_level_statements(source: &str) -> Vec<String> {
     let mut current = String::new();
     let mut paren_depth = 0usize;
     let mut brace_depth = 0usize;
+    let mut strings = StringScanner::default();
 
     for (index, ch) in source.char_indices() {
+        if strings.consume(ch) {
+            current.push(ch);
+            continue;
+        }
         match ch {
             '(' => paren_depth += 1,
             ')' => paren_depth = paren_depth.saturating_sub(1),
@@ -174,8 +222,13 @@ pub(super) fn split_top_level_commas_or_semicolons(source: &str) -> Vec<String> 
     let mut current = String::new();
     let mut paren_depth = 0usize;
     let mut brace_depth = 0usize;
+    let mut strings = StringScanner::default();
 
     for ch in source.chars() {
+        if strings.consume(ch) {
+            current.push(ch);
+            continue;
+        }
         match ch {
             '(' => paren_depth += 1,
             ')' => paren_depth = paren_depth.saturating_sub(1),
@@ -208,8 +261,13 @@ pub(super) fn split_top_level_csv(source: &str) -> Vec<String> {
     let mut paren_depth = 0usize;
     let mut bracket_depth = 0usize;
     let mut brace_depth = 0usize;
+    let mut strings = StringScanner::default();
 
     for ch in source.chars() {
+        if strings.consume(ch) {
+            current.push(ch);
+            continue;
+        }
         match ch {
             '(' => paren_depth += 1,
             ')' => paren_depth = paren_depth.saturating_sub(1),
@@ -246,9 +304,14 @@ pub(super) fn split_top_level_operator(source: &str, operator: &str) -> Option<(
     let chars: Vec<(usize, char)> = source.char_indices().collect();
     let op_len = operator.len();
     let mut i = 0usize;
+    let mut strings = StringScanner::default();
 
     while i < chars.len() {
         let (byte_index, ch) = chars[i];
+        if strings.consume(ch) {
+            i += 1;
+            continue;
+        }
         match ch {
             '(' => paren_depth += 1,
             ')' => paren_depth = paren_depth.saturating_sub(1),
@@ -362,7 +425,13 @@ pub(super) fn split_top_level_trailing_index(source: &str) -> Option<(String, St
     }
 
     let mut bracket_depth = 0usize;
+    // Scanned in reverse; quote pairing stays symmetric because GML string
+    // literals have no escape sequences.
+    let mut strings = StringScanner::default();
     for (index, ch) in source.char_indices().rev() {
+        if strings.consume(ch) {
+            continue;
+        }
         match ch {
             ']' => bracket_depth += 1,
             '[' => {
@@ -388,8 +457,12 @@ pub(super) fn find_top_level_dot(source: &str) -> Option<usize> {
     let mut bracket_depth = 0usize;
     let mut brace_depth = 0usize;
     let mut last_dot = None;
+    let mut strings = StringScanner::default();
 
     for (index, ch) in source.char_indices() {
+        if strings.consume(ch) {
+            continue;
+        }
         match ch {
             '(' => paren_depth += 1,
             ')' => paren_depth = paren_depth.saturating_sub(1),
