@@ -89,7 +89,7 @@ export async function runWasmScenario(
     const { loadPackage } = await import('/src/loadPackage.ts');
     const { instantiateWasmRuntimeBridge } = await import('/src/runtime/wasmBridge.ts');
 
-    const pkg = await loadPackage('/packages/sample');
+    const pkg = await loadPackage('/packages/gm8-core/IWBT_Dife');
     const bridge = await instantiateWasmRuntimeBridge('/wasm/iwm_runtime_web.wasm', {}, {
       audioHost: {
         playSound: () => undefined,

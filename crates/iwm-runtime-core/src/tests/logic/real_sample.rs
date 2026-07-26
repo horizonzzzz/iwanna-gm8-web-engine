@@ -410,8 +410,8 @@ fn real_sample_bootstrap_sets_shift_jump_binding() {
 }
 
 #[test]
-fn real_sample_world_room_start_sets_shared_runtime_room_speed() {
-    let Some(package) = real_sample_package() else {
+fn crimson_world_room_start_sets_shared_runtime_room_speed() {
+    let Some(package) = local_sample_package("gm8-core/I wanna be the Crimson ver.1.0") else {
         return;
     };
     let mut core = RuntimeCore::load(package).unwrap();
@@ -424,7 +424,26 @@ fn real_sample_world_room_start_sets_shared_runtime_room_speed() {
     enter_real_sample_difficulty_room(&mut core, &mut host);
     assert_eq!(core.current_room_speed(), Some(50));
 
-    select_real_sample_medium_difficulty(&mut core, &mut host);
+    // Crimson's medium warpStart enters room001, not the Dife-style rStage01.
+    let medium_stage_room = real_sample_room_id(&core, "room001");
+    move_real_sample_player_onto_target(
+        &mut core,
+        |instance| {
+            instance.object_name.eq_ignore_ascii_case("warpStart")
+                && instance.vars.get("dif") == Some(&RuntimeValue::Number(0.0))
+        },
+        "medium difficulty warpStart",
+    );
+    core.tick(&mut host).unwrap();
+    host.input.clear_transitions();
+
+    assert_eq!(
+        core.globals.get("global.difficulty"),
+        Some(&RuntimeValue::Number(0.0)),
+        "medium warpStart collision should select difficulty; diagnostics={:?}",
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+    assert_eq!(core.snapshot().room_id, Some(medium_stage_room));
     assert_eq!(core.current_room_speed(), Some(50));
 }
 
@@ -463,8 +482,8 @@ fn real_sample_title_shift_enters_save_menu() {
 }
 
 #[test]
-fn real_sample_title_starts_opbgm_loop() {
-    let Some(package) = real_sample_package() else {
+fn crimson_title_starts_opbgm_loop() {
+    let Some(package) = local_sample_package("gm8-core/I wanna be the Crimson ver.1.0") else {
         return;
     };
     let opbgm_id = package
@@ -472,7 +491,7 @@ fn real_sample_title_starts_opbgm_loop() {
         .sounds
         .iter()
         .find(|sound| sound.name.eq_ignore_ascii_case("opbgm"))
-        .expect("sample package should include opbgm")
+        .expect("Crimson package should include opbgm")
         .id as i32;
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();

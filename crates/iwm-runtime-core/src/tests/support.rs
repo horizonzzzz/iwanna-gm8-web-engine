@@ -397,7 +397,7 @@ pub(super) fn assert_no_runtime_blockers(core: &RuntimeCore) {
 
 #[cfg(feature = "local-sample-tests")]
 pub(super) fn real_sample_package() -> Option<RuntimePackage> {
-    local_sample_package("sample")
+    local_sample_package("gm8-core/IWBT_Dife")
 }
 
 #[cfg(feature = "local-sample-tests")]

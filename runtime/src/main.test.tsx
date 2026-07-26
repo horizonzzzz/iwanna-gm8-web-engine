@@ -22,7 +22,7 @@ describe('runtime app bootstrap', () => {
     render(<RootApp />);
 
     expect(screen.getByText('IWanna Runtime Shell')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Package' })).toHaveValue('/packages/sample');
+    expect(screen.getByRole('textbox', { name: 'Package' })).toHaveValue('/packages/gm8-core/IWBT_Dife');
     expect(screen.getByRole('button', { name: 'Load Package' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeDisabled();
     expect(screen.getByRole('combobox', { name: 'Room' })).toBeDisabled();

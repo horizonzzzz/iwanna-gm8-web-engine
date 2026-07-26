@@ -76,8 +76,8 @@ Purpose:
 Rules:
 
 - never require local copyrighted sample binaries for default repository health
-- skip cleanly when `runtime/public/packages/sample/` or the sample corpus is
-  absent
+- skip cleanly when the per-game packages under
+  `runtime/public/packages/gm8-core/` or the sample corpus are absent
 - do not promote a local-sample-only assertion into default contract truth
 - prefer `iwm-cli runtime-diagnostics` for gold-sample blocker ranking before
   adding new GM helper support
@@ -108,6 +108,13 @@ Run browser smoke only when local prerequisites are available:
 npm --prefix runtime run test:browser
 ```
 
+Browser smoke prerequisites: a locally built
+`runtime/public/packages/gm8-core/IWBT_Dife/` package
+(`.\scripts\build-samples.ps1`) and a synced wasm artifact
+(`npm --prefix runtime run sync:wasm`). Both are gitignored local artifacts,
+so fresh clones and machines without the L1 sample must expect these specs to
+fail until they are generated.
+
 When code changes affect the repository graph, run:
 
 ```powershell
@@ -122,8 +129,8 @@ graphify update .
   event type, expected diagnostic code, or simple fixture field.
 - Move repeated setup into test support before splitting implementation modules.
 - Keep real sample evidence separate from synthetic fixtures.
-- Treat `runtime/public/packages/sample/` as a local artifact, not a stable
-  fixture.
+- Treat the generated packages under `runtime/public/packages/gm8-core/` as
+  local artifacts, not stable fixtures.
 - Keep parser/runtime contract changes synchronized with
   `docs/notes/package-format-v1-runtime.md` and
   `docs/notes/runtime-wasm-gap-analysis.md`.

@@ -753,7 +753,8 @@ fn built_gold_sample_preserves_player_step_jump_calls_in_lowered_logic() {
         .join("runtime")
         .join("public")
         .join("packages")
-        .join("sample");
+        .join("gm8-core")
+        .join("IWBT_Dife");
 
     let lowered_path = sample_dir.join("logic.lowered.json");
     let objects_path = sample_dir.join("objects.json");

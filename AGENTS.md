@@ -97,9 +97,12 @@ WASM bridge workflow commands:
 Package generation commands:
 
 - `cargo run -p iwm-cli -- detect --input C:\path\to\game`
-- `cargo run -p iwm-cli -- build-package --input C:\path\to\game --output .\runtime\public\packages\sample`
-- `cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample`
-- `cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\sample --select-room 143 --ticks 240 --press-keys 16`
+- `cargo run -p iwm-cli -- build-package --input C:\path\to\game --output ".\runtime\public\packages\gm8-core\<game name>"`
+- `cargo run -p iwm-cli -- validate-package --input ".\runtime\public\packages\gm8-core\<game name>"`
+- `cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\gm8-core\IWBT_Dife --select-room 143 --ticks 240 --press-keys 16`
+- `.\scripts\build-samples.ps1` (builds the L1/L2/L3 regression samples into their own per-game package directories)
+
+Generated packages live under `runtime/public/packages/gm8-core/<game name>/` — one directory per game, matching the sample corpus folder name, so sample builds never overwrite each other. The shared `runtime/public/packages/sample/` path is retired.
 
 ## Sample Corpus Instructions
 
@@ -120,6 +123,14 @@ Rules:
 - do not assume category labels are final truth
 - prefer `gm8-core` for first smoke tests
 - use `non-target` to validate negative classification behavior
+- the corpus is gitignored and environment-local; development happens on
+  multiple machines in parallel, and only the L1/L2/L3 regression baselines
+  (`IWBT_Dife`, `I Wanna Break Through ArioTrials`,
+  `I wanna be the Crimson ver.1.0`) are expected to exist under
+  `samples/local/iwanna-examples/gm8-core/` in every environment
+- treat any other sample as machine-specific: tests referencing non-baseline
+  samples or their generated packages must skip cleanly when the files are
+  absent
 
 ## Vendored References
 

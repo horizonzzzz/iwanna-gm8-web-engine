@@ -15,7 +15,8 @@ fn load_real_sample_package() -> Option<iwm_runtime_core::RuntimePackage> {
         .join("runtime")
         .join("public")
         .join("packages")
-        .join("sample");
+        .join("gm8-core")
+        .join("IWBT_Dife");
 
     let manifest_path = package_root.join("manifest.json");
     if !manifest_path.exists() {

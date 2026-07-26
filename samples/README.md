@@ -62,10 +62,19 @@ be the Crimson ver.1.0` is the current L3 compatibility-development sample.
 Other larger or extended games remain pressure tests until their earlier
 pipeline stages are stable.
 
+These three baselines are the only corpus entries expected to exist in every
+development environment; because development happens on multiple machines,
+every other sample is machine-specific. Tests that reference non-baseline
+samples (or their generated packages) must skip cleanly when the files are
+absent.
+
 Run `sample-audit` first to compose detection, package generation, validation,
 and bounded runtime diagnostics. Keep generated reports under
-`target/sample-audits/` and packages under `runtime/public/packages/`; neither is
-a tracked sample artifact.
+`target/sample-audits/` and packages under
+`runtime/public/packages/gm8-core/<game name>/` — one directory per game,
+matching the corpus folder name, so L1/L2/L3 builds never overwrite each other
+(`.\scripts\build-samples.ps1` rebuilds the three baselines). Neither location
+is a tracked sample artifact.
 
 After a path is stable, use `runtime-scenario`. Scenario JSON files reuse the
 existing `ticks` input format and add observable assertions for blockers,

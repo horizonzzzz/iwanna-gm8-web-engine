@@ -268,7 +268,7 @@ fn object_indexed_read_uses_first_live_target() {
 #[cfg(feature = "local-sample-tests")]
 #[test]
 fn ariotrials_room156_time_limit_counts_down() {
-    let Some(package) = local_sample_package("ariotrials") else {
+    let Some(package) = local_sample_package("gm8-core/I Wanna Break Through ArioTrials") else {
         return;
     };
     let mut core = RuntimeCore::load(package).unwrap();

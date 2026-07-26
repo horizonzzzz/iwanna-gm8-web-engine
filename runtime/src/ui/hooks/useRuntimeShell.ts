@@ -131,7 +131,7 @@ async function renderRuntimeRoom(
 export function useRuntimeShell(options: RuntimeShellOptions = {}) {
   const {
     allowStaticFallback = true,
-    initialPackagePath = '/packages/sample',
+    initialPackagePath = '/packages/gm8-core/IWBT_Dife',
   } = options;
   const [packagePath, setPackagePath] = useState(initialPackagePath);
   const [loadedPackage, setLoadedPackage] = useState<RuntimePackage | null>(null);

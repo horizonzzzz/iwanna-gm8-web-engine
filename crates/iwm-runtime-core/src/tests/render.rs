@@ -6,9 +6,9 @@ use iwm_runtime_model::{
 
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore};
 
-#[cfg(feature = "local-sample-tests")]
-use super::support::real_sample_package;
 use super::support::{add_step_block, append_lowered_entry, host, sample_package};
+#[cfg(feature = "local-sample-tests")]
+use super::support::{local_sample_package, real_sample_package};
 
 #[test]
 fn runtime_core_emits_browser_consumable_draw_commands() {
@@ -644,12 +644,10 @@ fn runtime_core_executes_draw_events_for_text_commands() {
     )));
 }
 
-#[test]
 #[cfg(feature = "local-sample-tests")]
-fn real_sample_menu_draws_slot_text_and_cursor_sprite() {
-    let Some(package) = real_sample_package() else {
-        return;
-    };
+fn menu_frame_texts_and_sprites(
+    package: crate::RuntimePackage,
+) -> (Vec<String>, Vec<usize>, Option<usize>) {
     let menu_room_id = package
         .rooms
         .iter()
@@ -661,8 +659,7 @@ fn real_sample_menu_draws_slot_text_and_cursor_sprite() {
         .sprites
         .iter()
         .find(|sprite| sprite.name.eq_ignore_ascii_case("sprPlayerRunning"))
-        .map(|sprite| sprite.id)
-        .expect("sample package should include sprPlayerRunning");
+        .map(|sprite| sprite.id);
     let mut core = RuntimeCore::load(package).unwrap();
     let mut host = host();
 
@@ -674,30 +671,66 @@ fn real_sample_menu_draws_slot_text_and_cursor_sprite() {
         .commands
         .iter()
         .filter_map(|command| match command {
-            RuntimeDrawCommand::DrawText { text, .. } => Some(text.as_str()),
+            RuntimeDrawCommand::DrawText { text, .. } => Some(text.clone()),
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert!(texts.contains(&"Data1"), "rMenu texts: {texts:?}");
-    assert!(texts.contains(&"Data2"), "rMenu texts: {texts:?}");
-    assert!(texts.contains(&"Data3"), "rMenu texts: {texts:?}");
-    assert!(texts.contains(&"Death"), "rMenu texts: {texts:?}");
-    assert!(texts.contains(&"Time"), "rMenu texts: {texts:?}");
-    assert!(texts.contains(&"0"), "rMenu texts: {texts:?}");
-    assert!(texts.contains(&"0:00:00"), "rMenu texts: {texts:?}");
-    assert!(frame.commands.iter().any(|command| matches!(
-        command,
-        RuntimeDrawCommand::DrawSprite {
-            sprite_id,
-            ..
-        } if *sprite_id == cursor_sprite_id
-    )));
+    let sprites = frame
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RuntimeDrawCommand::DrawSprite { sprite_id, .. } => Some(*sprite_id),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    (texts, sprites, cursor_sprite_id)
 }
 
 #[test]
 #[cfg(feature = "local-sample-tests")]
-fn real_sample_difficulty_room_draws_labels() {
+fn real_sample_menu_draws_slot_text_and_cursor_sprite() {
     let Some(package) = real_sample_package() else {
+        return;
+    };
+    let (texts, sprites, cursor_sprite_id) = menu_frame_texts_and_sprites(package);
+    let cursor_sprite_id = cursor_sprite_id.expect("Dife package should include sprPlayerRunning");
+
+    for expected in ["Data1", "Data2", "Data3"] {
+        assert!(
+            texts.iter().any(|text| text == expected),
+            "rMenu texts: {texts:?}"
+        );
+    }
+    assert!(
+        sprites.contains(&cursor_sprite_id),
+        "Dife rMenu should draw cursor sprite {cursor_sprite_id}, drawn sprites: {sprites:?}"
+    );
+}
+
+#[test]
+#[cfg(feature = "local-sample-tests")]
+fn crimson_menu_draws_slot_text() {
+    let Some(package) = local_sample_package("gm8-core/I wanna be the Crimson ver.1.0") else {
+        return;
+    };
+    let (texts, sprites, _) = menu_frame_texts_and_sprites(package);
+
+    for expected in ["Data1", "Data2", "Data3", "Death", "Time", "0", "0:00:00"] {
+        assert!(
+            texts.iter().any(|text| text == expected),
+            "rMenu texts: {texts:?}"
+        );
+    }
+    assert!(
+        !sprites.is_empty(),
+        "Crimson rMenu should draw its slot sprites"
+    );
+}
+
+#[test]
+#[cfg(feature = "local-sample-tests")]
+fn crimson_difficulty_room_draws_labels() {
+    let Some(package) = local_sample_package("gm8-core/I wanna be the Crimson ver.1.0") else {
         return;
     };
     let room_id = package

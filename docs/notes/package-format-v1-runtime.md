@@ -69,9 +69,11 @@ shell can also load a local package directory under
 - `analysis.json`
 - `resources/index.json`
 
-The default `/shell` input remains `/packages/sample`, which corresponds to
-`runtime/public/packages/sample/`. The public `/` page does not use that
-fallback path.
+The default `/shell` input is `/packages/gm8-core/IWBT_Dife`, which corresponds
+to `runtime/public/packages/gm8-core/IWBT_Dife/`. Generated sample packages
+live under `runtime/public/packages/gm8-core/<game name>/` so L1/L2/L3 builds
+do not overwrite each other. The public `/` page does not use that fallback
+path.
 
 The current `iwm-runtime-web` bridge still boots from the normalized runtime payload; the raw and lowered logic files are parser-side artifacts used to preserve and prepare GM8 logic for later runtime consumption.
 Both browser surfaces load `logic.raw.json` and `logic.lowered.json` so diagnostics and runtime-facing tooling can inspect parser-owned logic without reopening the original GM8 executable.

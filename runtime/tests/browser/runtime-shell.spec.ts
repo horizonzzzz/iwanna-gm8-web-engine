@@ -15,7 +15,7 @@ async function loadPackage(page: import('@playwright/test').Page, packagePath: s
 }
 
 test('sample package boots through the wasm path and exposes runtime telemetry', async ({ page }) => {
-  await loadPackage(page, '/packages/sample');
+  await loadPackage(page, '/packages/gm8-core/IWBT_Dife');
 
   await expect(page.locator('#runtime-status')).toContainText('WASM runtime active');
   await expect(page.locator('#runtime-room')).toContainText(/Room:/);
@@ -38,7 +38,7 @@ test('sample package boots through the wasm path and exposes runtime telemetry',
 });
 
 test('sample package can switch to rStage01 and keep wasm telemetry visible', async ({ page }) => {
-  await loadPackage(page, '/packages/sample');
+  await loadPackage(page, '/packages/gm8-core/IWBT_Dife');
 
   await expect(page.locator('select[name="roomSelect"]')).toBeVisible();
   await page.locator('select[name="roomSelect"]').selectOption({ index: 0 });
@@ -53,7 +53,7 @@ test('sample package can switch to rStage01 and keep wasm telemetry visible', as
 });
 
 test('sample package pause button stops and resumes automatic ticking', async ({ page }) => {
-  await loadPackage(page, '/packages/sample');
+  await loadPackage(page, '/packages/gm8-core/IWBT_Dife');
 
   const tickLocator = page.locator('#runtime-tick');
   const pauseButton = page.getByRole('button', { name: 'Pause' });
@@ -87,7 +87,7 @@ test('sample package creates and renders a bullet from the browser wasm bridge o
     const { loadPackage } = await import('/src/loadPackage.ts');
     const { instantiateWasmRuntimeBridge } = await import('/src/runtime/wasmBridge.ts');
 
-    const pkg = await loadPackage('/packages/sample');
+    const pkg = await loadPackage('/packages/gm8-core/IWBT_Dife');
     const bridge = await instantiateWasmRuntimeBridge('/wasm/iwm_runtime_web.wasm', {}, {
       audioHost: {
         playSound: () => undefined,
@@ -166,7 +166,7 @@ test('sample package ignores raw R save-load input on the difficulty room', asyn
     }
 
     const files = new Map<string, Uint8Array>();
-    const pkg = await loadPackage('/packages/sample');
+    const pkg = await loadPackage('/packages/gm8-core/IWBT_Dife');
     const difficultyRoom = pkg.rooms.find((room) => room.name === 'rSelectStage')?.id;
     if (difficultyRoom == null) {
       throw new Error('sample package is missing rSelectStage');
