@@ -293,6 +293,7 @@ impl RuntimeCore {
             player.y,
             room.room_name
         );
+        self.count_player_death();
         self.record_diagnostic(
             host,
             iwm_runtime_host::RuntimeDiagnosticLevel::Warning,

@@ -17,6 +17,7 @@ pub fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
         room_name: snapshot.room_name,
         room_speed: snapshot.room_speed,
         instance_count: snapshot.instance_count,
+        deaths: snapshot.deaths,
         player: snapshot.player.map(bridge_player_snapshot),
         input_trace: bridge_input_trace_snapshot(snapshot.input_trace),
         tick_phases: bridge_tick_phase_snapshot(snapshot.tick_phases),

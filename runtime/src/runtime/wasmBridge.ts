@@ -2,7 +2,7 @@ import type { RuntimePackage } from '../types';
 import { createWebAudioHost, type WasmAudioHost, type WasmSoundMode } from './wasmAudioHost';
 
 const BRIDGE_BUFFER_MAGIC = 0x424d5749;
-const BRIDGE_BUFFER_VERSION = 1;
+const BRIDGE_BUFFER_VERSION = 2;
 const BRIDGE_INPUT_KIND = 1;
 const BRIDGE_STEP_RESULT_KIND = 2;
 const textEncoder = new TextEncoder();
@@ -34,6 +34,8 @@ export type WasmRuntimeBridgeSnapshot = {
   roomName?: string | null;
   roomSpeed?: number | null;
   instanceCount?: number;
+  /** Cumulative player deaths since the runtime booted or was last reset. */
+  deaths?: number;
   player?: {
     runtimeId?: number;
     instanceId?: number;
@@ -445,6 +447,7 @@ function readBinarySnapshot(reader: BridgeBufferReader): WasmRuntimeBridgeSnapsh
     roomName: reader.readOptionalString(),
     roomSpeed: reader.readOptionalU32(),
     instanceCount: reader.readU32(),
+    deaths: reader.readU64(),
     player: readBinaryPlayer(reader),
     inputTrace: {
       jumpButtonKey: reader.readU16(),

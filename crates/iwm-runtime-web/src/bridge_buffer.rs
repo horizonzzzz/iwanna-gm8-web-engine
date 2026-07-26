@@ -6,7 +6,7 @@ use crate::{
 };
 
 const MAGIC: u32 = 0x424d5749;
-const VERSION: u16 = 1;
+const VERSION: u16 = 2;
 const INPUT_KIND: u16 = 1;
 const STEP_RESULT_KIND: u16 = 2;
 
@@ -121,6 +121,7 @@ impl BinaryWriter {
         self.write_option_string(snapshot.room_name.as_deref())?;
         self.write_option_u32(snapshot.room_speed.map(|value| value as usize))?;
         self.write_u32(usize_to_u32(snapshot.instance_count, "instance_count")?);
+        self.write_u64(snapshot.deaths);
         self.write_player(snapshot.player.as_ref())?;
         self.write_u16(snapshot.input_trace.jump_button_key);
         self.write_bool(snapshot.input_trace.jump_pressed);

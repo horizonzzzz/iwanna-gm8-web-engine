@@ -23,7 +23,7 @@ fn push_keys(bytes: &mut Vec<u8>, values: &[u16]) {
 fn decode_web_input_state_from_buffer_reads_flags_and_key_edges() {
     let mut bytes = Vec::new();
     push_u32(&mut bytes, 0x424d5749);
-    push_u16(&mut bytes, 1);
+    push_u16(&mut bytes, 2);
     push_u16(&mut bytes, 1);
     push_u16(&mut bytes, 0b0010_1101);
     push_u16(&mut bytes, 0);
@@ -54,6 +54,7 @@ fn encode_bridge_step_result_to_buffer_writes_header_snapshot_and_present_frame(
             room_name: Some("room3".into()),
             room_speed: Some(60),
             instance_count: 2,
+            deaths: 5,
             player: None,
             input_trace: BridgeInputTraceSnapshot {
                 jump_button_key: 0x10,
@@ -157,7 +158,7 @@ fn encode_bridge_step_result_to_buffer_writes_header_snapshot_and_present_frame(
     let bytes = encode_bridge_step_result_to_buffer(&step).unwrap();
 
     assert_eq!(&bytes[0..4], &0x424d5749u32.to_le_bytes());
-    assert_eq!(&bytes[4..6], &1u16.to_le_bytes());
+    assert_eq!(&bytes[4..6], &2u16.to_le_bytes());
     assert_eq!(&bytes[6..8], &2u16.to_le_bytes());
     assert!(bytes.ends_with(&[6]));
 }

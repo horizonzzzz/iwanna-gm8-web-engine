@@ -66,6 +66,8 @@ pub struct RuntimeCore {
     pub(crate) last_input_trace: RuntimeInputTraceSnapshot,
     pub(crate) last_tick_phases: RuntimeTickPhaseSnapshot,
     pub(crate) death_waiting_for_restart: bool,
+    pub(crate) deaths: u64,
+    pub(crate) last_death_tick: Option<u64>,
     pub(crate) host_bootstrap_scripts_applied: bool,
     pub(crate) binary_files: RuntimeBinaryFileState,
     pub(crate) tick_context: RuntimeTickContext,
@@ -165,6 +167,8 @@ impl RuntimeCore {
             },
             last_tick_phases: RuntimeTickPhaseSnapshot::default(),
             death_waiting_for_restart: false,
+            deaths: 0,
+            last_death_tick: None,
             host_bootstrap_scripts_applied: false,
             binary_files: RuntimeBinaryFileState::default(),
             tick_context: RuntimeTickContext::default(),
@@ -249,10 +253,20 @@ impl RuntimeCore {
         &self.diagnostics
     }
 
+    /// Count one player death, collapsing duplicate reports within one tick
+    /// (e.g. overlapping hazards firing separate collision events).
+    pub(crate) fn count_player_death(&mut self) {
+        if self.last_death_tick != Some(self.tick) {
+            self.deaths += 1;
+            self.last_death_tick = Some(self.tick);
+        }
+    }
+
     pub fn snapshot(&self) -> RuntimeSnapshot {
         RuntimeSnapshot {
             status: self.status,
             tick: self.tick,
+            deaths: self.deaths,
             room_id: self.current_room.as_ref().map(|room| room.room_id),
             room_name: self
                 .current_room
@@ -1551,6 +1565,7 @@ impl RuntimeCore {
                 })
             });
             if let Some(message) = scripted_hazard_death {
+                self.count_player_death();
                 self.record_diagnostic(
                     host,
                     iwm_runtime_host::RuntimeDiagnosticLevel::Warning,

@@ -80,6 +80,7 @@ pub struct BridgeSnapshot {
     pub room_name: Option<String>,
     pub room_speed: Option<u32>,
     pub instance_count: usize,
+    pub deaths: u64,
     pub player: Option<BridgePlayerSnapshot>,
     pub input_trace: BridgeInputTraceSnapshot,
     pub tick_phases: BridgeTickPhaseSnapshot,

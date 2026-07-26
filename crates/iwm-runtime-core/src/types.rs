@@ -366,6 +366,8 @@ pub struct RuntimeTickPhaseSnapshot {
 pub struct RuntimeSnapshot {
     pub status: RuntimeStatus,
     pub tick: u64,
+    /// Cumulative player deaths since this core was loaded.
+    pub deaths: u64,
     pub room_id: Option<usize>,
     pub room_name: Option<String>,
     pub room_speed: Option<u32>,

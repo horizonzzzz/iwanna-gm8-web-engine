@@ -349,7 +349,7 @@ describe('wasm bridge loader', () => {
     };
 
     pushU32(0x424d5749);
-    pushU16(1);
+    pushU16(2);
     pushU16(2);
     pushString('ready');
     pushU64(1);
@@ -357,6 +357,7 @@ describe('wasm bridge loader', () => {
     pushOptionString('room0');
     pushOptionU32(60);
     pushU32(4);
+    pushU64(3);
     pushU8(0);
     pushU16(16);
     pushU8(1);
@@ -480,6 +481,7 @@ describe('wasm bridge loader', () => {
     expect(binaryStep).toHaveBeenCalledTimes(1);
     expect(capturedInput[0]?.[0]).toBe(0x49);
     expect(result?.snapshot.inputTrace.activeKeys).toEqual(['0x10:p1jp1jr0']);
+    expect(result?.snapshot.deaths).toBe(3);
     expect(result?.frame.commands.map((command) => command.kind)).toEqual([
       'clear',
       'drawBackground',
