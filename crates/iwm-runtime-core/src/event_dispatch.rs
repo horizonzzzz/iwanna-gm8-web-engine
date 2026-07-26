@@ -470,27 +470,29 @@ pub(crate) fn collision_event_target_object_ids(
     package: &RuntimePackage,
     object_id: usize,
 ) -> Vec<usize> {
+    // GM8 inherits each (event_type, sub_event) pair independently: a child's
+    // collision event only overrides the parent's event with the same target,
+    // so the active target set is the union across the whole parent chain.
     let mut current_object_id = Some(object_id);
+    let mut target_ids = Vec::new();
     while let Some(id) = current_object_id {
         let Some(object) = package.objects.iter().find(|object| object.id == id) else {
             break;
         };
 
-        let target_ids = object
-            .events
-            .iter()
-            .filter(|event| event.event_type == 4 && event.event_tag == "collision")
-            .map(|event| event.sub_event as usize)
-            .collect::<Vec<_>>();
-
-        if !target_ids.is_empty() {
-            return target_ids;
+        for event in &object.events {
+            if event.event_type == 4 && event.event_tag == "collision" {
+                let target_id = event.sub_event as usize;
+                if !target_ids.contains(&target_id) {
+                    target_ids.push(target_id);
+                }
+            }
         }
 
         current_object_id = object.parent_index.try_into().ok();
     }
 
-    Vec::new()
+    target_ids
 }
 
 pub(crate) fn object_ids_matching_or_inheriting_from(

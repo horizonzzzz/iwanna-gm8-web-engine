@@ -448,6 +448,62 @@ fn crimson_world_room_start_sets_shared_runtime_room_speed() {
 }
 
 #[test]
+fn crimson_room001_lift_starts_rising_when_player_touches_it() {
+    let Some(package) = local_sample_package("gm8-core/I wanna be the Crimson ver.1.0") else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let stage_room = real_sample_room_id(&core, "room001");
+    core.reload_room(stage_room).unwrap();
+
+    // Let instance creation code run so the lift stores its vspd = -2.5.
+    for _ in 0..2 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+    }
+
+    // Instance 142635 is the object491 lift on the right side of room001. Its
+    // movement is started by movingPlatformCollision's inherited collision
+    // event with the player, which must stay active even though object491
+    // declares its own collision event with object492.
+    let lift_runtime_id = move_real_sample_player_onto_target(
+        &mut core,
+        |instance| instance.instance_id == 142635,
+        "object491 lift instance 142635",
+    );
+
+    let lift_y_before = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.runtime_id == lift_runtime_id && instance.alive)
+        .expect("lift should be alive before ticking")
+        .y;
+
+    for _ in 0..6 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+    }
+
+    let lift_y_after = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.runtime_id == lift_runtime_id && instance.alive)
+        .expect("lift should still be alive after ticking")
+        .y;
+
+    assert!(
+        lift_y_after < lift_y_before,
+        "touching the lift should start its parsed vspd = -2.5 rise; before={lift_y_before}, after={lift_y_after}, diagnostics={:?}",
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn real_sample_title_shift_enters_save_menu() {
     let Some(package) = real_sample_package() else {
         return;

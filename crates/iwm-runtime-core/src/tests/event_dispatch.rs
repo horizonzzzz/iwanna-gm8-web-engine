@@ -1,6 +1,8 @@
 use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
 use iwm_runtime_host::{ButtonState, RuntimeButton};
-use iwm_runtime_model::{ObjectEventEntry, SpriteCollisionMask};
+use iwm_runtime_model::{
+    ObjectDefinition, ObjectEventEntry, RoomInstancePlacement, SpriteCollisionMask,
+};
 
 use super::support::{
     add_alarm_block, add_collision_block, add_create_block, add_keyboard_block,
@@ -425,6 +427,137 @@ fn collision_target_object_ids_fall_back_through_parent_inheritance() {
     let target_ids = collision_event_target_object_ids(&package, 1);
 
     assert_eq!(target_ids, vec![2]);
+}
+
+#[test]
+fn collision_target_object_ids_union_own_and_inherited_targets() {
+    let mut package = sample_package();
+    package.objects[1].parent_index = 0;
+    // Parent (object 0) declares a collision event with object 2.
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("parent_collision_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+    // Child (object 1) declares its own collision event with object 3; the
+    // parent's collision event with object 2 must stay active alongside it.
+    package.objects[1].events.push(ObjectEventEntry {
+        event_type: 4,
+        sub_event: 3,
+        event_tag: "collision".into(),
+        block_id: "object:1:event:4:3".into(),
+        action_count: 0,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:1:event:4:3".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("child_collision_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let target_ids = collision_event_target_object_ids(&package, 1);
+
+    assert_eq!(target_ids, vec![3, 2]);
+}
+
+#[test]
+fn inherited_collision_event_fires_when_child_declares_other_collision_target() {
+    // Mirrors Crimson's room001 lift: the parent object starts moving when the
+    // player touches it, and the child only adds an unrelated collision event
+    // of its own. The child's extra event must not shadow the inherited one.
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects.push(ObjectDefinition {
+        id: 30,
+        name: "lift_parent".into(),
+        sprite_index: 1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 4,
+            sub_event: 0,
+            event_tag: "collision".into(),
+            block_id: "object:30:event:4:0".into(),
+            action_count: 0,
+        }],
+    });
+    package.objects.push(ObjectDefinition {
+        id: 31,
+        name: "lift".into(),
+        sprite_index: 1,
+        parent_index: 30,
+        depth: 0,
+        persistent: false,
+        visible: true,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 4,
+            sub_event: 1,
+            event_tag: "collision".into(),
+            block_id: "object:31:event:4:1".into(),
+            action_count: 0,
+        }],
+    });
+    package.rooms[0].instances.push(RoomInstancePlacement {
+        instance_id: 91,
+        object_id: 31,
+        x: 12,
+        y: 24,
+        xscale: 1.0,
+        yscale: 1.0,
+        angle: 0.0,
+        blend: 0x00ff_ffff,
+        creation_block_id: None,
+        is_solid: false,
+        is_hazard: false,
+        is_checkpoint: false,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:30:event:4:0".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("vspeed".into()),
+            value: LoweredLogicExpr::LiteralNumber(-2.5),
+        }],
+    );
+    append_lowered_entry(
+        &mut package,
+        "object:31:event:4:1".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("own_collision_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    let lift = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_id == 31)
+        .unwrap();
+    assert_eq!(lift.vspeed, -2.5);
 }
 
 #[test]
