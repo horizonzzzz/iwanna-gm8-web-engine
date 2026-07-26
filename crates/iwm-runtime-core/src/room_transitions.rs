@@ -23,7 +23,7 @@ impl RuntimeCore {
             self.pending_game_restart = false;
             self.pending_room_reset = false;
             self.pending_room_transition = None;
-            self.stop_all_sounds_for_scene_change(host, "game_restart");
+            self.stop_one_shot_sounds_for_scene_change(host, "game_restart");
             self.globals.clear();
             self.host_bootstrap_scripts_applied = false;
             self.current_room = Some(self.build_room(room_id)?);
@@ -53,7 +53,7 @@ impl RuntimeCore {
                 .map(|room| room.room_id)
                 .ok_or(RuntimeCoreError::NoRooms)?;
             self.pending_room_reset = false;
-            self.stop_all_sounds_for_scene_change(host, "restart");
+            self.stop_one_shot_sounds_for_scene_change(host, "restart");
             self.current_room = Some(self.build_room(room_id)?);
             self.room_needs_first_render_settle = true;
             self.death_waiting_for_restart = false;
@@ -96,18 +96,23 @@ impl RuntimeCore {
         Ok(())
     }
 
-    // Restart/reset replaces the game's own GML retry handler, which in stock
-    // fangame engines calls sound_stop_all before reloading; without this the
-    // death jingle keeps ringing over the rebuilt room's BGM. Regular room
-    // transitions must NOT stop sounds (GM8 keeps music across room_goto).
-    fn stop_all_sounds_for_scene_change<H: RuntimeHost>(&mut self, host: &mut H, reason: &str) {
-        if let Err(error) = host.stop_all_sounds() {
-            self.record_diagnostic(
-                host,
-                iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
-                "runtime-audio-host-error",
-                format!("function=sound_stop_all reason={reason} error={error}"),
-            );
+    // GM8's game_restart/room reset keeps every sound playing (OpenGMK
+    // Game::restart never touches audio). Fangame BGM continuity depends on
+    // that: playMusic objects guard with `if (!sound_isplaying(stageBGM))`
+    // before sound_loop, so a natively-stopped BGM would be restarted from
+    // zero by the game's own GML. Looping sounds therefore MUST survive the
+    // reset. We deviate from GM8 only for one-shots (the death jingle) so
+    // pressing R cuts them instead of letting them ring over the rebuilt room.
+    fn stop_one_shot_sounds_for_scene_change<H: RuntimeHost>(&mut self, host: &mut H, reason: &str) {
+        for sound_id in std::mem::take(&mut self.active_one_shot_sounds) {
+            if let Err(error) = host.stop_sound(sound_id) {
+                self.record_diagnostic(
+                    host,
+                    iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                    "runtime-audio-host-error",
+                    format!("function=sound_stop sound_id={sound_id} reason={reason} error={error}"),
+                );
+            }
         }
     }
 

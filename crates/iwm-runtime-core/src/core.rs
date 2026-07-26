@@ -72,6 +72,11 @@ pub struct RuntimeCore {
     pub(crate) binary_files: RuntimeBinaryFileState,
     pub(crate) tick_context: RuntimeTickContext,
     pub(crate) random_state: Cell<u64>,
+    /// Sound ids last played with `sound_play` (one-shot mode) that have not
+    /// been re-played as loops or explicitly stopped since. The restart paths
+    /// stop exactly these so a death jingle is cut on R while looping BGM
+    /// survives the reset (GM8 keeps all sounds across game_restart).
+    pub(crate) active_one_shot_sounds: HashSet<i32>,
 }
 
 impl RuntimeCore {
@@ -173,6 +178,7 @@ impl RuntimeCore {
             binary_files: RuntimeBinaryFileState::default(),
             tick_context: RuntimeTickContext::default(),
             random_state: Cell::new(0x4d59_5df4_d0f3_3173),
+            active_one_shot_sounds: HashSet::new(),
         };
 
         core.cached_room_order = core.runtime_room_order();
@@ -1240,6 +1246,7 @@ impl RuntimeCore {
                     pending_room_transition: &mut self.pending_room_transition,
                     pending_room_reset: &mut self.pending_room_reset,
                     pending_game_restart: &mut self.pending_game_restart,
+                    active_one_shot_sounds: &mut self.active_one_shot_sounds,
                     binary_files: &mut self.binary_files,
                     host: &mut *host,
                     diagnostics: &mut self.diagnostics,

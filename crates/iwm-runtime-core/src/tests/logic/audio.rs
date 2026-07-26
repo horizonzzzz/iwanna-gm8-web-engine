@@ -124,13 +124,17 @@ fn core_dispatches_sound_stop_all_to_audio_host() {
 }
 
 #[test]
-fn core_stops_all_sounds_when_restart_button_resets_room() {
+fn core_stops_one_shots_but_keeps_bgm_loop_when_restart_button_resets_room() {
     let mut package = sample_package();
     package.manifest.zero_uninitialized_vars = true;
-    package.resources.sounds[0].id = 42;
-    package.resources.sounds[0].name = "sndDeath".into();
-    // Play the death jingle exactly once, guarded by a global so the rebuilt
-    // room does not replay it after the reset.
+    package.resources.sounds[0].id = 7;
+    package.resources.sounds[0].name = "track01".into();
+    let mut death_sound = package.resources.sounds[0].clone();
+    death_sound.id = 42;
+    death_sound.name = "sndDeath".into();
+    package.resources.sounds.push(death_sound);
+    // Start the BGM loop and the death jingle exactly once, guarded by a
+    // global so the rebuilt room does not replay them after the reset.
     add_step_block(
         &mut package,
         vec![LoweredLogicStatement::Conditional {
@@ -142,6 +146,10 @@ fn core_stops_all_sounds_when_restart_button_resets_room() {
                 }),
             },
             then_branch: vec![
+                LoweredLogicStatement::FunctionCall {
+                    name: "sound_loop".into(),
+                    args: vec![LoweredLogicExpr::Identifier("track01".into())],
+                },
                 LoweredLogicStatement::FunctionCall {
                     name: "sound_play".into(),
                     args: vec![LoweredLogicExpr::Identifier("sndDeath".into())],
@@ -161,9 +169,12 @@ fn core_stops_all_sounds_when_restart_button_resets_room() {
     let mut host = host();
 
     core.tick(&mut host).unwrap();
-    assert_eq!(host.audio.played, vec![(42, RuntimeSoundMode::Once)]);
+    assert_eq!(
+        host.audio.played,
+        vec![(7, RuntimeSoundMode::Loop), (42, RuntimeSoundMode::Once)]
+    );
+    assert!(host.audio.is_sound_playing(7).unwrap());
     assert!(host.audio.is_sound_playing(42).unwrap());
-    assert_eq!(host.audio.stopped_all_count, 0);
 
     host.input.set_button_state(
         RuntimeButton::Restart,
@@ -175,23 +186,40 @@ fn core_stops_all_sounds_when_restart_button_resets_room() {
     );
     core.tick(&mut host).unwrap();
 
-    assert_eq!(host.audio.stopped_all_count, 1);
+    // GM8 keeps sounds across restart; only the death one-shot is cut so the
+    // looping BGM survives for the game's own sound_isplaying guards.
+    assert_eq!(host.audio.stopped_all_count, 0);
+    assert_eq!(host.audio.stopped, vec![42]);
     assert!(!host.audio.is_sound_playing(42).unwrap());
-    assert_eq!(host.audio.played, vec![(42, RuntimeSoundMode::Once)]);
+    assert!(host.audio.is_sound_playing(7).unwrap());
+    assert_eq!(
+        host.audio.played,
+        vec![(7, RuntimeSoundMode::Loop), (42, RuntimeSoundMode::Once)]
+    );
 }
 
 #[test]
-fn core_stops_all_sounds_when_game_restart_reloads_first_room() {
+fn core_stops_one_shots_but_keeps_bgm_loop_when_game_restart_reloads_first_room() {
     let mut package = sample_package();
-    package.resources.sounds[0].id = 42;
-    package.resources.sounds[0].name = "sndDeath".into();
+    package.resources.sounds[0].id = 7;
+    package.resources.sounds[0].name = "track01".into();
+    let mut death_sound = package.resources.sounds[0].clone();
+    death_sound.id = 42;
+    death_sound.name = "sndDeath".into();
+    package.resources.sounds.push(death_sound);
     add_keyboard_block(
         &mut package,
         65,
-        vec![LoweredLogicStatement::FunctionCall {
-            name: "sound_play".into(),
-            args: vec![LoweredLogicExpr::Identifier("sndDeath".into())],
-        }],
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "sound_loop".into(),
+                args: vec![LoweredLogicExpr::Identifier("track01".into())],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "sound_play".into(),
+                args: vec![LoweredLogicExpr::Identifier("sndDeath".into())],
+            },
+        ],
     );
     add_keyboard_block(
         &mut package,
@@ -213,9 +241,12 @@ fn core_stops_all_sounds_when_game_restart_reloads_first_room() {
         },
     );
     core.tick(&mut host).unwrap();
-    assert_eq!(host.audio.played, vec![(42, RuntimeSoundMode::Once)]);
+    assert_eq!(
+        host.audio.played,
+        vec![(7, RuntimeSoundMode::Loop), (42, RuntimeSoundMode::Once)]
+    );
+    assert!(host.audio.is_sound_playing(7).unwrap());
     assert!(host.audio.is_sound_playing(42).unwrap());
-    assert_eq!(host.audio.stopped_all_count, 0);
 
     host.input.set_button_state(RuntimeButton::Keyboard(65), ButtonState::default());
     host.input.set_button_state(
@@ -228,9 +259,14 @@ fn core_stops_all_sounds_when_game_restart_reloads_first_room() {
     );
     core.tick(&mut host).unwrap();
 
-    assert_eq!(host.audio.stopped_all_count, 1);
+    assert_eq!(host.audio.stopped_all_count, 0);
+    assert_eq!(host.audio.stopped, vec![42]);
     assert!(!host.audio.is_sound_playing(42).unwrap());
-    assert_eq!(host.audio.played, vec![(42, RuntimeSoundMode::Once)]);
+    assert!(host.audio.is_sound_playing(7).unwrap());
+    assert_eq!(
+        host.audio.played,
+        vec![(7, RuntimeSoundMode::Loop), (42, RuntimeSoundMode::Once)]
+    );
 }
 
 #[test]

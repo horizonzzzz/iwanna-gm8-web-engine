@@ -758,6 +758,73 @@ fn real_sample_new_game_starts_at_stage_spawn_and_writes_initial_save() {
 }
 
 #[test]
+fn real_sample_r_restart_keeps_stage_bgm_loop_running() {
+    let Some(package) = real_sample_package() else {
+        return;
+    };
+    let bgm_id = package
+        .resources
+        .sounds
+        .iter()
+        .find(|sound| sound.name.eq_ignore_ascii_case("PPPPPP"))
+        .expect("Dife package should include the PPPPPP stage BGM")
+        .id as i32;
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    select_real_sample_medium_difficulty(&mut core, &mut host);
+    let stage_room = real_sample_room_id(&core, "rStage01");
+
+    let bgm_loop_plays = |host: &HeadlessHost| {
+        host.audio
+            .played
+            .iter()
+            .filter(|(id, mode)| *id == bgm_id && *mode == RuntimeSoundMode::Loop)
+            .count()
+    };
+    assert_eq!(
+        bgm_loop_plays(&host),
+        1,
+        "stage entry should start the PPPPPP loop exactly once; played={:?}",
+        host.audio.played
+    );
+    assert!(host.audio.is_sound_playing(bgm_id).unwrap());
+
+    press_real_sample_key(&mut host, 82);
+    core.tick(&mut host).unwrap();
+    release_real_sample_key(&mut host, 82);
+    tick_real_sample_until_room(&mut core, &mut host, stage_room, "rStage01 after R restart");
+
+    assert!(
+        core.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "runtime-room-changed"
+                && diagnostic.message.contains("reason=game_restart")
+        }),
+        "R should route through the package-owned loadGame/game_restart GML; diagnostics={:?}",
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+    // GM8 keeps sounds playing across game_restart, and rStage01's playMusic
+    // creation code guards with sound_isplaying, so an R retry must neither
+    // stop the BGM nor restart it from zero.
+    assert_eq!(
+        host.audio.stopped_all_count, 0,
+        "R restart must not stop_all_sounds; diagnostics={:?}",
+        core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
+    );
+    assert!(
+        host.audio.is_sound_playing(bgm_id).unwrap(),
+        "stage BGM loop should survive the R restart; stopped={:?}",
+        host.audio.stopped
+    );
+    assert_eq!(
+        bgm_loop_plays(&host),
+        1,
+        "stage BGM must not be re-played from zero after R; played={:?}",
+        host.audio.played
+    );
+}
+
+#[test]
 fn real_sample_menu_uses_death_time_file_stats() {
     let Some(package) = real_sample_package() else {
         return;

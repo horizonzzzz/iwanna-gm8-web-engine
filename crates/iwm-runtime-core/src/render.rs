@@ -397,6 +397,7 @@ impl RuntimeCore {
                         pending_room_transition: &mut self.pending_room_transition,
                         pending_room_reset: &mut self.pending_room_reset,
                         pending_game_restart: &mut self.pending_game_restart,
+                        active_one_shot_sounds: &mut self.active_one_shot_sounds,
                         binary_files: &mut self.binary_files,
                         host: &mut *host,
                         diagnostics: &mut self.diagnostics,

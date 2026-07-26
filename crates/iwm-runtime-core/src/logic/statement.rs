@@ -58,6 +58,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) pending_room_transition: &'a mut Option<usize>,
     pub(crate) pending_room_reset: &'a mut bool,
     pub(crate) pending_game_restart: &'a mut bool,
+    pub(crate) active_one_shot_sounds: &'a mut std::collections::HashSet<i32>,
     pub(crate) binary_files: &'a mut RuntimeBinaryFileState,
     pub(crate) host: &'a mut H,
     pub(crate) diagnostics: &'a mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
@@ -350,6 +351,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 dispatch_runtime_sound_call(env, name, args, None, instance, scope, eval_context);
             }
             "sound_stop_all" => {
+                env.active_one_shot_sounds.clear();
                 if let Err(error) = env.host.stop_all_sounds() {
                     record_host_diagnostic(
                         env.host,

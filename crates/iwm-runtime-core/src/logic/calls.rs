@@ -49,6 +49,16 @@ pub(super) fn dispatch_runtime_sound_call<H: RuntimeHost>(
     } else {
         env.host.stop_sound(sound_id)
     };
+    if result.is_ok() {
+        match mode {
+            Some(RuntimeSoundMode::Once) => {
+                env.active_one_shot_sounds.insert(sound_id);
+            }
+            Some(RuntimeSoundMode::Loop) | None => {
+                env.active_one_shot_sounds.remove(&sound_id);
+            }
+        }
+    }
 
     if let Err(error) = result {
         record_host_diagnostic(
