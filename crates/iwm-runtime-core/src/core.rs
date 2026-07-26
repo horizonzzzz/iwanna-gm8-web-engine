@@ -767,6 +767,13 @@ impl RuntimeCore {
     }
 
     pub fn reload_room(&mut self, room_id: usize) -> Result<(), RuntimeCoreError> {
+        // Manual/diagnostic selection: drop scene changes queued by the room we
+        // are leaving so they cannot override the requested room on settle. The
+        // target room's own create/room-start logic still runs below and may
+        // queue its own transition.
+        self.pending_room_transition = None;
+        self.pending_room_reset = false;
+        self.pending_game_restart = false;
         let persistent_instances = self
             .persistent_instances_for_room_transition()
             .into_iter()
