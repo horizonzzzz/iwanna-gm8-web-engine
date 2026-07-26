@@ -474,15 +474,27 @@ impl RuntimeCore {
                 return Ok(());
             }
 
-            if !step_result.player_motion_changed || step_result.player_jump_owned_by_script {
+            // Step GML that drives hspeed/vspeed (but not x/y) relies on GM8's
+            // built-in motion, which integrates every frame no matter what the
+            // step event assigned. Gating integration on "did the step event
+            // change motion" skipped every other frame whenever GML re-assigned
+            // hspeed against a wall (half-speed movement and jitter). Step GML
+            // that writes x/y directly performs its own integration and keeps
+            // the previous behavior.
+            let step_mode = if step_result.player_jump_owned_by_script {
+                Some(crate::movement::PlayerStepMode::LegacyPassThrough)
+            } else if step_result.player_motion_script_managed
+                && !step_result.player_position_script_managed
+            {
+                Some(crate::movement::PlayerStepMode::GmlMotion)
+            } else if !step_result.player_motion_changed {
+                Some(crate::movement::PlayerStepMode::BuiltinPlatformer)
+            } else {
+                None
+            };
+            if let Some(step_mode) = step_mode {
                 jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
-                self.step_player(
-                    host,
-                    left.pressed,
-                    right.pressed,
-                    jump,
-                    !step_result.player_jump_owned_by_script,
-                )?;
+                self.step_player(host, left.pressed, right.pressed, jump, step_mode)?;
             }
             tick_phases.player_movement_nanos += mark_phase_elapsed(host, &mut phase_start);
 

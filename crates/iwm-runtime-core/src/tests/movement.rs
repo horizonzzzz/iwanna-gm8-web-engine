@@ -483,7 +483,7 @@ fn core_script_owned_ceiling_contact_shadows_same_plane_hazard() {
             just_pressed: false,
             just_released: false,
         },
-        false,
+        crate::movement::PlayerStepMode::LegacyPassThrough,
     )
     .unwrap();
 
@@ -554,7 +554,7 @@ fn core_script_owned_hazard_still_kills_when_contact_point_remains_hazardous() {
             just_pressed: false,
             just_released: false,
         },
-        false,
+        crate::movement::PlayerStepMode::LegacyPassThrough,
     )
     .unwrap();
     core.detect_player_hazard_after_collision_events(&mut host)
@@ -1030,6 +1030,45 @@ fn core_snapshot_exposes_player_jump_trace_state() {
     assert_eq!(player.jump.hold_frames, 1);
     assert!(!player.jump.cut_applied);
     assert!(!player.jump.grounded);
+}
+
+#[test]
+fn core_integrates_motion_every_tick_when_step_gml_manages_hspeed() {
+    // yuutu-style engines (Crimson) re-assign hspeed in the step event every
+    // tick. That assignment must not make the runtime skip built-in motion
+    // integration: gating on "did the step event change motion" froze the
+    // player on alternating ticks whenever something (a wall, the collision
+    // event GML) reset hspeed between steps — half-speed movement and jitter.
+    let mut package = sample_package();
+    super::support::add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("hspeed".into()),
+            value: LoweredLogicExpr::LiteralNumber(3.0),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(0x27),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+
+    let mut previous_x = player(&core).x;
+    for tick in 0..6 {
+        core.tick(&mut host).unwrap();
+        let x = player(&core).x;
+        assert!(
+            x > previous_x,
+            "player must advance every tick while holding right (tick {tick}: x stayed at {x})"
+        );
+        previous_x = x;
+    }
 }
 
 fn filled_mask(width: u32, height: u32) -> SpriteCollisionMask {

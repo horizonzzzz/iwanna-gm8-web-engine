@@ -504,6 +504,66 @@ fn crimson_room001_lift_starts_rising_when_player_touches_it() {
 }
 
 #[test]
+fn crimson_player_falls_every_tick_while_holding_direction_into_wall() {
+    let Some(package) = local_sample_package("gm8-core/I wanna be the Crimson ver.1.0") else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    // Boot through the title so crimson's init sets global.buttonLeft; the
+    // step event only re-assigns hspeed once the bindings are live, which is
+    // what used to flip the motion-changed gate every other tick.
+    let title_room = real_sample_room_id(&core, "rTitle");
+    tick_real_sample_until_room(&mut core, &mut host, title_room, "rTitle");
+
+    let stage_room = real_sample_room_id(&core, "room001");
+    core.reload_room(stage_room).unwrap();
+
+    // Airborne beside the tall wall whose right face is at x=1632; a player at
+    // x=1637 hugs it flush on the left.
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .expect("room001 should include a live player");
+        player.x = 1637.0;
+        player.y = 950.0;
+        player.previous_x = player.x;
+        player.previous_y = player.y;
+        player.set_hspeed(0.0);
+        player.set_vspeed(0.0);
+    }
+
+    press_real_sample_key(&mut host, 0x25);
+    let mut previous_y = 950.0;
+    for tick in 0..15 {
+        core.tick(&mut host).unwrap();
+        host.input.clear_transitions();
+        let player = core
+            .current_room()
+            .unwrap()
+            .instances
+            .iter()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .expect("player should stay alive during the wall slide");
+        assert!(
+            player.y > previous_y,
+            "wall slide must descend every tick, not every other tick (tick {tick}: y stayed at {})",
+            player.y
+        );
+        assert!(
+            (player.x - 1637.0).abs() < 1.0,
+            "player should stay pinned to the wall face (tick {tick}: x={})",
+            player.x
+        );
+        previous_y = player.y;
+    }
+}
+
+#[test]
 fn real_sample_title_shift_enters_save_menu() {
     let Some(package) = real_sample_package() else {
         return;

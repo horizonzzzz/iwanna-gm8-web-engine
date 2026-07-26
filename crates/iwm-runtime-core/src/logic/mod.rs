@@ -91,6 +91,8 @@ impl RuntimeCore {
 
         let mut player_motion_changed = false;
         let mut player_jump_owned_by_script = false;
+        let mut player_motion_script_managed = false;
+        let mut player_position_script_managed = false;
         let mut instance_updates = RuntimeSparseInstanceOverlay::default();
         let mut instance_creates: Vec<RuntimeInstanceCreateRequest> = Vec::new();
 
@@ -114,13 +116,21 @@ impl RuntimeCore {
             else {
                 continue;
             };
-            if is_player
-                && entry_indices
+            if is_player {
+                for entry in entry_indices
                     .iter()
                     .filter_map(|entry_index| lowered_entries.get(*entry_index))
-                    .any(|entry| statements_reference_jump_queries(&entry.statements))
-            {
-                player_jump_owned_by_script = true;
+                {
+                    if statements_reference_jump_queries(&entry.statements) {
+                        player_jump_owned_by_script = true;
+                    }
+                    if statements_assign_identifiers(&entry.statements, &["hspeed", "vspeed"]) {
+                        player_motion_script_managed = true;
+                    }
+                    if statements_assign_identifiers(&entry.statements, &["x", "y"]) {
+                        player_position_script_managed = true;
+                    }
+                }
             }
 
             for entry_index in entry_indices {
@@ -225,6 +235,8 @@ impl RuntimeCore {
                             interrupted: true,
                             player_motion_changed,
                             player_jump_owned_by_script,
+                            player_motion_script_managed,
+                            player_position_script_managed,
                         });
                     }
                 }
@@ -254,6 +266,8 @@ impl RuntimeCore {
             interrupted: false,
             player_motion_changed,
             player_jump_owned_by_script,
+            player_motion_script_managed,
+            player_position_script_managed,
         })
     }
 
@@ -699,6 +713,43 @@ fn statement_references_jump_queries(statement: &LoweredLogicStatement) -> bool 
         LoweredLogicStatement::VariableDeclaration { .. } | LoweredLogicStatement::Raw { .. } => {
             false
         }
+    }
+}
+
+fn statements_assign_identifiers(
+    statements: &[LoweredLogicStatement],
+    identifiers: &[&str],
+) -> bool {
+    statements
+        .iter()
+        .any(|statement| statement_assigns_identifiers(statement, identifiers))
+}
+
+fn statement_assigns_identifiers(statement: &LoweredLogicStatement, identifiers: &[&str]) -> bool {
+    match statement {
+        LoweredLogicStatement::Assignment { target, .. } => matches!(
+            target,
+            LoweredLogicExpr::Identifier(name)
+                if identifiers.iter().any(|identifier| name.eq_ignore_ascii_case(identifier))
+        ),
+        LoweredLogicStatement::Conditional {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            statements_assign_identifiers(then_branch, identifiers)
+                || statements_assign_identifiers(else_branch, identifiers)
+        }
+        LoweredLogicStatement::With { body, .. }
+        | LoweredLogicStatement::Repeat { body, .. }
+        | LoweredLogicStatement::While { body, .. }
+        | LoweredLogicStatement::For { body, .. } => {
+            statements_assign_identifiers(body, identifiers)
+        }
+        LoweredLogicStatement::FunctionCall { .. }
+        | LoweredLogicStatement::Return { .. }
+        | LoweredLogicStatement::VariableDeclaration { .. }
+        | LoweredLogicStatement::Raw { .. } => false,
     }
 }
 

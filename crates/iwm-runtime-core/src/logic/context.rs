@@ -14,6 +14,8 @@ pub(crate) struct StepExecutionResult {
     pub interrupted: bool,
     pub player_motion_changed: bool,
     pub player_jump_owned_by_script: bool,
+    pub player_motion_script_managed: bool,
+    pub player_position_script_managed: bool,
 }
 
 #[derive(Debug, Default)]

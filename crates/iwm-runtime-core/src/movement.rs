@@ -11,6 +11,21 @@ const JUMP_SPEED: f64 = 8.0;
 const GRAVITY: f64 = 1.0;
 const MAX_FALL_SPEED: f64 = 8.0;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlayerStepMode {
+    /// No step GML drives the player: the runtime's own platformer fallback
+    /// reads the arrow keys, jumps, and clamps motion against solids.
+    BuiltinPlatformer,
+    /// Step GML references the jump binding: keep the historical pass-through
+    /// contract (arrow-key hspeed, synthetic default gravity, fall clamp) that
+    /// existing packages and tests depend on.
+    LegacyPassThrough,
+    /// Step GML assigns hspeed/vspeed itself: pure GM8 motion integration —
+    /// gravity/friction only from the instance's own vars, no arrow-key
+    /// override, no synthetic fall clamp.
+    GmlMotion,
+}
+
 impl RuntimeCore {
     pub(crate) fn step_non_player_instances(&mut self) -> Result<(), RuntimeCoreError> {
         let Some(room) = self.current_room.as_mut() else {
@@ -39,8 +54,9 @@ impl RuntimeCore {
         left_pressed: bool,
         right_pressed: bool,
         jump: ButtonState,
-        enable_builtin_jump: bool,
+        mode: PlayerStepMode,
     ) -> Result<(), RuntimeCoreError> {
+        let enable_builtin_jump = mode == PlayerStepMode::BuiltinPlatformer;
         if self.death_waiting_for_restart {
             return Ok(());
         }
@@ -132,17 +148,16 @@ impl RuntimeCore {
             return Ok(());
         }
 
-        player.hspeed = match (left_pressed, right_pressed) {
-            (true, false) => {
-                player.facing_left = true;
-                next_hspeed
-            }
-            (false, true) => {
-                player.facing_left = false;
-                next_hspeed
-            }
-            _ => 0.0,
-        };
+        match (left_pressed, right_pressed) {
+            (true, false) => player.facing_left = true,
+            (false, true) => player.facing_left = false,
+            _ => {}
+        }
+        // GmlMotion keeps whatever hspeed the step GML assigned; the other
+        // modes derive it from the arrow keys.
+        if mode != PlayerStepMode::GmlMotion {
+            player.hspeed = next_hspeed;
+        }
 
         let standing_on_solid = collides_at(
             player,
@@ -180,7 +195,15 @@ impl RuntimeCore {
             }
         }
 
-        player.vspeed = (player.vspeed + gravity).min(max_fall_speed);
+        match mode {
+            PlayerStepMode::BuiltinPlatformer | PlayerStepMode::LegacyPassThrough => {
+                player.vspeed = (player.vspeed + gravity).min(max_fall_speed);
+            }
+            // GM8 semantics: gravity/friction come from the instance's own
+            // vars (default 0) and there is no synthetic fall-speed clamp —
+            // the game's GML caps vspeed itself.
+            PlayerStepMode::GmlMotion => apply_gm_motion_vars(player),
+        }
 
         if enable_builtin_jump {
             let horizontal_delta = player.hspeed;
