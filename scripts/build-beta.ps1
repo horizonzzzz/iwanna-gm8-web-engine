@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Tag = 'iwm-beta:0.2.0-beta.2'
+    [string]$Tag = 'iwm-beta:0.2.0-beta.3'
 )
 
 $ErrorActionPreference = 'Stop'

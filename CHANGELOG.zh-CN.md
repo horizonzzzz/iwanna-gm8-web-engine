@@ -8,6 +8,24 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 暂无更新。
 
+## [0.2.0-beta.3] - 2026-07-27
+
+### 新增
+
+- 重做公共上传到 Canvas 的流程，增加进度、重置和游玩 HUD 状态。
+- 增加从生成 package 自动发现 Shell package 的能力，并加入 Crimson L3 回归基线。
+- 增加 Crimson P0 runtime 路径、GM 数学内置函数、`instance_position` 和 package-backed path 移动。
+
+### 变更
+
+- 接入 GML 驱动的玩家移动、继承碰撞事件、按深度排序的 tile/sprite，以及更完整的 runtime 诊断。
+- 改进 string literal 解析，并增强房间重启、音频和场景切换处理。
+
+### 修复
+
+- 房间重启时保留循环 BGM，同时停止残留 one-shot 音效并清理过期重启状态。
+- 恢复 Crimson 菜单音频/渲染，并修复手动重载房间后的待处理场景切换。
+
 ## [0.2.0-beta.2] - 2026-07-15
 
 ### 变更

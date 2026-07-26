@@ -3,7 +3,7 @@
 [English README](README.md)
 
 面向旧版 GM8 风格 IWanna 游戏的浏览器运行引擎。当前发布线为
-`0.2.0-beta.2`。
+`0.2.0-beta.3`。
 
 [更新日志](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md)
 
@@ -33,7 +33,7 @@ Rust 服务不会执行上传的 EXE 或 DLL。它只解析受支持的 GM8 数�
 ```powershell
 git submodule update --init --recursive
 .\scripts\build-beta.ps1
-docker run --rm --name iwm-beta -p 3000:3000 -v iwm-data:/data iwm-beta:0.2.0-beta.2
+docker run --rm --name iwm-beta -p 3000:3000 -v iwm-data:/data iwm-beta:0.2.0-beta.3
 ```
 
 打开 `http://127.0.0.1:3000`。健康检查为 `/healthz`。
@@ -84,7 +84,7 @@ cargo clippy -p iwm-api -p iwm-detector -p iwm-parser --all-targets --locked --n
 npm --prefix runtime test
 npm --prefix runtime run build
 npm --prefix runtime run test:browser
-docker build -t iwm-beta:0.2.0-beta.2 .
+docker build -t iwm-beta:0.2.0-beta.3 .
 ```
 
 浏览器和 sample 验证必须先重建 release WASM，并用当前 parser 重新生成

@@ -8,6 +8,24 @@ All notable changes to this project are documented here.
 
 No changes yet.
 
+## [0.2.0-beta.3] - 2026-07-27
+
+### Added
+
+- Redesigned the public upload-to-Canvas flow with progress, reset, and play HUD states.
+- Added shell package discovery from generated packages and the Crimson L3 regression baseline.
+- Added Crimson P0 runtime paths, GM math builtins, `instance_position`, and package-backed path movement.
+
+### Changed
+
+- Integrated GML-driven player motion, inherited collision events, depth-ordered tiles/sprites, and richer runtime diagnostics.
+- Improved parser handling for string literals and runtime handling of room restarts, audio, and scene transitions.
+
+### Fixed
+
+- Preserved looping BGM across room restarts while stopping stale one-shots and clearing stale restart state.
+- Restored Crimson menu audio/rendering and fixed pending scene transitions on manual room reload.
+
 ## [0.2.0-beta.2] - 2026-07-15
 
 ### Changed
