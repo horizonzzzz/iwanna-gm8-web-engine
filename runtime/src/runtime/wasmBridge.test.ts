@@ -513,11 +513,15 @@ describe('wasm bridge file imports', () => {
 
     host.configurePackage?.(pkg, '/packages/sample');
     host.writeFile('temp', Uint8Array.of(1));
+    host.writeFile('temp.dat', Uint8Array.of(1));
     host.writeFile('save1', Uint8Array.of(7, 8, 9));
+    host.writeFile('save1.dat', Uint8Array.of(4, 5, 6));
     host.configurePackage?.(pkg, '/packages/sample');
 
     expect(host.readFile('temp')).toBeNull();
+    expect(host.readFile('temp.dat')).toBeNull();
     expect([...(host.readFile('save1') ?? [])]).toEqual([7, 8, 9]);
+    expect([...(host.readFile('save1.dat') ?? [])]).toEqual([4, 5, 6]);
   });
 
   it('reads, writes, and removes package save bytes through the configured file host', () => {

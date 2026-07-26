@@ -117,6 +117,8 @@ export type WasmRuntimeBridgeModule = {
 };
 
 class LocalStorageWasmFileHost implements WasmFileHost {
+  private static readonly restartMarkerFiles = ['temp', 'temp.dat'];
+
   private packageKey = 'unconfigured';
   private readonly memoryFallback = new Map<string, string>();
 
@@ -125,7 +127,13 @@ class LocalStorageWasmFileHost implements WasmFileHost {
   configurePackage(pkg: RuntimePackage, basePath: string): void {
     const hash = pkg.manifest.source_hash || pkg.manifest.source_name || 'package';
     this.packageKey = `${basePath || 'default'}:${hash}`;
-    this.removeFile('temp');
+    // GM8 engines mark an in-flight load-restart with a temp file ("temp" in
+    // Yuuutu-style engines, "temp.dat" in Nekoron-style ones) and only delete it
+    // on their own quit keys. Closing the tab skips those, so a persisted marker
+    // would auto-load the save on every boot instead of showing the title.
+    for (const marker of LocalStorageWasmFileHost.restartMarkerFiles) {
+      this.removeFile(marker);
+    }
   }
 
   readFile(path: string): Uint8Array | null {
