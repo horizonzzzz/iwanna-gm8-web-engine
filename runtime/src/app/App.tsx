@@ -4,6 +4,7 @@ import { ControlBar } from '../ui/components/ControlBar';
 import { DebugReportPanel } from '../ui/components/DebugReportPanel';
 import { InspectorTabs } from '../ui/components/InspectorTabs';
 import { RuntimeHud } from '../ui/components/RuntimeHud';
+import { publicPackages } from '../publicPackages';
 import { useDebugReport } from '../ui/hooks/useDebugReport';
 import { useKeyboardInput } from '../ui/hooks/useKeyboardInput';
 import { useRuntimeShell } from '../ui/hooks/useRuntimeShell';
@@ -91,6 +92,8 @@ export function App(): JSX.Element {
       <ControlBar
         packagePath={shell.packagePath}
         onPackagePathChange={shell.setPackagePath}
+        packageOptions={publicPackages}
+        onPackageSelect={(path) => void shell.loadCurrentPackage(keyboardRef, path)}
         onLoad={() => void shell.loadCurrentPackage(keyboardRef)}
         roomOptions={shell.roomOptions}
         selectedRoomId={shell.selectedRoomId}

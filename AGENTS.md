@@ -104,6 +104,8 @@ Package generation commands:
 
 Generated packages live under `runtime/public/packages/gm8-core/<game name>/` — one directory per game, matching the sample corpus folder name, so sample builds never overwrite each other. The shared `runtime/public/packages/sample/` path is retired.
 
+`runtime/src/publicPackages.ts` discovers every directory with a `manifest.json` under `runtime/public/packages/` through `import.meta.glob`, and `/shell` offers them as the `Package` dropdown. Newly built packages show up in the running dev server without a restart; the `Package path` field still accepts any path (for example a published `/games/<sha256>`).
+
 ## Sample Corpus Instructions
 
 Use the local sample corpus under:
