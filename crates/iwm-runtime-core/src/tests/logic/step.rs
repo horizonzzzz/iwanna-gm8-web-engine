@@ -22,6 +22,120 @@ fn sparse_instance_overlay_reads_latest_update_and_clears_dirty_slots() {
 }
 
 #[test]
+fn conditional_chain_executes_only_the_first_matching_branch() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::ConditionalChain {
+            branches: vec![
+                LoweredLogicConditionalBranch {
+                    condition: LoweredLogicExpr::LiteralBool(false),
+                    body: vec![],
+                },
+                LoweredLogicConditionalBranch {
+                    condition: LoweredLogicExpr::LiteralBool(true),
+                    body: vec![LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::Identifier("chain_result".into()),
+                        value: LoweredLogicExpr::LiteralNumber(2.0),
+                    }],
+                },
+                LoweredLogicConditionalBranch {
+                    condition: LoweredLogicExpr::LiteralBool(true),
+                    body: vec![LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::Identifier("chain_result".into()),
+                        value: LoweredLogicExpr::LiteralNumber(3.0),
+                    }],
+                },
+            ],
+            else_branch: vec![],
+        }],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        player_var(&core, "chain_result"),
+        Some(&RuntimeValue::Number(2.0))
+    );
+}
+
+#[test]
+fn switch_executes_matching_case_fallthrough_break_and_default() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Switch {
+                expression: LoweredLogicExpr::LiteralNumber(2.0),
+                cases: vec![
+                    LoweredLogicSwitchCase {
+                        value: Some(LoweredLogicExpr::LiteralNumber(1.0)),
+                        body: vec![],
+                        break_after: true,
+                    },
+                    LoweredLogicSwitchCase {
+                        value: Some(LoweredLogicExpr::LiteralNumber(2.0)),
+                        body: vec![LoweredLogicStatement::Assignment {
+                            target: LoweredLogicExpr::Identifier("switch_result".into()),
+                            value: LoweredLogicExpr::LiteralNumber(2.0),
+                        }],
+                        break_after: false,
+                    },
+                    LoweredLogicSwitchCase {
+                        value: Some(LoweredLogicExpr::LiteralNumber(3.0)),
+                        body: vec![LoweredLogicStatement::Assignment {
+                            target: LoweredLogicExpr::Identifier("switch_result".into()),
+                            value: LoweredLogicExpr::BinaryExpr {
+                                op: "+".into(),
+                                left: Box::new(LoweredLogicExpr::Identifier(
+                                    "switch_result".into(),
+                                )),
+                                right: Box::new(LoweredLogicExpr::LiteralNumber(3.0)),
+                            },
+                        }],
+                        break_after: true,
+                    },
+                    LoweredLogicSwitchCase {
+                        value: None,
+                        body: vec![LoweredLogicStatement::Assignment {
+                            target: LoweredLogicExpr::Identifier("switch_result".into()),
+                            value: LoweredLogicExpr::LiteralNumber(99.0),
+                        }],
+                        break_after: true,
+                    },
+                ],
+            },
+            LoweredLogicStatement::Switch {
+                expression: LoweredLogicExpr::LiteralNumber(9.0),
+                cases: vec![LoweredLogicSwitchCase {
+                    value: None,
+                    body: vec![LoweredLogicStatement::Assignment {
+                        target: LoweredLogicExpr::Identifier("switch_default".into()),
+                        value: LoweredLogicExpr::LiteralNumber(1.0),
+                    }],
+                    break_after: true,
+                }],
+            },
+        ],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        player_var(&core, "switch_result"),
+        Some(&RuntimeValue::Number(5.0))
+    );
+    assert_eq!(
+        player_var(&core, "switch_default"),
+        Some(&RuntimeValue::Number(1.0))
+    );
+}
+
+#[test]
 fn core_executes_lowered_step_room_goto_calls() {
     let mut package = sample_package();
     package.rooms[0].instances[0].creation_block_id = None;

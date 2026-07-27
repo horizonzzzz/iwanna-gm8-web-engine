@@ -326,15 +326,10 @@ fn process_game(
         ApiError::unprocessable("This file could not be identified")
     })?;
     match detection.verdict {
-        DetectionVerdict::Gm8Likely => {}
+        DetectionVerdict::Gm8Likely | DetectionVerdict::Unknown => {}
         DetectionVerdict::GmsLikely => {
             return Err(ApiError::unprocessable(
                 "GameMaker Studio packages are outside this Beta",
-            ));
-        }
-        DetectionVerdict::Unknown => {
-            return Err(ApiError::unprocessable(
-                "This package could not be identified as a supported GM8 game",
             ));
         }
         DetectionVerdict::Blocked => {

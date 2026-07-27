@@ -44,6 +44,29 @@ fn detect_exe_input_uses_package_inventory_for_sidecar_files() {
 }
 
 #[test]
+fn detect_exe_input_ignores_other_executables_in_the_same_directory() {
+    let temp = tempfile::tempdir().unwrap();
+    let exe_path = temp.path().join("game.exe");
+    fs::write(
+        &exe_path,
+        b"Game Maker Version 8 D3DX8.dll room_goto keyboard_check",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("helper.exe"),
+        b"UnityPlayer.dll UnityEngine",
+    )
+    .unwrap();
+    fs::write(temp.path().join("music.ogg"), b"audio").unwrap();
+
+    let report = iwm_detector::detect_input(&exe_path).unwrap();
+
+    assert_eq!(report.verdict, DetectionVerdict::Gm8Likely);
+    assert_eq!(report.executable_count, 1);
+    assert_eq!(report.files.len(), 3);
+}
+
+#[test]
 fn detect_directory_ignores_partial_inventory_signature_matches() {
     let temp = tempfile::tempdir().unwrap();
     fs::write(

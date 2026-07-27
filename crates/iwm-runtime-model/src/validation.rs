@@ -12,6 +12,9 @@ use crate::{
     RoomDefinition, RuntimeManifest, ScriptIrFile,
 };
 
+const MAX_JSON_DEPTH: usize = 96;
+const MAX_JSON_TOKENS: usize = 500_000_000;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimePackageContract {
     pub manifest: RuntimeManifest,
@@ -307,6 +310,10 @@ pub enum RuntimePackageReadError {
         path: PathBuf,
         source: serde_json::Error,
     },
+    Limit {
+        path: PathBuf,
+        message: String,
+    },
 }
 
 impl fmt::Display for RuntimePackageReadError {
@@ -318,6 +325,9 @@ impl fmt::Display for RuntimePackageReadError {
             RuntimePackageReadError::Json { path, source } => {
                 write!(f, "failed to parse {}: {source}", path.display())
             }
+            RuntimePackageReadError::Limit { path, message } => {
+                write!(f, "refused to parse {}: {message}", path.display())
+            }
         }
     }
 }
@@ -327,6 +337,7 @@ impl Error for RuntimePackageReadError {
         match self {
             RuntimePackageReadError::Io { source, .. } => Some(source),
             RuntimePackageReadError::Json { source, .. } => Some(source),
+            RuntimePackageReadError::Limit { .. } => None,
         }
     }
 }
@@ -336,8 +347,55 @@ fn read_json<T: DeserializeOwned>(path: PathBuf) -> Result<T, RuntimePackageRead
         path: path.clone(),
         source,
     })?;
+    validate_json_shape(&bytes).map_err(|message| RuntimePackageReadError::Limit {
+        path: path.clone(),
+        message,
+    })?;
 
     serde_json::from_slice(&bytes).map_err(|source| RuntimePackageReadError::Json { path, source })
+}
+
+fn validate_json_shape(bytes: &[u8]) -> Result<(), String> {
+    let mut depth = 0usize;
+    let mut tokens = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for byte in bytes {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if *byte == b'\\' {
+                escaped = true;
+            } else if *byte == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match *byte {
+            b'"' => {
+                in_string = true;
+                tokens += 1;
+            }
+            b'{' | b'[' => {
+                depth += 1;
+                tokens += 1;
+                if depth > MAX_JSON_DEPTH {
+                    return Err(format!("JSON nesting exceeds {MAX_JSON_DEPTH}"));
+                }
+            }
+            b'}' | b']' => depth = depth.saturating_sub(1),
+            b',' | b':' => tokens += 1,
+            _ => {}
+        }
+
+        if tokens > MAX_JSON_TOKENS {
+            return Err(format!("JSON structure exceeds {MAX_JSON_TOKENS} tokens"));
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_manifest_counts(
@@ -433,5 +491,22 @@ fn require_logic_block(
                 missing_from: file_name.into(),
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod json_shape_tests {
+    use super::{validate_json_shape, MAX_JSON_DEPTH};
+
+    #[test]
+    fn json_shape_scan_is_string_aware_and_bounds_nesting() {
+        assert!(validate_json_shape(br#"{"text":"[{\"nested\":true}]}"#).is_ok());
+
+        let too_deep = format!(
+            "{}0{}",
+            "[".repeat(MAX_JSON_DEPTH + 1),
+            "]".repeat(MAX_JSON_DEPTH + 1)
+        );
+        assert!(validate_json_shape(too_deep.as_bytes()).is_err());
     }
 }

@@ -36,7 +36,9 @@ Included in this phase:
 - browser-ready sprite exports
 - sprite exports now include `bbox_left`, `bbox_right`, `bbox_top`, and `bbox_bottom` collision bounds plus optional `collision_masks` sourced from the parser's OpenGMK sprite collision metadata
 - browser-ready background exports
-- audio file exports
+- embedded audio exports plus referenced OGG/WAV/MP3 package sidecars; sidecar
+  lookup normalizes relative paths, accepts a basename only when it is unique,
+  and validates the matching file header before publication
 - parsed font metadata in `resources/index.json`, including GM font name, system font name, size, bold, italic, character range, atlas path, atlas dimensions, and glyph metrics
 - parsed GM path metadata in `resources/index.json`, including sparse path id, name, straight/smooth connection, precision, closed state, and point position/speed records
 - normalized room instance placements with runtime categorization hints
@@ -51,6 +53,9 @@ Included in this phase:
 - structured parser-owned lowered logic in `logic.lowered.json` for the current IWanna-critical subset
 - the current lowered contract also preserves common comment stripping, `var` declarations, unary expressions, `return` statements, and DnD variable comparisons such as `action_if_variable` on the current critical path
 - control-flow heads in `logic.lowered.json` are represented as lowered expressions so the WASM bridge can deserialize them directly
+- `switch` is represented as one selector expression plus an ordered flat case
+  list; `value: null` is `default`, and `break_after` distinguishes a terminating
+  case from ordinary fallthrough without building a deep conditional tree
 - runtime categorization: hazard, checkpoint, player-controlled hints
 
 ## Current Web Integration
@@ -131,7 +136,7 @@ The repository now has a structural validator in `crates/iwm-runtime-model/` exp
 cargo run -p iwm-cli -- validate-package --input .\runtime\public\packages\sample
 ```
 
-The validator is contract-oriented, not semantic. It checks package shape and cross-file references before browser smoke, while runtime behavior validation remains in `iwm-runtime-core`, `iwm-runtime-web`, and browser tests.
+The validator is contract-oriented, not semantic. It checks package shape and cross-file references before browser smoke, while runtime behavior validation remains in `iwm-runtime-core`, `iwm-runtime-web`, and browser tests. JSON input is pre-scanned iteratively and rejected above 96 structural nesting levels or 500,000,000 structural tokens before Serde deserialization.
 Room background resource validation follows the current runtime drawing contract: visible room background layers and all tiles must resolve to exported background resources; hidden room background layers are preserved but do not currently block validation because neither runtime-core nor the browser static renderer draws them. When a GM8 room or tile references a deleted background slot that resource export cannot emit, the parser normalizes that hard reference to `source_bg = -1` and records a warning with the original room, tile, and source ids. The validator remains strict for any unresolved non-negative hard reference.
 
 After validation, the developer CLI can run a generated package through the headless runtime diagnostics path:
@@ -160,7 +165,7 @@ This is currently useful for diagnostics and shell validation, but it is not the
 
 - `logic.raw.json` preserves the original GML source text and ownership metadata for room, instance, object event, script, trigger, and timeline logic
 - raw DnD action records preserve `applies_to`, condition/inversion, and relative-action flags; consumers must not infer these semantics from `fn_name` or arguments alone
-- `logic.lowered.json` holds the parser-owned lowered contract for current critical-path expressions and statements such as calls, assignments, member access, index access, binary expressions, `var` declarations, `return` statements, and structured control-flow heads
+- `logic.lowered.json` holds the parser-owned lowered contract for current critical-path expressions and statements such as calls, assignments, member access, index access, binary expressions, `var` declarations, `return` statements, conditionals, loops, and flat `switch` case lists with default/fallthrough/direct-break semantics
 - DnD Begin/End, condition/Else, Repeat, Set Variable, timeline, object-motion creation, sprite, sound, and wrap actions are lowered into the same statement/expression contract rather than being flattened into unrelated calls
 - runtime should treat these files as the bridge between `gm8exe` extraction and executable runtime semantics, not as a separate public API for end users
 - current repository direction assumes that `logic.lowered.json` must keep moving toward a structurally correct runtime-facing contract; any remaining raw fallback is transitional diagnostics, not the intended steady-state execution contract
@@ -185,13 +190,17 @@ The current `iwm-runtime-web` bridge can now:
 - expose enough frame and snapshot data for the browser shell to report input, tick, active room speed, snapshot, frame, canvas render, total frame, draw command count, skipped room-speed auto-tick interval telemetry, and runtime-core tick phase timings
 - consume a narrow `env.iwm_host_now_nanos` WASM import for diagnostic wall-clock sampling in browser builds; deterministic game time still comes from the runtime host clock
 - forward the current sound subset through browser host imports for `sound_play()`, `sound_loop()`, `sound_stop()`, `sound_stop_all()`, and `sound_isplaying()`
+- map common SuperSound and GMFMODSimple load/play/loop/stop/query calls onto
+  that same package-owned sound host; CleanMem and unsupported mixer/configuration
+  calls return deterministic safe values instead of invoking native code
 
 It does **not** yet provide:
 
 - full GM8 audio parity, including volume/pan/mixing controls,
   channel/priority semantics, advanced suspended-context lifecycle, and broader
   sound APIs; initial pointer/key autoplay recovery is implemented
-- DLL/external support
+- general DLL/external support; uploaded native libraries are never executed,
+  and only the explicitly mapped safe audio/maintenance call surface is adapted
 - gameplay-fidelity parity with OpenGMK runner semantics
 - a fully catch-up-capable real-time gameplay loop in the shell; if a tick/render cycle takes longer than the active room-speed interval, the shell reports skipped intervals but does not yet run accumulator catch-up ticks
 
@@ -239,6 +248,8 @@ Current `analysis.json` warnings include actionable categories:
 - `runtime-unsupported-action:<fn_name>` - actions not yet implemented (e.g., file_*, sound_*, window_*)
 - `lowered-logic-raw-fallback` - generated logic still contains raw fallback statements
 - `external-dll-execution` - the package includes DLLs that the browser runtime will not execute
+- `external-audio-unresolved:<path>` - lowered logic references a supported
+  sidecar audio path that is missing, ambiguous, or fails header validation
 
 These warnings still guide parser and shell diagnostics work, but gameplay-runtime prioritization now belongs to the WASM-first runtime plan.
 

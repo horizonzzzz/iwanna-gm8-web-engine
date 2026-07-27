@@ -75,7 +75,7 @@ fn lowering_normalizes_gml_word_boolean_operators() {
 }
 
 #[test]
-fn lowering_preserves_switch_and_maps_exit_to_return() {
+fn lowering_preserves_switch_cases_default_break_and_exit() {
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),
         room_creation_codes: vec![],
@@ -91,10 +91,25 @@ fn lowering_preserves_switch_and_maps_exit_to_return() {
     };
 
     let lowered = lower_raw_logic_file(&raw);
+    let LoweredLogicStatement::Switch { expression, cases } = &lowered.entries[0].statements[0]
+    else {
+        panic!("expected lowered switch");
+    };
+    assert!(matches!(expression, LoweredLogicExpr::Identifier(name) if name == "x"));
+    assert_eq!(cases.len(), 2);
     assert!(matches!(
-        &lowered.entries[0].statements[0],
-        LoweredLogicStatement::Raw { source } if source.starts_with("switch")
+        &cases[0].value,
+        Some(LoweredLogicExpr::LiteralNumber(value)) if (*value - 1.0).abs() < f64::EPSILON
     ));
+    assert!(cases[0].break_after);
+    assert!(matches!(
+        &cases[0].body[..],
+        [LoweredLogicStatement::Assignment { target, value }]
+            if matches!(target, LoweredLogicExpr::Identifier(name) if name == "y")
+                && matches!(value, LoweredLogicExpr::LiteralNumber(value) if (*value - 2.0).abs() < f64::EPSILON)
+    ));
+    assert!(cases[1].value.is_none());
+    assert!(!cases[1].break_after);
     assert!(matches!(
         &lowered.entries[0].statements[1],
         LoweredLogicStatement::Return { value: None }
@@ -493,60 +508,49 @@ fn lowering_preserves_inline_if_else_if_without_braces() {
 
     let lowered = lower_raw_logic_file(&raw);
 
-    match &lowered.entries[0].statements[0] {
-        LoweredLogicStatement::Conditional {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            assert!(matches!(
-                condition,
-                LoweredLogicExpr::BinaryExpr { op, left, right }
-                    if op == "="
-                    && matches!(
-                        left.as_ref(),
-                        LoweredLogicExpr::MemberAccess { target, member }
-                            if member == "object_index"
-                            && matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "a")
-                    )
-                    && matches!(right.as_ref(), LoweredLogicExpr::Identifier(name) if name == "block")
-            ));
-            assert!(matches!(
-                then_branch.first(),
-                Some(LoweredLogicStatement::FunctionCall { name, args })
-                    if name == "instance_destroy" && args.is_empty()
-            ));
-
-            match else_branch.first() {
-                Some(LoweredLogicStatement::Conditional {
-                    condition,
-                    then_branch,
-                    else_branch,
-                }) => {
-                    assert!(else_branch.is_empty());
-                    assert!(matches!(
-                        condition,
-                        LoweredLogicExpr::BinaryExpr { op, left, right }
-                            if op == "="
-                            && matches!(
-                                left.as_ref(),
-                                LoweredLogicExpr::MemberAccess { target, member }
-                                    if member == "visible"
-                                    && matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "a")
-                            )
-                            && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 1.0).abs() < f64::EPSILON)
-                    ));
-                    assert!(matches!(
-                        then_branch.first(),
-                        Some(LoweredLogicStatement::FunctionCall { name, args })
-                            if name == "instance_destroy" && args.is_empty()
-                    ));
-                }
-                other => panic!("expected inline else-if conditional, got {other:?}"),
-            }
-        }
-        other => panic!("expected inline conditional, got {other:?}"),
-    }
+    let LoweredLogicStatement::ConditionalChain {
+        branches,
+        else_branch,
+    } = &lowered.entries[0].statements[0]
+    else {
+        panic!("expected inline conditional chain");
+    };
+    assert_eq!(branches.len(), 2);
+    assert!(else_branch.is_empty());
+    assert!(matches!(
+        &branches[0].condition,
+        LoweredLogicExpr::BinaryExpr { op, left, right }
+            if op == "="
+            && matches!(
+                left.as_ref(),
+                LoweredLogicExpr::MemberAccess { target, member }
+                    if member == "object_index"
+                    && matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "a")
+            )
+            && matches!(right.as_ref(), LoweredLogicExpr::Identifier(name) if name == "block")
+    ));
+    assert!(matches!(
+        branches[0].body.first(),
+        Some(LoweredLogicStatement::FunctionCall { name, args })
+            if name == "instance_destroy" && args.is_empty()
+    ));
+    assert!(matches!(
+        &branches[1].condition,
+        LoweredLogicExpr::BinaryExpr { op, left, right }
+            if op == "="
+            && matches!(
+                left.as_ref(),
+                LoweredLogicExpr::MemberAccess { target, member }
+                    if member == "visible"
+                    && matches!(target.as_ref(), LoweredLogicExpr::Identifier(name) if name == "a")
+            )
+            && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 1.0).abs() < f64::EPSILON)
+    ));
+    assert!(matches!(
+        branches[1].body.first(),
+        Some(LoweredLogicStatement::FunctionCall { name, args })
+            if name == "instance_destroy" && args.is_empty()
+    ));
 }
 
 #[test]
@@ -705,4 +709,63 @@ fn lowering_preserves_gml_integer_division_and_modulo_words() {
         } if op == "mod"
             && matches!(right.as_ref(), LoweredLogicExpr::LiteralNumber(number) if (*number - 60.0).abs() < f64::EPSILON)
     ));
+}
+
+#[test]
+fn lowering_bounds_large_boolean_and_conditional_chains() {
+    let boolean = (0..512)
+        .map(|index| format!("flag{index}"))
+        .collect::<Vec<_>>()
+        .join(" && ");
+    let conditional = (0..300)
+        .map(|index| {
+            let keyword = if index == 0 { "if" } else { "else if" };
+            format!("{keyword}(choice = {index}) {{ result = {index}; }}")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".into(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 1,
+            script_name: "scr_deep".into(),
+            gml_source: format!("enabled = {boolean}; {conditional} else {{ result = -1; }}"),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+
+    let LoweredLogicStatement::Assignment { value, .. } = &lowered.entries[0].statements[0] else {
+        panic!("expected boolean assignment");
+    };
+    assert!(expr_depth(value) <= 11, "depth={}", expr_depth(value));
+    assert!(matches!(
+        &lowered.entries[0].statements[1],
+        LoweredLogicStatement::ConditionalChain {
+            branches,
+            else_branch,
+        } if branches.len() == 300 && else_branch.len() == 1
+    ));
+}
+
+fn expr_depth(expr: &LoweredLogicExpr) -> usize {
+    match expr {
+        LoweredLogicExpr::UnaryExpr { child, .. }
+        | LoweredLogicExpr::MemberAccess { target: child, .. } => 1 + expr_depth(child),
+        LoweredLogicExpr::IndexAccess { target, index }
+        | LoweredLogicExpr::BinaryExpr {
+            left: target,
+            right: index,
+            ..
+        } => 1 + expr_depth(target).max(expr_depth(index)),
+        LoweredLogicExpr::Call { args, .. } => {
+            1 + args.iter().map(expr_depth).max().unwrap_or_default()
+        }
+        _ => 1,
+    }
 }

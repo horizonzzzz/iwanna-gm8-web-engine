@@ -308,3 +308,60 @@ fn core_treats_uninitialized_sound_var_as_zero_when_enabled() {
     assert_eq!(host.audio.played, vec![(0, RuntimeSoundMode::Loop)]);
     assert!(host.audio.is_sound_playing(0).unwrap());
 }
+
+#[test]
+fn core_maps_supersound_and_fmod_calls_to_audio_host() {
+    let mut package = sample_package();
+    package.resources.sounds[0].id = 42;
+    package.resources.sounds[0].name = "Music/Track.ogg".into();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("ss_handle".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "SS_LoadSound".into(),
+                    args: vec![LoweredLogicExpr::BinaryExpr {
+                        op: "+".into(),
+                        left: Box::new(LoweredLogicExpr::Identifier("working_directory".into())),
+                        right: Box::new(LoweredLogicExpr::LiteralText("\\Music\\Track.ogg".into())),
+                    }],
+                },
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "SS_LoopSound".into(),
+                args: vec![LoweredLogicExpr::Identifier("ss_handle".into())],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("fmod_handle".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "FMODSoundAdd".into(),
+                    args: vec![LoweredLogicExpr::LiteralText("track.ogg".into())],
+                },
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "FMODSoundPlay".into(),
+                args: vec![LoweredLogicExpr::Identifier("fmod_handle".into())],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "cleanmem_init".into(),
+                args: vec![LoweredLogicExpr::LiteralNumber(0.0)],
+            },
+        ],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        host.audio.played,
+        vec![(42, RuntimeSoundMode::Loop), (42, RuntimeSoundMode::Once)]
+    );
+    assert!(core.diagnostics().iter().all(|entry| {
+        entry.code != "runtime-unsupported-function"
+            || (!entry.message.contains("function=SS_")
+                && !entry.message.contains("function=FMOD")
+                && !entry.message.contains("function=cleanmem"))
+    }));
+}

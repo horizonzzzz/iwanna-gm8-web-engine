@@ -114,8 +114,11 @@ fn main() {
                 }
             };
 
-            if report.verdict != iwm_detector::DetectionVerdict::Gm8Likely {
-                eprintln!("input is not classified as gm8-likely");
+            if !matches!(
+                report.verdict,
+                iwm_detector::DetectionVerdict::Gm8Likely | iwm_detector::DetectionVerdict::Unknown
+            ) {
+                eprintln!("input is classified as an unsupported engine or layout");
                 std::process::exit(2);
             }
 
@@ -365,8 +368,11 @@ fn run_sample_audit_command(
             "runtime": {"status":"pending"}
         }
     });
-    if detection.verdict != iwm_detector::DetectionVerdict::Gm8Likely {
-        report["stages"]["build"] = json!({"status":"skipped","reason":"input is not gm8-likely"});
+    if !matches!(
+        detection.verdict,
+        iwm_detector::DetectionVerdict::Gm8Likely | iwm_detector::DetectionVerdict::Unknown
+    ) {
+        report["stages"]["build"] = json!({"status":"skipped","reason":"input is classified as an unsupported engine or layout"});
         write_audit_report(report_output, &report);
         std::process::exit(2);
     }

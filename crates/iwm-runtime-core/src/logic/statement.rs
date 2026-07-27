@@ -8,10 +8,10 @@ use iwm_runtime_model::{FontResource, ObjectDefinition, PathResource, SpriteReso
 
 use super::assignment::{assign_runtime_value, next_room_id, runtime_value_to_room_id};
 use super::calls::{
-    dispatch_motion_add, dispatch_move_bounce_solid, dispatch_move_contact_solid,
-    dispatch_move_towards_point, dispatch_move_wrap, dispatch_runtime_sound_call,
-    evaluate_file_bin_byte, evaluate_file_bin_handle, resolve_runtime_sound_id,
-    runtime_value_to_i32,
+    dispatch_legacy_audio_call, dispatch_motion_add, dispatch_move_bounce_solid,
+    dispatch_move_contact_solid, dispatch_move_towards_point, dispatch_move_wrap,
+    dispatch_runtime_sound_call, evaluate_file_bin_byte, evaluate_file_bin_handle,
+    resolve_runtime_sound_id, runtime_value_to_i32,
 };
 use super::context::{
     RuntimeBinaryFileState, RuntimeEvalContext, RuntimeExecutionScope, RuntimeInstanceCreateRequest,
@@ -213,6 +213,90 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
             }
         }
+        LoweredLogicStatement::ConditionalChain {
+            branches,
+            else_branch,
+        } => {
+            let branch = branches
+                .iter()
+                .find(|branch| {
+                    is_truthy(evaluate_with_diagnostics(
+                        &branch.condition,
+                        Some(instance),
+                        Some(scope),
+                        eval_context,
+                        env,
+                        instance,
+                    ))
+                })
+                .map(|branch| branch.body.as_slice())
+                .unwrap_or(else_branch);
+            for nested in branch {
+                if let Some(value) = apply_runtime_statement(
+                    nested,
+                    instance,
+                    instance_index,
+                    scope,
+                    destroy_event_entries,
+                    eval_context,
+                    env,
+                ) {
+                    return Some(value);
+                }
+            }
+        }
+        LoweredLogicStatement::Switch { expression, cases } => {
+            let value = evaluate_with_diagnostics(
+                expression,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )?;
+            let mut default_index = None;
+            let mut start_index = None;
+            for (index, switch_case) in cases.iter().enumerate() {
+                let Some(case_value) = switch_case.value.as_ref() else {
+                    default_index.get_or_insert(index);
+                    continue;
+                };
+                if evaluate_with_diagnostics(
+                    case_value,
+                    Some(instance),
+                    Some(scope),
+                    eval_context,
+                    env,
+                    instance,
+                )
+                .is_some_and(|case_value| runtime_values_equal(&value, &case_value))
+                {
+                    start_index = Some(index);
+                    break;
+                }
+            }
+
+            if let Some(start_index) = start_index.or(default_index) {
+                for switch_case in &cases[start_index..] {
+                    for nested in &switch_case.body {
+                        if let Some(value) = apply_runtime_statement(
+                            nested,
+                            instance,
+                            instance_index,
+                            scope,
+                            destroy_event_entries,
+                            eval_context,
+                            env,
+                        ) {
+                            return Some(value);
+                        }
+                    }
+                    if switch_case.break_after {
+                        break;
+                    }
+                }
+            }
+        }
         LoweredLogicStatement::VariableDeclaration { names } => {
             for name in names {
                 scope.declare(name);
@@ -235,301 +319,186 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     .unwrap_or(RuntimeValue::Number(0.0)),
             );
         }
-        LoweredLogicStatement::FunctionCall { name, args } => match name.as_str() {
-            "room_goto" => {
-                if let Some(room_id) = args
-                    .first()
-                    .and_then(|arg| {
-                        evaluate_with_diagnostics(
-                            arg,
-                            Some(instance),
-                            Some(scope),
-                            eval_context,
-                            env,
-                            instance,
-                        )
-                    })
-                    .and_then(|value| runtime_value_to_room_id(&value))
-                    .filter(|room_id| {
-                        eval_context
-                            .map(|context| context.room_order.contains(room_id))
-                            .unwrap_or(true)
-                    })
-                {
-                    *env.pending_game_restart = false;
-                    *env.pending_room_reset = false;
-                    *env.pending_room_transition = Some(room_id);
-                } else {
-                    record_host_diagnostic(
-                        env.host,
-                        env.diagnostics,
-                        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
-                        "runtime-step-room-goto-unresolved",
-                        format!(
-                            "could not resolve room_goto target for {}",
-                            instance.object_name
-                        ),
-                    );
-                }
+        LoweredLogicStatement::FunctionCall { name, args } => {
+            if dispatch_legacy_audio_call(env, name, args, instance, scope, eval_context).is_some()
+            {
+                return None;
             }
-            "room_goto_next" => {
-                if let Some(room_id) = next_room_id(instance, env.globals, eval_context) {
-                    *env.pending_game_restart = false;
-                    *env.pending_room_reset = false;
-                    *env.pending_room_transition = Some(room_id);
-                } else {
-                    record_host_diagnostic(
-                        env.host,
-                        env.diagnostics,
-                        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
-                        "runtime-step-room-goto-next-unresolved",
-                        format!(
-                            "could not resolve room_goto_next target for {}",
-                            instance.object_name
-                        ),
-                    );
-                }
-            }
-            "game_restart" => {
-                *env.pending_room_transition = None;
-                *env.pending_room_reset = false;
-                *env.pending_game_restart = true;
-            }
-            "draw_set_color" => {
-                let colour = args.first().and_then(draw_colour_arg)?;
-                if let Some(draw) = env.draw.as_deref_mut() {
-                    draw.colour = colour;
-                }
-            }
-            "draw_set_halign" => {
-                let align = args.first().and_then(draw_align_arg)?;
-                if let Some(draw) = env.draw.as_deref_mut() {
-                    draw.align = align;
-                }
-            }
-            "draw_set_font" => {
-                let font = args.first().and_then(|arg| draw_font_arg(arg, env))?;
-                if let Some(draw) = env.draw.as_deref_mut() {
-                    draw.size = font.size;
-                    draw.font_name = font.name;
-                    draw.font_bold = font.bold;
-                    draw.font_italic = font.italic;
-                }
-            }
-            "draw_text" => {
-                dispatch_draw_text(args, instance, scope, eval_context, env);
-            }
-            "draw_rectangle" => {
-                dispatch_draw_rectangle(args, instance, scope, eval_context, env);
-            }
-            "draw_sprite" => {
-                dispatch_draw_sprite(args, instance, scope, eval_context, env);
-            }
-            "show_message" => {
-                let text = args
-                    .first()
-                    .and_then(|arg| {
-                        evaluate_with_diagnostics(
-                            arg,
-                            Some(instance),
-                            Some(scope),
-                            eval_context,
-                            env,
-                            instance,
-                        )
-                    })
-                    .map(|value| runtime_value_to_string_text(&value))
-                    .unwrap_or_default();
-                record_host_diagnostic(
-                    env.host,
-                    env.diagnostics,
-                    iwm_runtime_host::RuntimeDiagnosticLevel::Info,
-                    "runtime-show-message",
-                    format!("{} text={}", trace_message(&env.trace, instance), text),
-                );
-            }
-            "get_integer" => {}
-            "event_inherited" => {
-                dispatch_event_inherited(
-                    instance,
-                    instance_index,
-                    scope,
-                    destroy_event_entries,
-                    eval_context,
-                    env,
-                );
-            }
-            "sound_play" => {
-                dispatch_runtime_sound_call(
-                    env,
-                    name,
-                    args,
-                    Some(RuntimeSoundMode::Once),
-                    instance,
-                    scope,
-                    eval_context,
-                );
-            }
-            "sound_loop" => {
-                dispatch_runtime_sound_call(
-                    env,
-                    name,
-                    args,
-                    Some(RuntimeSoundMode::Loop),
-                    instance,
-                    scope,
-                    eval_context,
-                );
-            }
-            "sound_stop" => {
-                dispatch_runtime_sound_call(env, name, args, None, instance, scope, eval_context);
-            }
-            "sound_stop_all" => {
-                env.active_one_shot_sounds.clear();
-                if let Err(error) = env.host.stop_all_sounds() {
-                    record_host_diagnostic(
-                        env.host,
-                        env.diagnostics,
-                        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
-                        "runtime-audio-host-error",
-                        format!(
-                            "{} function=sound_stop_all error={}",
-                            trace_message(&env.trace, instance),
-                            error
-                        ),
-                    );
-                }
-            }
-            "keyboard_set_numlock" => {
-                if let Some(value) = args.first().and_then(|arg| {
-                    evaluate_with_diagnostics(
-                        arg,
-                        Some(instance),
-                        Some(scope),
-                        eval_context,
-                        env,
-                        instance,
-                    )
-                }) {
-                    env.host.set_keyboard_numlock(is_truthy(Some(value)));
-                }
-            }
-            "move_contact_solid" => {
-                dispatch_move_contact_solid(env, args, instance, scope, eval_context);
-            }
-            "move_towards_point" => {
-                dispatch_move_towards_point(env, args, instance, scope, eval_context);
-            }
-            "motion_add" => {
-                dispatch_motion_add(env, args, instance, scope, eval_context);
-            }
-            "move_wrap" => {
-                dispatch_move_wrap(env, args, instance, scope, eval_context);
-            }
-            "move_bounce_solid" | "move_bounce" => {
-                dispatch_move_bounce_solid(env, args, instance, scope, eval_context);
-            }
-            "path_start" => {
-                if let Some((path, speed, end_action, absolute)) =
-                    evaluate_path_start_args(args, instance, scope, eval_context, env)
-                {
-                    start_path(instance, &path, speed, end_action, absolute);
-                }
-            }
-            "path_end" => {
-                instance
-                    .vars
-                    .insert("path_index".into(), RuntimeValue::Number(-1.0));
-            }
-            "__iwm_action_move" => {
-                let Some(LoweredLogicExpr::LiteralText(options)) = args.first() else {
-                    return None;
-                };
-                let directions = options
-                    .bytes()
-                    .take(9)
-                    .enumerate()
-                    .filter_map(|(index, selected)| {
-                        (selected == b'1').then_some((
-                            index,
-                            [225.0_f64, 270.0, 315.0, 180.0, 0.0, 0.0, 135.0, 90.0, 45.0][index],
-                        ))
-                    })
-                    .collect::<Vec<_>>();
-                if directions.is_empty() {
-                    return None;
-                }
-                let chosen = if directions.len() == 1 {
-                    0
-                } else {
-                    evaluate_irandom_call(
-                        &[LoweredLogicExpr::LiteralNumber(
-                            (directions.len() - 1) as f64,
-                        )],
-                        Some(instance),
-                        env.globals,
-                        Some(scope),
-                        eval_context,
-                    )
-                    .and_then(|value| as_number(&value))
-                    .unwrap_or(0.0) as usize
-                };
-                let (direction_index, direction) = directions[chosen.min(directions.len() - 1)];
-                let speed = args
-                    .get(1)
-                    .and_then(|arg| {
-                        evaluate_with_diagnostics(
-                            arg,
-                            Some(instance),
-                            Some(scope),
-                            eval_context,
-                            env,
-                            instance,
-                        )
-                    })
-                    .and_then(|value| as_number(&value))
-                    .unwrap_or(0.0);
-                let relative = args
-                    .get(2)
-                    .and_then(|arg| {
-                        evaluate_with_diagnostics(
-                            arg,
-                            Some(instance),
-                            Some(scope),
-                            eval_context,
-                            env,
-                            instance,
-                        )
-                    })
-                    .map(|value| is_truthy(Some(value)))
-                    .unwrap_or(false);
-                if direction_index == 4 {
-                    if !relative {
-                        instance.set_speed(0.0);
+            match name.as_str() {
+                "room_goto" => {
+                    if let Some(room_id) = args
+                        .first()
+                        .and_then(|arg| {
+                            evaluate_with_diagnostics(
+                                arg,
+                                Some(instance),
+                                Some(scope),
+                                eval_context,
+                                env,
+                                instance,
+                            )
+                        })
+                        .and_then(|value| runtime_value_to_room_id(&value))
+                        .filter(|room_id| {
+                            eval_context
+                                .map(|context| context.room_order.contains(room_id))
+                                .unwrap_or(true)
+                        })
+                    {
+                        *env.pending_game_restart = false;
+                        *env.pending_room_reset = false;
+                        *env.pending_room_transition = Some(room_id);
+                    } else {
+                        record_host_diagnostic(
+                            env.host,
+                            env.diagnostics,
+                            iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                            "runtime-step-room-goto-unresolved",
+                            format!(
+                                "could not resolve room_goto target for {}",
+                                instance.object_name
+                            ),
+                        );
                     }
-                } else if relative {
-                    let radians = direction.to_radians();
-                    instance.set_hvspeed(
-                        instance.hspeed + radians.cos() * speed,
-                        instance.vspeed - radians.sin() * speed,
-                    );
-                } else {
-                    instance.set_direction(direction);
-                    instance.set_speed(speed);
                 }
-            }
-            "file_bin_write_byte" => {
-                let handle =
-                    evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
-                let byte = evaluate_file_bin_byte(args.get(1), instance, scope, eval_context, env)?;
-                env.binary_files.write_byte(handle, byte);
-            }
-            "file_bin_seek" => {
-                let handle =
-                    evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
-                let cursor = args
-                    .get(1)
-                    .and_then(|arg| {
+                "room_goto_next" => {
+                    if let Some(room_id) = next_room_id(instance, env.globals, eval_context) {
+                        *env.pending_game_restart = false;
+                        *env.pending_room_reset = false;
+                        *env.pending_room_transition = Some(room_id);
+                    } else {
+                        record_host_diagnostic(
+                            env.host,
+                            env.diagnostics,
+                            iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                            "runtime-step-room-goto-next-unresolved",
+                            format!(
+                                "could not resolve room_goto_next target for {}",
+                                instance.object_name
+                            ),
+                        );
+                    }
+                }
+                "game_restart" => {
+                    *env.pending_room_transition = None;
+                    *env.pending_room_reset = false;
+                    *env.pending_game_restart = true;
+                }
+                "draw_set_color" => {
+                    let colour = args.first().and_then(draw_colour_arg)?;
+                    if let Some(draw) = env.draw.as_deref_mut() {
+                        draw.colour = colour;
+                    }
+                }
+                "draw_set_halign" => {
+                    let align = args.first().and_then(draw_align_arg)?;
+                    if let Some(draw) = env.draw.as_deref_mut() {
+                        draw.align = align;
+                    }
+                }
+                "draw_set_font" => {
+                    let font = args.first().and_then(|arg| draw_font_arg(arg, env))?;
+                    if let Some(draw) = env.draw.as_deref_mut() {
+                        draw.size = font.size;
+                        draw.font_name = font.name;
+                        draw.font_bold = font.bold;
+                        draw.font_italic = font.italic;
+                    }
+                }
+                "draw_text" => {
+                    dispatch_draw_text(args, instance, scope, eval_context, env);
+                }
+                "draw_rectangle" => {
+                    dispatch_draw_rectangle(args, instance, scope, eval_context, env);
+                }
+                "draw_sprite" => {
+                    dispatch_draw_sprite(args, instance, scope, eval_context, env);
+                }
+                "show_message" => {
+                    let text = args
+                        .first()
+                        .and_then(|arg| {
+                            evaluate_with_diagnostics(
+                                arg,
+                                Some(instance),
+                                Some(scope),
+                                eval_context,
+                                env,
+                                instance,
+                            )
+                        })
+                        .map(|value| runtime_value_to_string_text(&value))
+                        .unwrap_or_default();
+                    record_host_diagnostic(
+                        env.host,
+                        env.diagnostics,
+                        iwm_runtime_host::RuntimeDiagnosticLevel::Info,
+                        "runtime-show-message",
+                        format!("{} text={}", trace_message(&env.trace, instance), text),
+                    );
+                }
+                "get_integer" => {}
+                "event_inherited" => {
+                    dispatch_event_inherited(
+                        instance,
+                        instance_index,
+                        scope,
+                        destroy_event_entries,
+                        eval_context,
+                        env,
+                    );
+                }
+                "sound_play" => {
+                    dispatch_runtime_sound_call(
+                        env,
+                        name,
+                        args,
+                        Some(RuntimeSoundMode::Once),
+                        instance,
+                        scope,
+                        eval_context,
+                    );
+                }
+                "sound_loop" => {
+                    dispatch_runtime_sound_call(
+                        env,
+                        name,
+                        args,
+                        Some(RuntimeSoundMode::Loop),
+                        instance,
+                        scope,
+                        eval_context,
+                    );
+                }
+                "sound_stop" => {
+                    dispatch_runtime_sound_call(
+                        env,
+                        name,
+                        args,
+                        None,
+                        instance,
+                        scope,
+                        eval_context,
+                    );
+                }
+                "sound_stop_all" => {
+                    env.active_one_shot_sounds.clear();
+                    if let Err(error) = env.host.stop_all_sounds() {
+                        record_host_diagnostic(
+                            env.host,
+                            env.diagnostics,
+                            iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                            "runtime-audio-host-error",
+                            format!(
+                                "{} function=sound_stop_all error={}",
+                                trace_message(&env.trace, instance),
+                                error
+                            ),
+                        );
+                    }
+                }
+                "keyboard_set_numlock" => {
+                    if let Some(value) = args.first().and_then(|arg| {
                         evaluate_with_diagnostics(
                             arg,
                             Some(instance),
@@ -538,199 +507,312 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             env,
                             instance,
                         )
-                    })
-                    .and_then(|value| runtime_value_to_i32(&value))
-                    .filter(|cursor| *cursor >= 0)? as usize;
-                env.binary_files.seek(handle, cursor);
-            }
-            "file_delete" => {
-                let Some(RuntimeValue::Text(path)) = args.first().and_then(|arg| {
-                    evaluate_runtime_expr(
-                        arg,
-                        Some(instance),
-                        Some(scope),
-                        eval_context,
-                        env,
-                        instance,
-                    )
-                }) else {
-                    return None;
-                };
-                if let Err(error) = env.host.remove_temp(Path::new(&path)) {
-                    if error.kind() != RuntimeHostErrorKind::NotFound {
+                    }) {
+                        env.host.set_keyboard_numlock(is_truthy(Some(value)));
+                    }
+                }
+                "move_contact_solid" => {
+                    dispatch_move_contact_solid(env, args, instance, scope, eval_context);
+                }
+                "move_towards_point" => {
+                    dispatch_move_towards_point(env, args, instance, scope, eval_context);
+                }
+                "motion_add" => {
+                    dispatch_motion_add(env, args, instance, scope, eval_context);
+                }
+                "move_wrap" => {
+                    dispatch_move_wrap(env, args, instance, scope, eval_context);
+                }
+                "move_bounce_solid" | "move_bounce" => {
+                    dispatch_move_bounce_solid(env, args, instance, scope, eval_context);
+                }
+                "path_start" => {
+                    if let Some((path, speed, end_action, absolute)) =
+                        evaluate_path_start_args(args, instance, scope, eval_context, env)
+                    {
+                        start_path(instance, &path, speed, end_action, absolute);
+                    }
+                }
+                "path_end" => {
+                    instance
+                        .vars
+                        .insert("path_index".into(), RuntimeValue::Number(-1.0));
+                }
+                "__iwm_action_move" => {
+                    let Some(LoweredLogicExpr::LiteralText(options)) = args.first() else {
+                        return None;
+                    };
+                    let directions = options
+                        .bytes()
+                        .take(9)
+                        .enumerate()
+                        .filter_map(|(index, selected)| {
+                            (selected == b'1').then_some((
+                                index,
+                                [225.0_f64, 270.0, 315.0, 180.0, 0.0, 0.0, 135.0, 90.0, 45.0]
+                                    [index],
+                            ))
+                        })
+                        .collect::<Vec<_>>();
+                    if directions.is_empty() {
+                        return None;
+                    }
+                    let chosen = if directions.len() == 1 {
+                        0
+                    } else {
+                        evaluate_irandom_call(
+                            &[LoweredLogicExpr::LiteralNumber(
+                                (directions.len() - 1) as f64,
+                            )],
+                            Some(instance),
+                            env.globals,
+                            Some(scope),
+                            eval_context,
+                        )
+                        .and_then(|value| as_number(&value))
+                        .unwrap_or(0.0) as usize
+                    };
+                    let (direction_index, direction) = directions[chosen.min(directions.len() - 1)];
+                    let speed = args
+                        .get(1)
+                        .and_then(|arg| {
+                            evaluate_with_diagnostics(
+                                arg,
+                                Some(instance),
+                                Some(scope),
+                                eval_context,
+                                env,
+                                instance,
+                            )
+                        })
+                        .and_then(|value| as_number(&value))
+                        .unwrap_or(0.0);
+                    let relative = args
+                        .get(2)
+                        .and_then(|arg| {
+                            evaluate_with_diagnostics(
+                                arg,
+                                Some(instance),
+                                Some(scope),
+                                eval_context,
+                                env,
+                                instance,
+                            )
+                        })
+                        .map(|value| is_truthy(Some(value)))
+                        .unwrap_or(false);
+                    if direction_index == 4 {
+                        if !relative {
+                            instance.set_speed(0.0);
+                        }
+                    } else if relative {
+                        let radians = direction.to_radians();
+                        instance.set_hvspeed(
+                            instance.hspeed + radians.cos() * speed,
+                            instance.vspeed - radians.sin() * speed,
+                        );
+                    } else {
+                        instance.set_direction(direction);
+                        instance.set_speed(speed);
+                    }
+                }
+                "file_bin_write_byte" => {
+                    let handle =
+                        evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
+                    let byte =
+                        evaluate_file_bin_byte(args.get(1), instance, scope, eval_context, env)?;
+                    env.binary_files.write_byte(handle, byte);
+                }
+                "file_bin_seek" => {
+                    let handle =
+                        evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
+                    let cursor = args
+                        .get(1)
+                        .and_then(|arg| {
+                            evaluate_with_diagnostics(
+                                arg,
+                                Some(instance),
+                                Some(scope),
+                                eval_context,
+                                env,
+                                instance,
+                            )
+                        })
+                        .and_then(|value| runtime_value_to_i32(&value))
+                        .filter(|cursor| *cursor >= 0)? as usize;
+                    env.binary_files.seek(handle, cursor);
+                }
+                "file_delete" => {
+                    let Some(RuntimeValue::Text(path)) = args.first().and_then(|arg| {
+                        evaluate_runtime_expr(
+                            arg,
+                            Some(instance),
+                            Some(scope),
+                            eval_context,
+                            env,
+                            instance,
+                        )
+                    }) else {
+                        return None;
+                    };
+                    if let Err(error) = env.host.remove_temp(Path::new(&path)) {
+                        if error.kind() != RuntimeHostErrorKind::NotFound {
+                            record_host_diagnostic(
+                                env.host,
+                                env.diagnostics,
+                                iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                                "runtime-file-host-error",
+                                format!(
+                                    "{} function=file_delete path={} error={}",
+                                    trace_message(&env.trace, instance),
+                                    path,
+                                    error
+                                ),
+                            );
+                        }
+                    }
+                }
+                "file_bin_close" => {
+                    let handle =
+                        evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
+                    if let Err(error) = env.binary_files.close(env.host, handle) {
                         record_host_diagnostic(
                             env.host,
                             env.diagnostics,
                             iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
                             "runtime-file-host-error",
                             format!(
-                                "{} function=file_delete path={} error={}",
+                                "{} function=file_bin_close handle={} error={}",
                                 trace_message(&env.trace, instance),
-                                path,
+                                handle,
                                 error
                             ),
                         );
                     }
                 }
-            }
-            "file_bin_close" => {
-                let handle =
-                    evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
-                if let Err(error) = env.binary_files.close(env.host, handle) {
-                    record_host_diagnostic(
-                        env.host,
-                        env.diagnostics,
-                        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
-                        "runtime-file-host-error",
-                        format!(
-                            "{} function=file_bin_close handle={} error={}",
-                            trace_message(&env.trace, instance),
-                            handle,
-                            error
-                        ),
-                    );
-                }
-            }
-            "__iwm_action_wrap" => {
-                let context = eval_context?;
-                let mode = args
-                    .first()
-                    .and_then(|arg| {
-                        evaluate_with_diagnostics(
-                            arg,
-                            Some(instance),
-                            Some(scope),
-                            eval_context,
-                            env,
-                            instance,
-                        )
-                    })
-                    .and_then(|value| as_number(&value))
-                    .map(|value| value.round() as i32)
-                    .unwrap_or(2);
-                let image_xscale = instance
-                    .vars
-                    .get("image_xscale")
-                    .and_then(as_number)
-                    .unwrap_or(1.0);
-                let image_yscale = instance
-                    .vars
-                    .get("image_yscale")
-                    .and_then(as_number)
-                    .unwrap_or(1.0);
-                let sprite_width = instance.width as f64 * image_xscale;
-                let sprite_height = instance.height as f64 * image_yscale;
-                if mode != 1 {
-                    let room_width = context.room_width as f64;
-                    if instance.hspeed > 0.0 && instance.x > room_width {
-                        instance.x -= room_width + sprite_width;
-                    } else if instance.hspeed < 0.0 && instance.x < 0.0 {
-                        instance.x += room_width + sprite_width;
-                    }
-                }
-                if mode != 0 {
-                    let room_height = context.room_height as f64;
-                    if instance.vspeed > 0.0 && instance.y > room_height {
-                        instance.y -= room_height + sprite_height;
-                    } else if instance.vspeed < 0.0 && instance.y < 0.0 {
-                        instance.y += room_height + sprite_height;
-                    }
-                }
-            }
-            "instance_deactivate_object" => {
-                let (Some(context), Some(target)) = (eval_context, args.first()) else {
-                    return None;
-                };
-                write_with_target_indices(
-                    target,
-                    instance_index,
-                    instance,
-                    scope,
-                    context,
-                    env.globals,
-                    env.with_target_indices,
-                );
-                let mut target_indices = std::mem::take(env.with_target_indices);
-                for target_index in target_indices.iter().copied() {
-                    if target_index == instance_index {
-                        instance.active = false;
-                        continue;
-                    }
-                    let Some(mut target_instance) = env
-                        .room_instance_updates
-                        .get(target_index)
-                        .cloned()
-                        .or_else(|| context.room_instance(target_index).cloned())
-                    else {
-                        continue;
-                    };
-                    target_instance.active = false;
-                    env.room_instance_updates.set(target_index, target_instance);
-                }
-                target_indices.clear();
-                *env.with_target_indices = target_indices;
-            }
-            "instance_destroy" => {
-                if instance.alive {
-                    let entries = destroy_event_entries
-                        .get(&instance.object_id)
-                        .cloned()
-                        .unwrap_or_default();
-                    execute_lifecycle_event(
-                        &entries,
-                        RuntimeEventSelector::Destroy,
-                        "destroy",
-                        instance,
-                        instance_index,
-                        eval_context,
-                        env,
-                    );
-                    instance.alive = false;
-                    record_host_diagnostic(
-                        env.host,
-                        env.diagnostics,
-                        iwm_runtime_host::RuntimeDiagnosticLevel::Info,
-                        "runtime-instance-destroyed",
-                        format!(
-                            "{} object={} runtime_id={}",
-                            trace_message(&env.trace, instance),
-                            instance.object_name,
-                            instance.runtime_id
-                        ),
-                    );
-                }
-            }
-            "instance_change" => {
-                let Some(context) = eval_context else {
-                    return None;
-                };
-                let Some(object_id) = args.first().and_then(|arg| {
-                    if let LoweredLogicExpr::Identifier(name) = arg {
-                        if let Some(object_id) = context
-                            .place_target_ids_by_name
-                            .get(&name.to_ascii_lowercase())
-                            .and_then(|ids| ids.first().copied())
-                        {
-                            return Some(object_id);
+                "__iwm_action_wrap" => {
+                    let context = eval_context?;
+                    let mode = args
+                        .first()
+                        .and_then(|arg| {
+                            evaluate_with_diagnostics(
+                                arg,
+                                Some(instance),
+                                Some(scope),
+                                eval_context,
+                                env,
+                                instance,
+                            )
+                        })
+                        .and_then(|value| as_number(&value))
+                        .map(|value| value.round() as i32)
+                        .unwrap_or(2);
+                    let image_xscale = instance
+                        .vars
+                        .get("image_xscale")
+                        .and_then(as_number)
+                        .unwrap_or(1.0);
+                    let image_yscale = instance
+                        .vars
+                        .get("image_yscale")
+                        .and_then(as_number)
+                        .unwrap_or(1.0);
+                    let sprite_width = instance.width as f64 * image_xscale;
+                    let sprite_height = instance.height as f64 * image_yscale;
+                    if mode != 1 {
+                        let room_width = context.room_width as f64;
+                        if instance.hspeed > 0.0 && instance.x > room_width {
+                            instance.x -= room_width + sprite_width;
+                        } else if instance.hspeed < 0.0 && instance.x < 0.0 {
+                            instance.x += room_width + sprite_width;
                         }
                     }
-                    evaluate_with_diagnostics(
-                        arg,
-                        Some(instance),
-                        Some(scope),
-                        eval_context,
-                        env,
+                    if mode != 0 {
+                        let room_height = context.room_height as f64;
+                        if instance.vspeed > 0.0 && instance.y > room_height {
+                            instance.y -= room_height + sprite_height;
+                        } else if instance.vspeed < 0.0 && instance.y < 0.0 {
+                            instance.y += room_height + sprite_height;
+                        }
+                    }
+                }
+                "instance_deactivate_object" => {
+                    let (Some(context), Some(target)) = (eval_context, args.first()) else {
+                        return None;
+                    };
+                    write_with_target_indices(
+                        target,
+                        instance_index,
                         instance,
-                    )
-                    .and_then(|value| as_number(&value))
-                    .filter(|value| value.is_finite() && *value >= 0.0)
-                    .map(|value| value.round() as usize)
-                }) else {
-                    return None;
-                };
-                let run_events = args
-                    .get(1)
-                    .and_then(|arg| {
+                        scope,
+                        context,
+                        env.globals,
+                        env.with_target_indices,
+                    );
+                    let mut target_indices = std::mem::take(env.with_target_indices);
+                    for target_index in target_indices.iter().copied() {
+                        if target_index == instance_index {
+                            instance.active = false;
+                            continue;
+                        }
+                        let Some(mut target_instance) = env
+                            .room_instance_updates
+                            .get(target_index)
+                            .cloned()
+                            .or_else(|| context.room_instance(target_index).cloned())
+                        else {
+                            continue;
+                        };
+                        target_instance.active = false;
+                        env.room_instance_updates.set(target_index, target_instance);
+                    }
+                    target_indices.clear();
+                    *env.with_target_indices = target_indices;
+                }
+                "instance_destroy" => {
+                    if instance.alive {
+                        let entries = destroy_event_entries
+                            .get(&instance.object_id)
+                            .cloned()
+                            .unwrap_or_default();
+                        execute_lifecycle_event(
+                            &entries,
+                            RuntimeEventSelector::Destroy,
+                            "destroy",
+                            instance,
+                            instance_index,
+                            eval_context,
+                            env,
+                        );
+                        instance.alive = false;
+                        record_host_diagnostic(
+                            env.host,
+                            env.diagnostics,
+                            iwm_runtime_host::RuntimeDiagnosticLevel::Info,
+                            "runtime-instance-destroyed",
+                            format!(
+                                "{} object={} runtime_id={}",
+                                trace_message(&env.trace, instance),
+                                instance.object_name,
+                                instance.runtime_id
+                            ),
+                        );
+                    }
+                }
+                "instance_change" => {
+                    let Some(context) = eval_context else {
+                        return None;
+                    };
+                    let Some(object_id) = args.first().and_then(|arg| {
+                        if let LoweredLogicExpr::Identifier(name) = arg {
+                            if let Some(object_id) = context
+                                .place_target_ids_by_name
+                                .get(&name.to_ascii_lowercase())
+                                .and_then(|ids| ids.first().copied())
+                            {
+                                return Some(object_id);
+                            }
+                        }
                         evaluate_with_diagnostics(
                             arg,
                             Some(instance),
@@ -739,110 +821,128 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                             env,
                             instance,
                         )
-                    })
-                    .map(|value| is_truthy(Some(value)))
-                    .unwrap_or(false);
-                let Some(object) = env
-                    .objects
-                    .iter()
-                    .find(|object| object.id == object_id)
-                    .cloned()
-                else {
-                    return None;
-                };
-
-                if run_events {
-                    let entries = destroy_event_entries
-                        .get(&instance.object_id)
+                        .and_then(|value| as_number(&value))
+                        .filter(|value| value.is_finite() && *value >= 0.0)
+                        .map(|value| value.round() as usize)
+                    }) else {
+                        return None;
+                    };
+                    let run_events = args
+                        .get(1)
+                        .and_then(|arg| {
+                            evaluate_with_diagnostics(
+                                arg,
+                                Some(instance),
+                                Some(scope),
+                                eval_context,
+                                env,
+                                instance,
+                            )
+                        })
+                        .map(|value| is_truthy(Some(value)))
+                        .unwrap_or(false);
+                    let Some(object) = env
+                        .objects
+                        .iter()
+                        .find(|object| object.id == object_id)
                         .cloned()
-                        .unwrap_or_default();
-                    execute_lifecycle_event(
-                        &entries,
-                        RuntimeEventSelector::Destroy,
-                        "destroy",
+                    else {
+                        return None;
+                    };
+
+                    if run_events {
+                        let entries = destroy_event_entries
+                            .get(&instance.object_id)
+                            .cloned()
+                            .unwrap_or_default();
+                        execute_lifecycle_event(
+                            &entries,
+                            RuntimeEventSelector::Destroy,
+                            "destroy",
+                            instance,
+                            instance_index,
+                            eval_context,
+                            env,
+                        );
+                    }
+
+                    let metrics = sprite_metrics_for_object(&object, env.sprites);
+                    instance.object_id = object.id;
+                    instance.object_name.clone_from(&object.name);
+                    instance.width = metrics.width;
+                    instance.height = metrics.height;
+                    instance.origin_x = metrics.origin_x;
+                    instance.origin_y = metrics.origin_y;
+                    instance.bbox_left = metrics.bbox_left;
+                    instance.bbox_right = metrics.bbox_right;
+                    instance.bbox_top = metrics.bbox_top;
+                    instance.bbox_bottom = metrics.bbox_bottom;
+                    instance.collision_masks = metrics.collision_masks;
+                    instance.per_frame_collision_masks = metrics.per_frame_collision_masks;
+                    instance.visible = object.visible;
+                    instance.persistent = object.persistent;
+                    instance.solid = object.solid;
+                    instance.hazard = object.is_hazard.unwrap_or(false);
+                    instance.checkpoint = object.is_checkpoint.unwrap_or(false);
+                    instance.player_candidate = object.is_player;
+                    instance.vars.insert(
+                        "sprite_index".into(),
+                        RuntimeValue::Number(object.sprite_index as f64),
+                    );
+                    instance
+                        .vars
+                        .insert("depth".into(), RuntimeValue::Number(object.depth as f64));
+                    instance
+                        .vars
+                        .insert("visible".into(), RuntimeValue::Bool(object.visible));
+
+                    if run_events {
+                        let entries = env
+                            .create_event_entries
+                            .get(&object_id)
+                            .cloned()
+                            .unwrap_or_default();
+                        execute_lifecycle_event(
+                            &entries,
+                            RuntimeEventSelector::Create,
+                            "create",
+                            instance,
+                            instance_index,
+                            eval_context,
+                            env,
+                        );
+                    }
+                }
+                "instance_create" => {
+                    if let Some(create) = runtime_instance_create_request(
+                        args,
+                        instance,
+                        env.globals,
+                        scope,
+                        eval_context,
+                        env.room_instance_creates.len(),
+                    ) {
+                        env.room_instance_creates.push(create);
+                    }
+                }
+                _ => {
+                    if execute_runtime_script(
+                        name,
+                        args,
                         instance,
                         instance_index,
+                        scope,
+                        destroy_event_entries,
                         eval_context,
                         env,
-                    );
-                }
-
-                let metrics = sprite_metrics_for_object(&object, env.sprites);
-                instance.object_id = object.id;
-                instance.object_name.clone_from(&object.name);
-                instance.width = metrics.width;
-                instance.height = metrics.height;
-                instance.origin_x = metrics.origin_x;
-                instance.origin_y = metrics.origin_y;
-                instance.bbox_left = metrics.bbox_left;
-                instance.bbox_right = metrics.bbox_right;
-                instance.bbox_top = metrics.bbox_top;
-                instance.bbox_bottom = metrics.bbox_bottom;
-                instance.collision_masks = metrics.collision_masks;
-                instance.per_frame_collision_masks = metrics.per_frame_collision_masks;
-                instance.visible = object.visible;
-                instance.persistent = object.persistent;
-                instance.solid = object.solid;
-                instance.hazard = object.is_hazard.unwrap_or(false);
-                instance.checkpoint = object.is_checkpoint.unwrap_or(false);
-                instance.player_candidate = object.is_player;
-                instance.vars.insert(
-                    "sprite_index".into(),
-                    RuntimeValue::Number(object.sprite_index as f64),
-                );
-                instance
-                    .vars
-                    .insert("depth".into(), RuntimeValue::Number(object.depth as f64));
-                instance
-                    .vars
-                    .insert("visible".into(), RuntimeValue::Bool(object.visible));
-
-                if run_events {
-                    let entries = env
-                        .create_event_entries
-                        .get(&object_id)
-                        .cloned()
-                        .unwrap_or_default();
-                    execute_lifecycle_event(
-                        &entries,
-                        RuntimeEventSelector::Create,
-                        "create",
-                        instance,
-                        instance_index,
-                        eval_context,
-                        env,
-                    );
+                    )
+                    .is_none()
+                    {
+                        record_unsupported_function(env, name, instance);
+                    }
                 }
             }
-            "instance_create" => {
-                if let Some(create) = runtime_instance_create_request(
-                    args,
-                    instance,
-                    env.globals,
-                    scope,
-                    eval_context,
-                    env.room_instance_creates.len(),
-                ) {
-                    env.room_instance_creates.push(create);
-                }
-            }
-            _ => {
-                if execute_runtime_script(
-                    name,
-                    args,
-                    instance,
-                    instance_index,
-                    scope,
-                    destroy_event_entries,
-                    eval_context,
-                    env,
-                )
-                .is_none()
-                {
-                    record_unsupported_function(env, name, instance);
-                }
-            }
-        },
+        }
         LoweredLogicStatement::With { target, body } => {
             let context = eval_context?;
             write_with_target_indices(
@@ -1666,6 +1766,9 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
     trace_instance: &RuntimeInstance,
 ) -> Option<RuntimeValue> {
     if let LoweredLogicExpr::Identifier(name) = expr {
+        if name.eq_ignore_ascii_case("working_directory") {
+            return Some(RuntimeValue::Text(String::new()));
+        }
         if name.eq_ignore_ascii_case("room_speed")
             && !scope.map(|scope| scope.is_local_key(name)).unwrap_or(false)
         {
@@ -1702,6 +1805,13 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
         return eval_runtime_binary_expr(op, &left, &right);
     }
     if let LoweredLogicExpr::Call { name, args } = expr {
+        if let Some(scope) = scope {
+            if let Some(value) =
+                dispatch_legacy_audio_call(env, name, args, trace_instance, scope, eval_context)
+            {
+                return Some(value);
+            }
+        }
         if matches!(name.as_str(), "string_width" | "string_height") {
             let text = args
                 .first()
@@ -2079,7 +2189,7 @@ fn runtime_value_to_string_text(value: &RuntimeValue) -> String {
     }
 }
 
-fn runtime_values_equal(left: &RuntimeValue, right: &RuntimeValue) -> bool {
+pub(crate) fn runtime_values_equal(left: &RuntimeValue, right: &RuntimeValue) -> bool {
     match (as_number(left), as_number(right)) {
         (Some(left), Some(right)) => left == right,
         _ => left == right,

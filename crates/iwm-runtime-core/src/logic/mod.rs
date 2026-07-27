@@ -2,7 +2,7 @@
 
 mod assignment;
 mod bootstrap;
-mod calls;
+pub(crate) mod calls;
 mod context;
 mod control_flow;
 mod diagnostics;
@@ -697,6 +697,25 @@ fn statement_references_jump_queries(statement: &LoweredLogicStatement) -> bool 
                 || statements_reference_jump_queries(then_branch)
                 || statements_reference_jump_queries(else_branch)
         }
+        LoweredLogicStatement::ConditionalChain {
+            branches,
+            else_branch,
+        } => {
+            branches.iter().any(|branch| {
+                expr_references_jump_queries(&branch.condition)
+                    || statements_reference_jump_queries(&branch.body)
+            }) || statements_reference_jump_queries(else_branch)
+        }
+        LoweredLogicStatement::Switch { expression, cases } => {
+            expr_references_jump_queries(expression)
+                || cases.iter().any(|switch_case| {
+                    switch_case
+                        .value
+                        .as_ref()
+                        .is_some_and(expr_references_jump_queries)
+                        || statements_reference_jump_queries(&switch_case.body)
+                })
+        }
         LoweredLogicStatement::FunctionCall { name, args } => {
             matches!(
                 name.as_str(),
@@ -745,6 +764,18 @@ fn statement_assigns_identifiers(statement: &LoweredLogicStatement, identifiers:
             statements_assign_identifiers(then_branch, identifiers)
                 || statements_assign_identifiers(else_branch, identifiers)
         }
+        LoweredLogicStatement::ConditionalChain {
+            branches,
+            else_branch,
+        } => {
+            branches
+                .iter()
+                .any(|branch| statements_assign_identifiers(&branch.body, identifiers))
+                || statements_assign_identifiers(else_branch, identifiers)
+        }
+        LoweredLogicStatement::Switch { cases, .. } => cases
+            .iter()
+            .any(|switch_case| statements_assign_identifiers(&switch_case.body, identifiers)),
         LoweredLogicStatement::With { body, .. }
         | LoweredLogicStatement::Repeat { body, .. }
         | LoweredLogicStatement::While { body, .. }

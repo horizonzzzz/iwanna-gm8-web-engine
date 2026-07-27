@@ -377,6 +377,19 @@ pub enum LoweredLogicExpr {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoweredLogicConditionalBranch {
+    pub condition: LoweredLogicExpr,
+    pub body: Vec<LoweredLogicStatement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoweredLogicSwitchCase {
+    pub value: Option<LoweredLogicExpr>,
+    pub body: Vec<LoweredLogicStatement>,
+    pub break_after: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum LoweredLogicStatement {
     Assignment {
@@ -397,6 +410,14 @@ pub enum LoweredLogicStatement {
         condition: LoweredLogicExpr,
         then_branch: Vec<LoweredLogicStatement>,
         else_branch: Vec<LoweredLogicStatement>,
+    },
+    ConditionalChain {
+        branches: Vec<LoweredLogicConditionalBranch>,
+        else_branch: Vec<LoweredLogicStatement>,
+    },
+    Switch {
+        expression: LoweredLogicExpr,
+        cases: Vec<LoweredLogicSwitchCase>,
     },
     With {
         target: LoweredLogicExpr,

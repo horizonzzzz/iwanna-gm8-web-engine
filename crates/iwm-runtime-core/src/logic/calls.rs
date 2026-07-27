@@ -17,18 +17,8 @@ pub(super) fn dispatch_runtime_sound_call<H: RuntimeHost>(
     instance: &RuntimeInstance,
     scope: &RuntimeExecutionScope,
     eval_context: Option<&RuntimeEvalContext<'_>>,
-) {
-    let Some(sound_id) = args.first().and_then(|arg| {
-        resolve_runtime_sound_id(
-            arg,
-            instance,
-            Some(scope),
-            eval_context,
-            env.globals,
-            env.sound_index,
-            env.zero_uninitialized_vars,
-        )
-    }) else {
+) -> Option<RuntimeValue> {
+    let Some(sound_id) = evaluate_runtime_sound_id(env, args, instance, scope, eval_context) else {
         record_host_diagnostic(
             env.host,
             env.diagnostics,
@@ -41,7 +31,7 @@ pub(super) fn dispatch_runtime_sound_call<H: RuntimeHost>(
                 args.len()
             ),
         );
-        return;
+        return None;
     };
 
     let result = if let Some(mode) = mode {
@@ -74,7 +64,150 @@ pub(super) fn dispatch_runtime_sound_call<H: RuntimeHost>(
                 error
             ),
         );
+        return None;
     }
+
+    Some(RuntimeValue::Number(sound_id as f64))
+}
+
+pub(super) fn dispatch_legacy_audio_call<H: RuntimeHost>(
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+    function_name: &str,
+    args: &[LoweredLogicExpr],
+    instance: &RuntimeInstance,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let name = function_name.to_ascii_lowercase();
+    match name.as_str() {
+        "ss_loadsound" | "fmodsoundadd" | "fmodsoundaddasyncstream" => Some(
+            evaluate_runtime_sound_id(env, args, instance, scope, eval_context)
+                .map(|id| RuntimeValue::Number(id as f64))
+                .unwrap_or(RuntimeValue::Number(0.0)),
+        ),
+        "ss_playsound" | "fmodsoundplay" | "fmodsoundplay3d" => Some(
+            dispatch_runtime_sound_call(
+                env,
+                function_name,
+                args,
+                Some(RuntimeSoundMode::Once),
+                instance,
+                scope,
+                eval_context,
+            )
+            .unwrap_or(RuntimeValue::Number(0.0)),
+        ),
+        "ss_loopsound" | "fmodsoundloop" | "fmodsoundloop3d" => Some(
+            dispatch_runtime_sound_call(
+                env,
+                function_name,
+                args,
+                Some(RuntimeSoundMode::Loop),
+                instance,
+                scope,
+                eval_context,
+            )
+            .unwrap_or(RuntimeValue::Number(0.0)),
+        ),
+        "ss_stopsound" | "ss_freesound" | "fmodinstancestop" | "fmodsoundfree" => Some(
+            dispatch_runtime_sound_call(
+                env,
+                function_name,
+                args,
+                None,
+                instance,
+                scope,
+                eval_context,
+            )
+            .unwrap_or(RuntimeValue::Number(0.0)),
+        ),
+        "ss_issoundplaying" | "ss_ishandlevalid" | "fmodinstanceisplaying" => {
+            let playing = evaluate_runtime_sound_id(env, args, instance, scope, eval_context)
+                .and_then(|id| env.host.is_sound_playing(id).ok())
+                .unwrap_or(false);
+            Some(RuntimeValue::Bool(playing))
+        }
+        "ss_issoundlooping" | "ss_issoundpaused" => Some(RuntimeValue::Bool(false)),
+        "ss_unload" | "fmodfree" | "fmodallstop" => {
+            env.active_one_shot_sounds.clear();
+            let _ = env.host.stop_all_sounds();
+            Some(RuntimeValue::Number(1.0))
+        }
+        "cleanmem"
+        | "cleanmem_init"
+        | "cleanmem_get_mem"
+        | "ss_init"
+        | "ss_setsoundfreq"
+        | "ss_setsoundpan"
+        | "ss_setsoundvol"
+        | "ss_setsoundposition"
+        | "ss_pausesound"
+        | "ss_resumesound"
+        | "ss_getsoundbytespersecond"
+        | "ss_getsoundfreq"
+        | "ss_getsoundlength"
+        | "ss_getsoundpan"
+        | "ss_getsoundposition"
+        | "ss_getsoundvol"
+        | "loadfmod"
+        | "fmodinit"
+        | "fmodupdate"
+        | "fmodupdate3dpositions"
+        | "fmodgroupsetvolume"
+        | "fmodinstanceset3dposition"
+        | "fmodinstancesetpaused"
+        | "fmodinstancesetvolume"
+        | "fmodlistenerset3dposition"
+        | "fmodsetpassword"
+        | "fmodsetworldscale"
+        | "fmodsoundgetlength"
+        | "fmodsoundgetmaxdist"
+        | "fmodsoundset3dminmaxdistance"
+        | "fmodsoundsetgroup"
+        | "fmodsoundsetlooppoints"
+        | "fmodsoundsetmaxvolume"
+        | "fmodgetlasterror" => Some(RuntimeValue::Number(1.0)),
+        "fmoderrorstr" => Some(RuntimeValue::Text(String::new())),
+        _ => None,
+    }
+}
+
+fn evaluate_runtime_sound_id<H: RuntimeHost>(
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+    args: &[LoweredLogicExpr],
+    instance: &RuntimeInstance,
+    scope: &RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<i32> {
+    let arg = args.first()?;
+    evaluate_with_diagnostics(
+        arg,
+        Some(instance),
+        Some(scope),
+        eval_context,
+        env,
+        instance,
+    )
+    .and_then(|value| runtime_value_to_sound_id(value, env.sound_index))
+    .or_else(|| {
+        resolve_runtime_sound_id(
+            arg,
+            instance,
+            Some(scope),
+            eval_context,
+            env.globals,
+            env.sound_index,
+            env.zero_uninitialized_vars,
+        )
+    })
+}
+
+pub(crate) fn normalize_runtime_sound_key(value: &str) -> String {
+    let mut key = value.trim().replace('\\', "/");
+    while let Some(stripped) = key.strip_prefix("./") {
+        key = stripped.to_string();
+    }
+    key.trim_start_matches('/').to_ascii_lowercase()
 }
 
 pub(super) fn resolve_runtime_sound_id(
@@ -90,27 +223,19 @@ pub(super) fn resolve_runtime_sound_id(
         LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) => {
             evaluate_expr(expr, Some(instance), globals, scope, eval_context)
                 .and_then(|value| runtime_value_to_sound_id(value, sound_index))
-                .or_else(|| sound_index.get(&name.to_ascii_lowercase()).copied())
+                .or_else(|| sound_index.get(&normalize_runtime_sound_key(name)).copied())
                 // GM treats uninitialized identifiers as 0 when zero_uninitialized_vars is set.
-                // Crimson room001's playMusic leaves stageBGM unset and relies on id 0 (track01).
                 .or_else(|| zero_uninitialized_vars.then_some(0))
         }
         LoweredLogicExpr::LiteralNumber(number) => finite_sound_number_to_id(*number),
         _ => evaluate_expr(expr, Some(instance), globals, scope, eval_context)
             .and_then(|value| runtime_value_to_sound_id(value, sound_index))
-            .or_else(|| {
-                if zero_uninitialized_vars
-                    && matches!(
-                        expr,
-                        LoweredLogicExpr::MemberAccess { .. }
-                            | LoweredLogicExpr::IndexAccess { .. }
-                    )
-                {
-                    Some(0)
-                } else {
-                    None
-                }
-            }),
+            .or((zero_uninitialized_vars
+                && matches!(
+                    expr,
+                    LoweredLogicExpr::MemberAccess { .. } | LoweredLogicExpr::IndexAccess { .. }
+                ))
+            .then_some(0)),
     }
 }
 
@@ -498,7 +623,9 @@ fn runtime_value_to_sound_id(
 ) -> Option<i32> {
     match value {
         RuntimeValue::Number(number) => finite_sound_number_to_id(number),
-        RuntimeValue::Text(name) => sound_index.get(&name.to_ascii_lowercase()).copied(),
+        RuntimeValue::Text(name) => sound_index
+            .get(&normalize_runtime_sound_key(&name))
+            .copied(),
         RuntimeValue::Bool(_) => None,
     }
 }

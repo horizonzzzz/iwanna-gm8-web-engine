@@ -58,12 +58,8 @@ fn lower_binary_expr(expr: &str) -> Option<LoweredLogicExpr> {
     // Lower-precedence boolean operators must split first so the right-hand side
     // can still contain tighter expressions such as `b && c`.
     for (source_op, lowered_op) in [("||", "||"), ("or", "||"), ("&&", "&&"), ("and", "&&")] {
-        if let Some((left, right)) = split_top_level_operator(expr, source_op) {
-            return Some(LoweredLogicExpr::BinaryExpr {
-                op: lowered_op.to_string(),
-                left: Box::new(lower_expr(&left)),
-                right: Box::new(lower_expr(&right)),
-            });
+        if let Some(expr) = lower_balanced_binary_expr(expr, source_op, lowered_op) {
+            return Some(expr);
         }
     }
 
@@ -84,6 +80,42 @@ fn lower_binary_expr(expr: &str) -> Option<LoweredLogicExpr> {
     }
 
     None
+}
+
+fn lower_balanced_binary_expr(
+    expr: &str,
+    source_op: &str,
+    lowered_op: &str,
+) -> Option<LoweredLogicExpr> {
+    let mut remaining = expr.to_string();
+    let mut operands = Vec::new();
+    while let Some((left, right)) = split_top_level_operator(&remaining, source_op) {
+        operands.push(lower_expr(&left));
+        remaining = right;
+    }
+    if operands.is_empty() {
+        return None;
+    }
+    operands.push(lower_expr(&remaining));
+
+    while operands.len() > 1 {
+        let mut next = Vec::with_capacity(operands.len().div_ceil(2));
+        let mut current = std::mem::take(&mut operands).into_iter();
+        while let Some(left) = current.next() {
+            next.push(if let Some(right) = current.next() {
+                LoweredLogicExpr::BinaryExpr {
+                    op: lowered_op.to_string(),
+                    left: Box::new(left),
+                    right: Box::new(right),
+                }
+            } else {
+                left
+            });
+        }
+        operands = next;
+    }
+
+    operands.pop()
 }
 
 fn lower_call_expr(expr: &str) -> Option<LoweredLogicExpr> {

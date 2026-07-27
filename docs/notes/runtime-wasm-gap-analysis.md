@@ -138,6 +138,19 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 - Filled `draw_rectangle(x1, y1, x2, y2, 0)` reuses the existing browser `fillRect` frame command and normalizes reversed corners. Outline rectangles remain unsupported. `show_message()` is deliberately non-blocking in the browser runtime and records an info diagnostic; the one sample-proven bare `get_integer()` statement is accepted as a no-op because its return value is discarded. Consumed `get_integer()` expressions still require a real input host contract.
 - Parser lowering now treats GM library action `1:603` as Execute Code even when its source contains only comments or lacks punctuation. Comment-only create actions therefore lower to zero statements instead of an invented `__iwm_dnd_action_1_603(...)` Raw blocker.
 - A fresh local rebuild of the six non-L1/L2/L3 `gm8-core` packages validates all six. Default-path 600-tick diagnostics are blocker-free for Afflict the Mashikaku, 3200min, Experience, Favorite Difficulty, and Forever. Kamilia remains explicitly blocked by `execute_file`, `file_text_open_write`, `file_text_write_string`, and `file_text_close` in its `global_init` save-data chain. Rebuilt Kamilia packages preserve complete switch/case bodies as Raw statements and contain no fake `switch()` function calls.
+- The machine-local `needs-manual-check` pass now accepts detector `unknown`
+  candidates into the parser while still rejecting `gms-likely` and `blocked`.
+  Explicit EXE selection keeps sibling sidecars available for package export.
+  Generic lowering emits flat `switch` case lists with `default`, fallthrough,
+  and direct `break`; runtime-core executes the same contract in normal events
+  and create/global bootstrap paths. Fresh packages for all three machine-local
+  candidates validate. The candidate with external music lowers 116 switches
+  and exports all 69 referenced OGG files; its only external-audio warnings are
+  two nonexistent documentation/example references. A 60-tick startup smoke no
+  longer reports switch blockers, while remaining unsupported helpers and one
+  unrelated Raw statement are still reported by `runtime-diagnostics`. These
+  are compatibility probes, not designated samples, cross-machine baselines, or
+  finishability claims.
 - Parser-built packages now preserve GM room order as `manifest.room_order`; runtime boot and `room_goto_next()` use that order, so title/menu/select rooms can follow the original room chain instead of the previous JSON-array ordering.
 - Runtime room construction no longer injects a fallback player into rooms without explicit spawn state. Player creation must come from a room instance or currently supported spawn logic, and runtime-core now dispatches `other:room-start` blocks during room build so `playerStart`-style spawn objects can create the player through original room-start logic.
 - The runtime core now also hydrates missing package bootstrap globals before shell-driven manual `select_room` / `reload_room` jumps, using parser-lowered room-instance create blocks up to the selected room plus the actual default-room bootstrap globals captured during initial load. This avoids hydrating globals from rooms that occur after the selected room in `manifest.room_order`. It specifically fixes sample-package hand testing where direct entry into a playable room previously skipped required globals such as `global.grav`, making second jumps fail even though `Shift` press/release edges and `playerJump()` dispatch were already correct.
@@ -215,6 +228,13 @@ Impact:
 Background music and sound effects now have a first browser-hosted path.
 
 Runtime-core resolves package sound identifiers for `sound_play()`, `sound_loop()`, `sound_stop()`, `sound_stop_all()`, and `sound_isplaying()` and dispatches them through `RuntimeAudioHost`. The browser runtime-web path now forwards those host calls through WASM imports to a minimal Web Audio host that loads package sound resources, plays one-shot sounds, loops sounds, queries active sound state, stops active loops, and stops all active sounds.
+
+Parser package generation also discovers OGG/WAV/MP3 files referenced by lowered
+logic in the selected executable's sidecar inventory, validates their headers,
+and publishes them through the existing sound index. Runtime calls from common
+SuperSound and GMFMODSimple wrappers reuse the same host operations; volume,
+3D, pause, initialization, cleanup, and CleanMem-style maintenance calls use
+deterministic safe return values. No DLL is loaded or executed.
 
 The browser host now handles the initial autoplay/user-gesture boundary by
 queuing sources on a suspended context and resuming it from the first pointer or

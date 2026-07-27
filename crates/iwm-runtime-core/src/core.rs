@@ -118,16 +118,30 @@ impl RuntimeCore {
             .enumerate()
             .map(|(index, font)| (font.name.to_ascii_lowercase(), index))
             .collect::<HashMap<_, _>>();
-        let sound_index = package
-            .resources
-            .sounds
-            .iter()
-            .filter_map(|sound| {
-                i32::try_from(sound.id)
-                    .ok()
-                    .map(|id| (sound.name.to_ascii_lowercase(), id))
-            })
-            .collect::<HashMap<_, _>>();
+        let mut sound_index = HashMap::new();
+        let mut sound_ids_by_basename: HashMap<String, Option<i32>> = HashMap::new();
+        for sound in &package.resources.sounds {
+            let Ok(id) = i32::try_from(sound.id) else {
+                continue;
+            };
+            let key = crate::logic::calls::normalize_runtime_sound_key(&sound.name);
+            sound_index.insert(key.clone(), id);
+            if let Some(basename) = key.rsplit('/').next().filter(|name| !name.is_empty()) {
+                sound_ids_by_basename
+                    .entry(basename.to_string())
+                    .and_modify(|existing| {
+                        if *existing != Some(id) {
+                            *existing = None;
+                        }
+                    })
+                    .or_insert(Some(id));
+            }
+        }
+        sound_index.extend(
+            sound_ids_by_basename
+                .into_iter()
+                .filter_map(|(name, id)| id.map(|id| (name, id))),
+        );
         let room_ids_by_name = package
             .rooms
             .iter()
@@ -2117,6 +2131,35 @@ fn statement_references_host_file_functions(
                     script_entries,
                     seen_scripts,
                 )
+        }
+        LoweredLogicStatement::ConditionalChain {
+            branches,
+            else_branch,
+        } => {
+            branches.iter().any(|branch| {
+                expr_references_host_file_functions(&branch.condition, script_entries, seen_scripts)
+                    || statements_reference_host_file_functions(
+                        &branch.body,
+                        script_entries,
+                        seen_scripts,
+                    )
+            }) || statements_reference_host_file_functions(
+                else_branch,
+                script_entries,
+                seen_scripts,
+            )
+        }
+        LoweredLogicStatement::Switch { expression, cases } => {
+            expr_references_host_file_functions(expression, script_entries, seen_scripts)
+                || cases.iter().any(|switch_case| {
+                    switch_case.value.as_ref().is_some_and(|value| {
+                        expr_references_host_file_functions(value, script_entries, seen_scripts)
+                    }) || statements_reference_host_file_functions(
+                        &switch_case.body,
+                        script_entries,
+                        seen_scripts,
+                    )
+                })
         }
         LoweredLogicStatement::FunctionCall { name, args } => {
             is_host_file_function(name)

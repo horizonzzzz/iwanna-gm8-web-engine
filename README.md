@@ -159,7 +159,11 @@ compatibility probes rather than a new L4 baseline.
 
 The current runtime covers a meaningful IWanna-critical subset, including the
 proven movement, collision, lifecycle, savepoint, room, keyboard/mouse, audio,
-and drawing paths recorded in `docs/notes/runtime-wasm-gap-analysis.md`.
+and drawing paths recorded in `docs/notes/runtime-wasm-gap-analysis.md`. The
+parser/runtime contract also covers flat `switch`/`case`/`default` control flow
+with fallthrough and direct `break`, referenced OGG/WAV/MP3 sidecars, and safe
+adapters for the common SuperSound/GMFMODSimple/CleanMem call surface. Uploaded
+DLLs are still never loaded or executed.
 Remaining gaps include broader GML/GM8 parity, strict event ordering, advanced
 Draw behavior, per-frame masks, multi-view cameras, dynamic/text file behavior,
 broader audio behavior, and DLL/external calls.

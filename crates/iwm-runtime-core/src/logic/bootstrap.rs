@@ -8,6 +8,7 @@ use super::eval::{assignable_key, is_truthy};
 use super::eval_variables::{
     evaluate_expr_with_resource_constants, evaluate_expr_with_sprite_constants,
 };
+use super::statement::runtime_values_equal;
 use crate::helpers::as_number;
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeInstance,
@@ -245,6 +246,128 @@ impl RuntimeCore {
                         instance_index,
                         visible_instances,
                     );
+                }
+            }
+            LoweredLogicStatement::ConditionalChain {
+                branches,
+                else_branch,
+            } => {
+                let button_states = HashMap::new();
+                let room_instance_indices_by_object_id = HashMap::new();
+                let room_instances = create_visible_instances(room_state, visible_instances);
+                let eval_context = RuntimeEvalContext {
+                    current_room_id: room_state.room_id,
+                    room_speed: room_state.speed,
+                    room_width: room_state.width,
+                    room_height: room_state.height,
+                    random_state: &self.random_state,
+                    button_states: &button_states,
+                    room_instances: room_instances.as_ref(),
+                    room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                    object_index: None,
+                    collision_spatial_index: None,
+                    room_instance_overlay: super::RuntimeRoomInstanceOverlay::empty(),
+                    room_order: &[],
+                    other_instance: None,
+                    other_runtime_id: None,
+                    place_target_ids_by_name: &self.place_target_ids_by_name,
+                    room_ids_by_name: &self.room_ids_by_name,
+                    view_zero: super::RuntimeViewValues::from_room(room_state),
+                };
+                let branch = branches
+                    .iter()
+                    .find(|branch| {
+                        is_truthy(evaluate_expr_with_resource_constants(
+                            &branch.condition,
+                            Some(&instance_snapshot),
+                            &self.globals,
+                            None,
+                            Some(&eval_context),
+                            &self.sprite_ids_by_name,
+                            &self.sound_index,
+                        ))
+                    })
+                    .map(|branch| branch.body.as_slice())
+                    .unwrap_or(else_branch);
+                for nested in branch {
+                    self.apply_create_statement_to_instance(
+                        nested,
+                        room_state,
+                        instance_index,
+                        visible_instances,
+                    );
+                }
+            }
+            LoweredLogicStatement::Switch { expression, cases } => {
+                let button_states = HashMap::new();
+                let room_instance_indices_by_object_id = HashMap::new();
+                let room_instances = create_visible_instances(room_state, visible_instances);
+                let eval_context = RuntimeEvalContext {
+                    current_room_id: room_state.room_id,
+                    room_speed: room_state.speed,
+                    room_width: room_state.width,
+                    room_height: room_state.height,
+                    random_state: &self.random_state,
+                    button_states: &button_states,
+                    room_instances: room_instances.as_ref(),
+                    room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                    object_index: None,
+                    collision_spatial_index: None,
+                    room_instance_overlay: super::RuntimeRoomInstanceOverlay::empty(),
+                    room_order: &[],
+                    other_instance: None,
+                    other_runtime_id: None,
+                    place_target_ids_by_name: &self.place_target_ids_by_name,
+                    room_ids_by_name: &self.room_ids_by_name,
+                    view_zero: super::RuntimeViewValues::from_room(room_state),
+                };
+                let Some(value) = evaluate_expr_with_resource_constants(
+                    expression,
+                    Some(&instance_snapshot),
+                    &self.globals,
+                    None,
+                    Some(&eval_context),
+                    &self.sprite_ids_by_name,
+                    &self.sound_index,
+                ) else {
+                    return;
+                };
+                let mut default_index = None;
+                let mut start_index = None;
+                for (index, switch_case) in cases.iter().enumerate() {
+                    let Some(case_value) = switch_case.value.as_ref() else {
+                        default_index.get_or_insert(index);
+                        continue;
+                    };
+                    if evaluate_expr_with_resource_constants(
+                        case_value,
+                        Some(&instance_snapshot),
+                        &self.globals,
+                        None,
+                        Some(&eval_context),
+                        &self.sprite_ids_by_name,
+                        &self.sound_index,
+                    )
+                    .is_some_and(|case_value| runtime_values_equal(&value, &case_value))
+                    {
+                        start_index = Some(index);
+                        break;
+                    }
+                }
+                if let Some(start_index) = start_index.or(default_index) {
+                    for switch_case in &cases[start_index..] {
+                        for nested in &switch_case.body {
+                            self.apply_create_statement_to_instance(
+                                nested,
+                                room_state,
+                                instance_index,
+                                visible_instances,
+                            );
+                        }
+                        if switch_case.break_after {
+                            break;
+                        }
+                    }
                 }
             }
             LoweredLogicStatement::FunctionCall { name, args } => match name.as_str() {
@@ -654,6 +777,83 @@ fn apply_statement_to_globals_map(
                 );
             }
         }
+        LoweredLogicStatement::ConditionalChain {
+            branches,
+            else_branch,
+        } => {
+            let branch = branches
+                .iter()
+                .find(|branch| {
+                    is_truthy(evaluate_expr_with_sprite_constants(
+                        &branch.condition,
+                        None,
+                        globals,
+                        None,
+                        None,
+                        sprite_ids_by_name,
+                    ))
+                })
+                .map(|branch| branch.body.as_slice())
+                .unwrap_or(else_branch);
+            for nested in branch {
+                apply_statement_to_globals_map(
+                    nested,
+                    script_entries,
+                    globals,
+                    room_speed.as_deref_mut(),
+                    sprite_ids_by_name,
+                );
+            }
+        }
+        LoweredLogicStatement::Switch { expression, cases } => {
+            let Some(value) = evaluate_expr_with_sprite_constants(
+                expression,
+                None,
+                globals,
+                None,
+                None,
+                sprite_ids_by_name,
+            ) else {
+                return;
+            };
+            let mut default_index = None;
+            let mut start_index = None;
+            for (index, switch_case) in cases.iter().enumerate() {
+                let Some(case_value) = switch_case.value.as_ref() else {
+                    default_index.get_or_insert(index);
+                    continue;
+                };
+                if evaluate_expr_with_sprite_constants(
+                    case_value,
+                    None,
+                    globals,
+                    None,
+                    None,
+                    sprite_ids_by_name,
+                )
+                .is_some_and(|case_value| runtime_values_equal(&value, &case_value))
+                {
+                    start_index = Some(index);
+                    break;
+                }
+            }
+            if let Some(start_index) = start_index.or(default_index) {
+                for switch_case in &cases[start_index..] {
+                    for nested in &switch_case.body {
+                        apply_statement_to_globals_map(
+                            nested,
+                            script_entries,
+                            globals,
+                            room_speed.as_deref_mut(),
+                            sprite_ids_by_name,
+                        );
+                    }
+                    if switch_case.break_after {
+                        break;
+                    }
+                }
+            }
+        }
         LoweredLogicStatement::With { body, .. }
         | LoweredLogicStatement::Repeat { body, .. }
         | LoweredLogicStatement::While { body, .. }
@@ -715,6 +915,18 @@ fn statement_references_global_assignment(
             block_references_global_assignments(then_branch, script_entries)
                 || block_references_global_assignments(else_branch, script_entries)
         }
+        LoweredLogicStatement::ConditionalChain {
+            branches,
+            else_branch,
+        } => {
+            branches
+                .iter()
+                .any(|branch| block_references_global_assignments(&branch.body, script_entries))
+                || block_references_global_assignments(else_branch, script_entries)
+        }
+        LoweredLogicStatement::Switch { cases, .. } => cases.iter().any(|switch_case| {
+            block_references_global_assignments(&switch_case.body, script_entries)
+        }),
         LoweredLogicStatement::With { body, .. }
         | LoweredLogicStatement::Repeat { body, .. }
         | LoweredLogicStatement::While { body, .. }

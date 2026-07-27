@@ -150,6 +150,8 @@ fn statement_kind(statement: &LoweredLogicStatement) -> &'static str {
         LoweredLogicStatement::Return { .. } => "return",
         LoweredLogicStatement::FunctionCall { .. } => "function-call",
         LoweredLogicStatement::Conditional { .. } => "conditional",
+        LoweredLogicStatement::ConditionalChain { .. } => "conditional-chain",
+        LoweredLogicStatement::Switch { .. } => "switch",
         LoweredLogicStatement::With { .. } => "with",
         LoweredLogicStatement::Repeat { .. } => "repeat",
         LoweredLogicStatement::While { .. } => "while",

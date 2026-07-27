@@ -120,15 +120,10 @@ fn load_single_exe(path: &Path) -> Result<LoadedPackage, String> {
     let mut package = load_directory(parent)?;
     let selected_exe = fs::canonicalize(path).map_err(|e| e.to_string())?;
 
-    package.executables.sort_by_key(|candidate| {
-        if fs::canonicalize(candidate)
+    package.executables.retain(|candidate| {
+        fs::canonicalize(candidate)
             .map(|canonical| canonical == selected_exe)
             .unwrap_or(false)
-        {
-            0
-        } else {
-            1
-        }
     });
     package.source_name = path
         .file_name()

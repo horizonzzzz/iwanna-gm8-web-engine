@@ -4,7 +4,10 @@ use iwm_runtime_host::{
     ButtonState, RuntimeAudioHost, RuntimeButton, RuntimeFileHost, RuntimeSoundMode,
 };
 
-use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
+use crate::{
+    LoweredLogicConditionalBranch, LoweredLogicExpr, LoweredLogicStatement, LoweredLogicSwitchCase,
+    RuntimeCore, RuntimeValue,
+};
 
 use super::support::{
     add_alarm_block, add_create_block, add_destroy_block, add_keyboard_block,

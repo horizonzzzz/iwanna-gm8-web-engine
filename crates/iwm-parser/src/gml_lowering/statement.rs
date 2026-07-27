@@ -1,4 +1,6 @@
-use iwm_runtime_model::{LoweredLogicExpr, LoweredLogicStatement};
+use iwm_runtime_model::{
+    LoweredLogicConditionalBranch, LoweredLogicExpr, LoweredLogicStatement, LoweredLogicSwitchCase,
+};
 
 use super::expression::lower_expr;
 use super::source::lower_source;
@@ -18,9 +20,11 @@ pub(super) fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
     }
 
     if stmt.starts_with("switch ") || stmt.starts_with("switch(") {
-        return Some(LoweredLogicStatement::Raw {
-            source: stmt.to_string(),
-        });
+        return Some(
+            lower_switch_statement(stmt).unwrap_or_else(|| LoweredLogicStatement::Raw {
+                source: stmt.to_string(),
+            }),
+        );
     }
 
     if let Some(names) = lower_variable_declaration(stmt) {
@@ -177,47 +181,228 @@ fn lower_step_assignment(target: &str, op: &str) -> Option<LoweredLogicStatement
     })
 }
 
-fn lower_if_statement(stmt: &str) -> Option<LoweredLogicStatement> {
-    let (condition, body, rest) = lower_conditional_parts(stmt, "if")?;
-    let then_branch = lower_branch_body(&body);
-    let else_branch = lower_else_branch(&rest);
-    Some(LoweredLogicStatement::Conditional {
-        condition: lower_expr(&condition),
-        then_branch,
-        else_branch,
+fn lower_switch_statement(stmt: &str) -> Option<LoweredLogicStatement> {
+    let (expression, body, _) = lower_block_statement_parts(stmt, "switch")?;
+    let cases = split_switch_clauses(&body)?
+        .into_iter()
+        .map(|(value, source)| {
+            let mut body = lower_source(&source);
+            let break_after = body
+                .iter()
+                .position(|statement| {
+                    matches!(
+                        statement,
+                        LoweredLogicStatement::Raw { source }
+                            if source.trim().eq_ignore_ascii_case("break")
+                                || source.trim().eq_ignore_ascii_case("break;")
+                    )
+                })
+                .is_some_and(|index| {
+                    body.truncate(index);
+                    true
+                });
+            LoweredLogicSwitchCase {
+                value: value.map(|value| lower_expr(&value)),
+                body,
+                break_after,
+            }
+        })
+        .collect();
+
+    Some(LoweredLogicStatement::Switch {
+        expression: lower_expr(&expression),
+        cases,
     })
 }
 
-fn lower_else_branch(rest: &str) -> Vec<LoweredLogicStatement> {
-    let rest = rest.trim();
-    if rest.is_empty() {
-        return Vec::new();
+fn split_switch_clauses(source: &str) -> Option<Vec<(Option<String>, String)>> {
+    let mut clauses = Vec::new();
+    let mut current_value = None;
+    let mut body_start = 0usize;
+    let mut found_label = false;
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut quote = None;
+    let mut index = 0usize;
+
+    while index < source.len() {
+        let ch = source[index..].chars().next()?;
+        if let Some(open) = quote {
+            if ch == open {
+                quote = None;
+            }
+            index += ch.len_utf8();
+            continue;
+        }
+        if ch == '"' || ch == '\'' {
+            quote = Some(ch);
+            index += ch.len_utf8();
+            continue;
+        }
+
+        match ch {
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            '{' => brace_depth += 1,
+            '}' => brace_depth = brace_depth.saturating_sub(1),
+            _ => {}
+        }
+
+        if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
+            if let Some((value, next_index)) = parse_switch_label(source, index) {
+                if found_label {
+                    clauses.push((
+                        current_value.take(),
+                        source[body_start..index].trim().to_string(),
+                    ));
+                } else if !source[..index].trim().is_empty() {
+                    return None;
+                }
+                found_label = true;
+                current_value = value;
+                body_start = next_index;
+                index = next_index;
+                continue;
+            }
+        }
+
+        index += ch.len_utf8();
     }
 
-    if let Some(after_else) = rest.strip_prefix("else") {
-        let after_else = after_else.trim_start();
-        if after_else.starts_with('{') {
-            if let Some((body, tail)) = extract_braced_block(after_else) {
-                let mut lowered = lower_source(&body);
-                lowered.extend(lower_else_branch(&tail));
-                return lowered;
-            }
-        }
+    if !found_label {
+        return None;
+    }
+    clauses.push((current_value, source[body_start..].trim().to_string()));
+    Some(clauses)
+}
 
-        if after_else.starts_with("if") {
-            if let Some(stmt) = lower_if_statement(after_else) {
-                return vec![stmt];
-            }
-        }
+fn parse_switch_label(source: &str, index: usize) -> Option<(Option<String>, usize)> {
+    if keyword_at(source, index, "default") {
+        let colon = source[index + "default".len()..].find(|ch: char| !ch.is_whitespace())?
+            + index
+            + "default".len();
+        return (source.as_bytes().get(colon) == Some(&b':')).then_some((None, colon + 1));
+    }
+    if !keyword_at(source, index, "case") {
+        return None;
+    }
 
-        if let Some((stmt, tail)) = split_inline_branch_statement(after_else) {
-            let mut lowered = lower_branch_body(&stmt);
-            lowered.extend(lower_else_branch(&tail));
+    let value_start = index + "case".len();
+    let colon = find_switch_label_colon(source, value_start)?;
+    let value = source[value_start..colon].trim();
+    (!value.is_empty()).then_some((Some(value.to_string()), colon + 1))
+}
+
+fn keyword_at(source: &str, index: usize, keyword: &str) -> bool {
+    let Some(candidate) = source.get(index..index + keyword.len()) else {
+        return false;
+    };
+    if !candidate.eq_ignore_ascii_case(keyword) {
+        return false;
+    }
+    let before = source[..index].chars().next_back();
+    let after = source[index + keyword.len()..].chars().next();
+    !is_identifier_char(before) && !is_identifier_char(after)
+}
+
+fn find_switch_label_colon(source: &str, start: usize) -> Option<usize> {
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut quote = None;
+
+    for (offset, ch) in source[start..].char_indices() {
+        if let Some(open) = quote {
+            if ch == open {
+                quote = None;
+            }
+            continue;
+        }
+        if ch == '"' || ch == '\'' {
+            quote = Some(ch);
+            continue;
+        }
+        match ch {
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            '{' => brace_depth += 1,
+            '}' => brace_depth = brace_depth.saturating_sub(1),
+            ':' if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+                return Some(start + offset);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn is_identifier_char(ch: Option<char>) -> bool {
+    matches!(ch, Some(ch) if ch == '_' || ch.is_ascii_alphanumeric())
+}
+
+fn lower_if_statement(stmt: &str) -> Option<LoweredLogicStatement> {
+    let (condition, body, rest) = lower_conditional_parts(stmt, "if")?;
+    let mut branches = vec![LoweredLogicConditionalBranch {
+        condition: lower_expr(&condition),
+        body: lower_branch_body(&body),
+    }];
+    let mut rest = rest;
+    let else_branch = loop {
+        let trimmed = rest.trim().to_string();
+        if trimmed.is_empty() {
+            break Vec::new();
+        }
+        let Some(after_else) = trimmed.strip_prefix("else").map(str::trim_start) else {
+            break lower_source(&trimmed);
+        };
+        if after_else.starts_with("if ") || after_else.starts_with("if(") {
+            let (condition, body, tail) = lower_conditional_parts(after_else, "if")?;
+            branches.push(LoweredLogicConditionalBranch {
+                condition: lower_expr(&condition),
+                body: lower_branch_body(&body),
+            });
+            rest = tail;
+            continue;
+        }
+        break lower_else_body(after_else);
+    };
+
+    if branches.len() == 1 {
+        let branch = branches.pop().unwrap();
+        Some(LoweredLogicStatement::Conditional {
+            condition: branch.condition,
+            then_branch: branch.body,
+            else_branch,
+        })
+    } else {
+        Some(LoweredLogicStatement::ConditionalChain {
+            branches,
+            else_branch,
+        })
+    }
+}
+
+fn lower_else_body(source: &str) -> Vec<LoweredLogicStatement> {
+    if source.starts_with('{') {
+        if let Some((body, tail)) = extract_braced_block(source) {
+            let mut lowered = lower_source(&body);
+            lowered.extend(lower_source(&tail));
             return lowered;
         }
     }
 
-    lower_source(rest)
+    if let Some((stmt, tail)) = split_inline_branch_statement(source) {
+        let mut lowered = lower_branch_body(&stmt);
+        lowered.extend(lower_source(&tail));
+        return lowered;
+    }
+
+    lower_source(source)
 }
 
 fn lower_conditional_parts(stmt: &str, keyword: &str) -> Option<(String, String, String)> {

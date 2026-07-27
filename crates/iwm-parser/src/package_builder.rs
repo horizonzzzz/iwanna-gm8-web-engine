@@ -6,7 +6,7 @@ use crate::models::{
     RuntimeManifest,
 };
 use crate::raw_logic_export::export_raw_logic;
-use crate::resource_export::export_resources;
+use crate::resource_export::{export_external_audio_sidecars, export_resources};
 use crate::LoweredLogicStatement;
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -26,7 +26,7 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
         format!("{:x}", hasher.finalize())
     };
 
-    let resource_index = export_resources(&assets, output_dir)?;
+    let mut resource_index = export_resources(&assets, output_dir)?;
     let (mut rooms, objects, script_ir) =
         export_rooms_and_logic(&assets.rooms, &assets.objects, &assets.scripts);
     let exported_background_ids = resource_index
@@ -41,6 +41,12 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     sort_rooms_by_order(&mut rooms, &room_order);
     let raw_logic: RawLogicFile = export_raw_logic(&assets);
     let lowered_logic = lower_raw_logic_file(&raw_logic);
+    warnings.extend(export_external_audio_sidecars(
+        input_exe.parent().unwrap_or(Path::new(".")),
+        output_dir,
+        &lowered_logic,
+        &mut resource_index,
+    )?);
 
     let lowered_entry_by_block_id = lowered_logic
         .entries
@@ -188,6 +194,20 @@ fn count_raw_statements(statements: &[LoweredLogicStatement]) -> usize {
                 else_branch,
                 ..
             } => count_raw_statements(then_branch) + count_raw_statements(else_branch),
+            LoweredLogicStatement::ConditionalChain {
+                branches,
+                else_branch,
+            } => {
+                branches
+                    .iter()
+                    .map(|branch| count_raw_statements(&branch.body))
+                    .sum::<usize>()
+                    + count_raw_statements(else_branch)
+            }
+            LoweredLogicStatement::Switch { cases, .. } => cases
+                .iter()
+                .map(|switch_case| count_raw_statements(&switch_case.body))
+                .sum(),
             LoweredLogicStatement::With { body, .. }
             | LoweredLogicStatement::Repeat { body, .. }
             | LoweredLogicStatement::While { body, .. }
