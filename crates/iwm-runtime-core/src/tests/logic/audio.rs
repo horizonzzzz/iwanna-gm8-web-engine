@@ -45,6 +45,41 @@ fn core_dispatches_sound_loop_identifier_to_audio_host() {
 }
 
 #[test]
+fn core_dispatches_conditional_create_sound_loop_to_audio_host_once() {
+    let mut package = sample_package();
+    package.rooms[0]
+        .instances
+        .retain(|instance| instance.object_id == 0);
+    package.resources.sounds[0].id = 42;
+    package.resources.sounds[0].name = "sndBgm".into();
+    append_lowered_entry(
+        &mut package,
+        "object:0:event:0:0".into(),
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("musicOn".into()),
+                value: LoweredLogicExpr::LiteralNumber(1.0),
+            },
+            LoweredLogicStatement::Conditional {
+                condition: LoweredLogicExpr::Identifier("musicOn".into()),
+                then_branch: vec![LoweredLogicStatement::FunctionCall {
+                    name: "sound_loop".into(),
+                    args: vec![LoweredLogicExpr::Identifier("sndBgm".into())],
+                }],
+                else_branch: vec![],
+            },
+        ],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(host.audio.played, vec![(42, RuntimeSoundMode::Loop)]);
+}
+
+#[test]
 fn core_dispatches_sound_stop_identifier_to_audio_host() {
     let mut package = sample_package();
     package.resources.sounds[0].id = 42;

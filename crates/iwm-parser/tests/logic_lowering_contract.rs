@@ -486,6 +486,19 @@ fn lowered_logic_file_translates_common_function_actions() {
                     fn_code: String::new(),
                     args: vec![],
                 },
+                RawCodeAction {
+                    action_id: 102,
+                    lib_id: 1,
+                    action_kind: 0,
+                    execution_type: 1,
+                    applies_to: -1,
+                    is_condition: false,
+                    invert_condition: false,
+                    is_relative: false,
+                    fn_name: "action_another_room".to_string(),
+                    fn_code: String::new(),
+                    args: vec!["0".to_string(), "21".to_string()],
+                },
             ],
         }],
         scripts: vec![],
@@ -495,7 +508,7 @@ fn lowered_logic_file_translates_common_function_actions() {
 
     let lowered = lower_raw_logic_file(&raw);
     let statements = &lowered.entries[0].statements;
-    assert_eq!(statements.len(), 3);
+    assert_eq!(statements.len(), 4);
     assert!(matches!(
         statements[0],
         LoweredLogicStatement::Assignment { ref target, ref value }
@@ -519,6 +532,12 @@ fn lowered_logic_file_translates_common_function_actions() {
         statements[2],
         LoweredLogicStatement::FunctionCall { ref name, ref args }
             if name == "instance_destroy" && args.is_empty()
+    ));
+    assert!(matches!(
+        statements[3],
+        LoweredLogicStatement::FunctionCall { ref name, ref args }
+            if name == "room_goto"
+            && matches!(args[0], LoweredLogicExpr::LiteralNumber(number) if number == 0.0)
     ));
 }
 

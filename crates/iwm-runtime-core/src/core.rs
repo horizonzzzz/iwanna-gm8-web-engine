@@ -3,7 +3,7 @@
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 
-use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
+use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost, RuntimeSoundMode};
 use iwm_runtime_model::RoomDefinition;
 
 use crate::event_dispatch::{
@@ -69,6 +69,7 @@ pub struct RuntimeCore {
     pub(crate) deaths: u64,
     pub(crate) last_death_tick: Option<u64>,
     pub(crate) host_bootstrap_scripts_applied: bool,
+    pub(crate) pending_bootstrap_audio_calls: Vec<(i32, Option<RuntimeSoundMode>)>,
     pub(crate) binary_files: RuntimeBinaryFileState,
     pub(crate) tick_context: RuntimeTickContext,
     pub(crate) random_state: Cell<u64>,
@@ -190,6 +191,7 @@ impl RuntimeCore {
             deaths: 0,
             last_death_tick: None,
             host_bootstrap_scripts_applied: false,
+            pending_bootstrap_audio_calls: Vec::new(),
             binary_files: RuntimeBinaryFileState::default(),
             tick_context: RuntimeTickContext::default(),
             random_state: Cell::new(0x4d59_5df4_d0f3_3173),
@@ -352,24 +354,57 @@ impl RuntimeCore {
     }
 
     fn apply_deferred_host_bootstrap_scripts<H: RuntimeHost>(&mut self, host: &mut H) {
-        if self.host_bootstrap_scripts_applied {
-            return;
-        }
-        self.host_bootstrap_scripts_applied = true;
+        if !self.host_bootstrap_scripts_applied {
+            self.host_bootstrap_scripts_applied = true;
 
-        let script_calls = self.deferred_host_bootstrap_script_entry_indices();
-        for (instance_idx, entry_index) in script_calls {
-            self.apply_event_entry_indices_to_instance(
-                host,
-                instance_idx,
-                &[entry_index],
-                None,
-                RuntimeEventSelector::Create,
-                "deferred-create-script".into(),
-                None,
-            );
-            if self.has_pending_scene_change() {
-                break;
+            let script_calls = self.deferred_host_bootstrap_script_entry_indices();
+            for (instance_idx, entry_index) in script_calls {
+                self.apply_event_entry_indices_to_instance(
+                    host,
+                    instance_idx,
+                    &[entry_index],
+                    None,
+                    RuntimeEventSelector::Create,
+                    "deferred-create-script".into(),
+                    None,
+                );
+                if self.has_pending_scene_change() {
+                    break;
+                }
+            }
+        }
+
+        for (sound_id, mode) in std::mem::take(&mut self.pending_bootstrap_audio_calls) {
+            let (function_name, result) = match mode {
+                Some(RuntimeSoundMode::Once) => (
+                    "sound_play",
+                    host.play_sound(sound_id, RuntimeSoundMode::Once),
+                ),
+                Some(RuntimeSoundMode::Loop) => (
+                    "sound_loop",
+                    host.play_sound(sound_id, RuntimeSoundMode::Loop),
+                ),
+                None => ("sound_stop", host.stop_sound(sound_id)),
+            };
+            if result.is_ok() {
+                match mode {
+                    Some(RuntimeSoundMode::Once) => {
+                        self.active_one_shot_sounds.insert(sound_id);
+                    }
+                    Some(RuntimeSoundMode::Loop) | None => {
+                        self.active_one_shot_sounds.remove(&sound_id);
+                    }
+                }
+            }
+            if let Err(error) = result {
+                self.record_diagnostic(
+                    host,
+                    iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                    "runtime-audio-host-error",
+                    format!(
+                        "function={function_name} sound_id={sound_id} phase=create error={error}"
+                    ),
+                );
             }
         }
     }

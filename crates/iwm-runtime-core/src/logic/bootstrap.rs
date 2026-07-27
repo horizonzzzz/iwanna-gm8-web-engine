@@ -1,8 +1,10 @@
 use std::{borrow::Cow, collections::HashMap};
 
+use iwm_runtime_host::RuntimeSoundMode;
 use iwm_runtime_model::RoomDefinition;
 
 use super::assignment::{assign_instance_or_global, assign_room_speed};
+use super::calls::resolve_runtime_sound_id;
 use super::context::RuntimeEvalContext;
 use super::eval::{assignable_key, is_truthy};
 use super::eval_variables::{
@@ -383,6 +385,26 @@ impl RuntimeCore {
                         Some(&instance_snapshot),
                         visible_instances,
                     );
+                }
+                "sound_play" | "sound_loop" | "sound_stop" => {
+                    let mode = match name.as_str() {
+                        "sound_play" => Some(RuntimeSoundMode::Once),
+                        "sound_loop" => Some(RuntimeSoundMode::Loop),
+                        _ => None,
+                    };
+                    if let Some(sound_id) = args.first().and_then(|arg| {
+                        resolve_runtime_sound_id(
+                            arg,
+                            &instance_snapshot,
+                            None,
+                            None,
+                            &self.globals,
+                            &self.sound_index,
+                            self.package.manifest.zero_uninitialized_vars,
+                        )
+                    }) {
+                        self.pending_bootstrap_audio_calls.push((sound_id, mode));
+                    }
                 }
                 "path_start" => {
                     let path = match args.first() {

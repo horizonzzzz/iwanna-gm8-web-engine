@@ -203,6 +203,7 @@ fn lower_function_action_source(action: &RawCodeAction) -> Option<String> {
             let alarm = action.args.get(1)?;
             Some(format!("alarm[{alarm}] = {time};"))
         }
+        "action_another_room" => Some(format!("room_goto({});", action.args.first()?)),
         "action_create_object" => {
             let object_id = action.args.first()?;
             let x = relative(action.args.get(1)?, "x");
