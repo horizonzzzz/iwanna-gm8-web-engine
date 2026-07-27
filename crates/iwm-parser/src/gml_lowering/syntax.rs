@@ -369,6 +369,10 @@ fn should_split_top_level_newline(current: &str, next: &str) -> bool {
         || current.ends_with('=')
         || current.ends_with("&&")
         || current.ends_with("||")
+        || current
+            .split_whitespace()
+            .next_back()
+            .is_some_and(|word| word.eq_ignore_ascii_case("and") || word.eq_ignore_ascii_case("or"))
     {
         return false;
     }

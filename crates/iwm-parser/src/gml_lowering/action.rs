@@ -156,16 +156,36 @@ fn lower_action_source(action: &RawCodeAction) -> Vec<LoweredLogicStatement> {
         return lower_source(primary);
     }
 
+    if action.lib_id == 1 && action.action_id == 603 {
+        return action
+            .args
+            .first()
+            .map(|source| lower_source(source))
+            .unwrap_or_default();
+    }
+
     if let Some(source) = lower_function_action_source(action) {
         return lower_source(&source);
     }
 
-    action
+    let statements = action
         .args
         .iter()
         .filter(|arg| looks_like_gml_source(arg))
         .flat_map(|arg| lower_source(arg))
-        .collect()
+        .collect::<Vec<_>>();
+    if !statements.is_empty() {
+        return statements;
+    }
+
+    let name = if action.fn_name.is_empty() {
+        format!("__iwm_dnd_action_{}_{}", action.lib_id, action.action_id)
+    } else {
+        action.fn_name.clone()
+    };
+    vec![LoweredLogicStatement::Raw {
+        source: format!("{name}({});", action.args.join(", ")),
+    }]
 }
 
 fn lower_function_action_source(action: &RawCodeAction) -> Option<String> {
@@ -200,6 +220,11 @@ fn lower_function_action_source(action: &RawCodeAction) -> Option<String> {
             ))
         }
         "action_kill_object" => Some("instance_destroy();".into()),
+        "action_change_object" => Some(format!(
+            "instance_change({}, {});",
+            action.args.first()?,
+            action.args.get(1)?
+        )),
         "action_set_motion" => {
             let direction = action.args.first()?;
             let speed = action.args.get(1)?;
@@ -215,6 +240,48 @@ fn lower_function_action_source(action: &RawCodeAction) -> Option<String> {
             };
             Some(format!("direction = {direction}; speed = {speed};"))
         }
+        "action_move" => Some(format!(
+            "__iwm_action_move(\"{}\", {}, {});",
+            action.args.first()?,
+            action.args.get(1)?,
+            action.is_relative
+        )),
+        "action_set_gravity" | "action_gravity" => {
+            let direction = action.args.first()?;
+            let gravity = action.args.get(1)?;
+            Some(if action.is_relative {
+                format!("gravity_direction += {direction}; gravity += {gravity};")
+            } else {
+                format!("gravity_direction = {direction}; gravity = {gravity};")
+            })
+        }
+        "action_move_to" => {
+            let x = action.args.first()?;
+            let y = action.args.get(1)?;
+            Some(if action.is_relative {
+                format!("x += {x}; y += {y};")
+            } else {
+                format!("x = {x}; y = {y};")
+            })
+        }
+        "action_path" => Some(format!(
+            "path_start({}, {}, {}, {});",
+            action.args.first()?,
+            action.args.get(1)?,
+            action.args.get(2)?,
+            action.args.get(3)?
+        )),
+        "action_path_end" => Some("path_end();".into()),
+        "action_path_position" => Some(if action.is_relative {
+            format!("path_position += {};", action.args.first()?)
+        } else {
+            format!("path_position = {};", action.args.first()?)
+        }),
+        "action_path_speed" => Some(if action.is_relative {
+            format!("path_speed += {};", action.args.first()?)
+        } else {
+            format!("path_speed = {};", action.args.first()?)
+        }),
         "action_timeline_set" => {
             let index = action.args.first()?;
             let position = action.args.get(1)?;

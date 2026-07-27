@@ -102,7 +102,11 @@ fn lowering_does_not_split_call_arguments_on_comma_inside_string() {
     match value {
         LoweredLogicExpr::Call { name, args } => {
             assert_eq!(name, "choose");
-            assert_eq!(args.len(), 2, "comma inside a string split the args: {args:?}");
+            assert_eq!(
+                args.len(),
+                2,
+                "comma inside a string split the args: {args:?}"
+            );
             assert!(
                 matches!(&args[0], LoweredLogicExpr::LiteralText(text) if text == "a,b"),
                 "expected first literal to keep its comma, got {:?}",
@@ -147,4 +151,26 @@ fn lowering_does_not_treat_punctuation_in_strings_as_syntax() {
             "string punctuation lowered as member access for `{source}`: {value:?}"
         );
     }
+}
+
+#[test]
+fn lowering_ignores_equals_inside_string_literals() {
+    let statements = lower_script(
+        "file_text_write_string(f, \"key=value\"); label = \"a=b\"; ok = x == \"a=b\";",
+    );
+
+    assert!(matches!(
+        &statements[0],
+        LoweredLogicStatement::FunctionCall { name, args }
+            if name == "file_text_write_string"
+                && matches!(&args[1], LoweredLogicExpr::LiteralText(value) if value == "key=value")
+    ));
+    assert!(matches!(
+        assignment_value(&statements[1]),
+        LoweredLogicExpr::LiteralText(value) if value == "a=b"
+    ));
+    assert!(matches!(
+        assignment_value(&statements[2]),
+        LoweredLogicExpr::BinaryExpr { op, .. } if op == "=="
+    ));
 }

@@ -19,6 +19,94 @@ fn dnd_action(action_kind: u32, fn_name: &str, args: &[&str]) -> iwm_parser::mod
 }
 
 #[test]
+fn unknown_dnd_actions_are_preserved_instead_of_dropped() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawLogicEventBinding, RawLogicFile};
+    use iwm_parser::LoweredLogicStatement;
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".into(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 1,
+            object_name: "obj_test".into(),
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            collision_object_id: None,
+            block_id: "object:1:event:3:0".into(),
+            actions: vec![dnd_action(0, "action_unknown", &["10", "20"])],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    assert!(matches!(
+        lowered.entries[0].statements.as_slice(),
+        [LoweredLogicStatement::Raw { source }] if source == "action_unknown(10, 20);"
+    ));
+}
+
+#[test]
+fn common_motion_actions_lower_to_runtime_supported_logic() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawLogicEventBinding, RawLogicFile};
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
+
+    let mut move_to = dnd_action(0, "action_move_to", &["10", "20"]);
+    move_to.is_relative = true;
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".into(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 1,
+            object_name: "obj_test".into(),
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            collision_object_id: None,
+            block_id: "object:1:event:3:0".into(),
+            actions: vec![
+                dnd_action(0, "action_path", &["4", "8", "3", "0"]),
+                dnd_action(0, "action_set_gravity", &["270", "0.2"]),
+                move_to,
+                dnd_action(0, "action_move", &["000001000", "5"]),
+            ],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+    assert!(matches!(
+        &statements[0],
+        LoweredLogicStatement::FunctionCall { name, args }
+            if name == "path_start" && args.len() == 4
+    ));
+    assert!(matches!(
+        &statements[1],
+        LoweredLogicStatement::Assignment { target, value }
+            if matches!(target, LoweredLogicExpr::Identifier(name) if name == "gravity_direction")
+                && matches!(value, LoweredLogicExpr::LiteralNumber(value) if (*value - 270.0).abs() < f64::EPSILON)
+    ));
+    assert!(matches!(
+        &statements[3],
+        LoweredLogicStatement::Assignment { target, .. }
+            if matches!(target, LoweredLogicExpr::Identifier(name) if name == "x")
+    ));
+    assert!(matches!(
+        &statements[5],
+        LoweredLogicStatement::FunctionCall { name, .. } if name == "__iwm_action_move"
+    ));
+}
+
+#[test]
 fn raw_logic_file_preserves_gml_ownership_and_source_text() {
     use iwm_parser::models::{
         RawCodeAction, RawLogicEventBinding, RawLogicFile, RawLogicOwner, RawLogicOwnerKind,
@@ -249,6 +337,47 @@ fn lowered_logic_file_recognizes_control_flow_blocks() {
         lowered.entries[0].statements[0],
         LoweredLogicStatement::Conditional { .. }
     ));
+}
+
+#[test]
+fn lowered_logic_file_drops_comment_only_execute_code_actions() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawCodeAction, RawLogicEventBinding, RawLogicFile};
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![RawLogicEventBinding {
+            object_id: 1,
+            object_name: "block".to_string(),
+            event_type: 0,
+            sub_event: 0,
+            event_tag: "create".to_string(),
+            collision_object_id: None,
+            block_id: "object:1:event:0:0".to_string(),
+            actions: vec![RawCodeAction {
+                action_id: 603,
+                lib_id: 1,
+                action_kind: 7,
+                execution_type: 2,
+                applies_to: -1,
+                is_condition: false,
+                invert_condition: false,
+                is_relative: false,
+                fn_name: String::new(),
+                fn_code: String::new(),
+                args: vec!["// note\r\n/** disabled code */".to_string()],
+            }],
+        }],
+        scripts: vec![],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+
+    assert!(lowered.entries[0].statements.is_empty());
 }
 
 #[test]

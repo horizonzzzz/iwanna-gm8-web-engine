@@ -42,6 +42,66 @@ fn lowering_respects_boolean_precedence_between_or_and_and() {
 }
 
 #[test]
+fn lowering_normalizes_gml_word_boolean_operators() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 15,
+            script_name: "scr_words".to_string(),
+            gml_source: "flag = candy and b or origin;".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    assert!(matches!(
+        &lowered.entries[0].statements[0],
+        LoweredLogicStatement::Assignment {
+            value: LoweredLogicExpr::BinaryExpr { op, left, right },
+            ..
+        } if op == "||"
+            && matches!(right.as_ref(), LoweredLogicExpr::Identifier(name) if name == "origin")
+            && matches!(
+                left.as_ref(),
+                LoweredLogicExpr::BinaryExpr { op, left, .. }
+                    if op == "&&"
+                        && matches!(left.as_ref(), LoweredLogicExpr::Identifier(name) if name == "candy")
+            )
+    ));
+}
+
+#[test]
+fn lowering_preserves_switch_and_maps_exit_to_return() {
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 16,
+            script_name: "scr_control".to_string(),
+            gml_source: "switch (x) { case 1: y = 2; break; default: y = 3; } exit;".to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    assert!(matches!(
+        &lowered.entries[0].statements[0],
+        LoweredLogicStatement::Raw { source } if source.starts_with("switch")
+    ));
+    assert!(matches!(
+        &lowered.entries[0].statements[1],
+        LoweredLogicStatement::Return { value: None }
+    ));
+}
+
+#[test]
 fn lowering_ignores_comment_lines_and_preserves_var_declarations() {
     let raw = RawLogicFile {
         format: "iwm-raw-logic-v1".to_string(),

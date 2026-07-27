@@ -13,6 +13,16 @@ pub(super) fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
         return None;
     }
 
+    if stmt == "exit" || stmt == "exit;" {
+        return Some(LoweredLogicStatement::Return { value: None });
+    }
+
+    if stmt.starts_with("switch ") || stmt.starts_with("switch(") {
+        return Some(LoweredLogicStatement::Raw {
+            source: stmt.to_string(),
+        });
+    }
+
     if let Some(names) = lower_variable_declaration(stmt) {
         return Some(LoweredLogicStatement::VariableDeclaration { names });
     }
@@ -91,24 +101,26 @@ pub(super) fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
         }
     }
 
-    if let Some((lhs, rhs)) = stmt.split_once('=') {
-        if !lhs.contains("==") && !lhs.contains(">=") && !lhs.contains("<=") && !lhs.contains("!=")
-        {
-            return Some(LoweredLogicStatement::Assignment {
-                target: lower_expr(lhs.trim()),
-                value: lower_expr(rhs.trim()),
-            });
-        }
+    if let Some((lhs, rhs)) = split_top_level_operator(stmt, "=") {
+        return Some(LoweredLogicStatement::Assignment {
+            target: lower_expr(&lhs),
+            value: lower_expr(&rhs),
+        });
     }
 
     if let Some(open_paren) = stmt.find('(') {
         let name = stmt[..open_paren].trim();
         let call_suffix = &stmt[open_paren..];
-        let Some((args_source, _rest)) = extract_parenthesized_block(call_suffix) else {
+        let Some((args_source, rest)) = extract_parenthesized_block(call_suffix) else {
             return Some(LoweredLogicStatement::Raw {
                 source: stmt.to_string(),
             });
         };
+        if !is_identifier(name) || !rest.trim().trim_end_matches(';').trim().is_empty() {
+            return Some(LoweredLogicStatement::Raw {
+                source: stmt.to_string(),
+            });
+        }
         let args = split_top_level_csv(&args_source)
             .into_iter()
             .map(|arg| lower_expr(&arg))
@@ -122,6 +134,14 @@ pub(super) fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
     Some(LoweredLogicStatement::Raw {
         source: stmt.to_string(),
     })
+}
+
+fn is_identifier(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars
+        .next()
+        .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
 fn lower_variable_declaration(stmt: &str) -> Option<Vec<String>> {

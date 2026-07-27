@@ -52,12 +52,7 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     for block in &script_ir.blocks {
         let still_has_raw = lowered_entry_by_block_id
             .get(block.id.as_str())
-            .map(|entry| {
-                entry
-                    .statements
-                    .iter()
-                    .any(|statement| matches!(statement, LoweredLogicStatement::Raw { .. }))
-            })
+            .map(|entry| count_raw_statements(&entry.statements) > 0)
             .unwrap_or(false);
 
         if block.support == "source-only" && still_has_raw {
@@ -100,12 +95,11 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     }
 
     // Check for raw-fallback statements in lowered logic
-    let raw_statement_count = lowered_logic
+    let raw_statement_count: usize = lowered_logic
         .entries
         .iter()
-        .flat_map(|entry| entry.statements.iter())
-        .filter(|statement| matches!(statement, LoweredLogicStatement::Raw { .. }))
-        .count();
+        .map(|entry| count_raw_statements(&entry.statements))
+        .sum();
 
     if raw_statement_count > 0 {
         warnings.push(format!(
@@ -182,6 +176,25 @@ pub fn build_package(input_exe: &Path, output_dir: &Path, dlls: &[String]) -> Re
     )?;
 
     Ok(())
+}
+
+fn count_raw_statements(statements: &[LoweredLogicStatement]) -> usize {
+    statements
+        .iter()
+        .map(|statement| match statement {
+            LoweredLogicStatement::Raw { .. } => 1,
+            LoweredLogicStatement::Conditional {
+                then_branch,
+                else_branch,
+                ..
+            } => count_raw_statements(then_branch) + count_raw_statements(else_branch),
+            LoweredLogicStatement::With { body, .. }
+            | LoweredLogicStatement::Repeat { body, .. }
+            | LoweredLogicStatement::While { body, .. }
+            | LoweredLogicStatement::For { body, .. } => count_raw_statements(body),
+            _ => 0,
+        })
+        .sum()
 }
 
 fn normalize_missing_background_references(
@@ -491,5 +504,18 @@ mod tests {
             warnings,
             ["normalized-missing-room-tile-background:151:12:62"]
         );
+    }
+
+    #[test]
+    fn raw_statement_count_includes_nested_control_flow() {
+        let statements = vec![LoweredLogicStatement::Conditional {
+            condition: crate::LoweredLogicExpr::LiteralBool(true),
+            then_branch: vec![LoweredLogicStatement::Raw {
+                source: "unsupported();".into(),
+            }],
+            else_branch: vec![],
+        }];
+
+        assert_eq!(count_raw_statements(&statements), 1);
     }
 }

@@ -57,10 +57,10 @@ pub(super) fn lower_expr(expr: &str) -> LoweredLogicExpr {
 fn lower_binary_expr(expr: &str) -> Option<LoweredLogicExpr> {
     // Lower-precedence boolean operators must split first so the right-hand side
     // can still contain tighter expressions such as `b && c`.
-    for op in ["||", "&&"] {
-        if let Some((left, right)) = split_top_level_operator(expr, op) {
+    for (source_op, lowered_op) in [("||", "||"), ("or", "||"), ("&&", "&&"), ("and", "&&")] {
+        if let Some((left, right)) = split_top_level_operator(expr, source_op) {
             return Some(LoweredLogicExpr::BinaryExpr {
-                op: op.to_string(),
+                op: lowered_op.to_string(),
                 left: Box::new(lower_expr(&left)),
                 right: Box::new(lower_expr(&right)),
             });
