@@ -172,7 +172,7 @@ The current `iwm-runtime-web` bridge can now:
 
 - accept the normalized runtime package as JSON
 - boot a headless runtime-core instance
-- accept browser-submitted keyboard input snapshots
+- accept browser-submitted keyboard and canvas-relative mouse input snapshots
 - return runtime snapshots
 - return browser-consumable frame snapshots
 - return browser-consumable text draw commands, including resolved font metadata, when runtime logic emits text commands; runtime `string_width()` / `string_height()` use the same package glyph advances and line height used by browser bitmap-font drawing, and package-owned death feedback such as Dife `GAMEOVER` / blood sprites flows through ordinary runtime sprite commands
@@ -181,7 +181,7 @@ The current `iwm-runtime-web` bridge can now:
 - switch rooms by room id
 - follow parser-provided `manifest.room_order` for package boot and `room_goto_next()`
 - return formatted diagnostics
-- clear host edge bits after each tick so one-shot keyboard input does not repeat across bridge frames
+- clear host edge bits after each tick so one-shot keyboard and mouse input does not repeat across bridge frames
 - expose enough frame and snapshot data for the browser shell to report input, tick, active room speed, snapshot, frame, canvas render, total frame, draw command count, skipped room-speed auto-tick interval telemetry, and runtime-core tick phase timings
 - consume a narrow `env.iwm_host_now_nanos` WASM import for diagnostic wall-clock sampling in browser builds; deterministic game time still comes from the runtime host clock
 - forward the current sound subset through browser host imports for `sound_play()`, `sound_loop()`, `sound_stop()`, `sound_stop_all()`, and `sound_isplaying()`
@@ -201,7 +201,7 @@ The current browser-hosted runtime flow is:
 
 - frontend package loader aggregates the normalized runtime package
 - `iwm-runtime-web` boots and ticks against that normalized payload
-- the browser shell submits keyboard input snapshots to the bridge
+- the browser shell submits keyboard and mouse input snapshots to the bridge
 - the bridge returns frame commands for the active room
 - `runtime/` draws those commands onto the existing canvas using `resources/index.json`
 
@@ -209,8 +209,9 @@ The current browser-hosted runtime flow is:
 
 - `source-only` script blocks that require GML lowering
 - Advanced GML functions not yet in the supported subset
-- Particle systems, surfaces, and advanced drawing beyond the current text-command slice
+- Particle systems, surfaces, and advanced drawing beyond the current text/sprite/filled-rectangle slice
 - Broader menu systems and save/load parity beyond the current package-owned room flow and minimal file slice
+- dynamic `execute_file` GML loading and broader text-file APIs
 - DLL semantics and external function calls
 - Advanced physics beyond the current bbox broad-phase plus sprite-mask pixel collision path
 - high-fidelity continuous browser host timing and play-loop controls

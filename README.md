@@ -135,13 +135,11 @@ cargo run -p iwm-cli -- runtime-scenario --input .\runtime\public\packages\candi
 ```
 
 Local copyrighted samples belong under `samples/local/iwanna-examples/` and
-must not be committed. `IWBT_Dife` and ArioTrials are the completed L1/L2
-regression targets; `I wanna be the Crimson ver.1.0` is the current L3
-compatibility-development sample. Its first three P0 gaps are now implemented:
-DnD `action_if_variable` lowering, lowered-script arguments/return values, and
-package-backed `path_start` movement. A fresh 50-room one-tick Crimson scan now
-leaves only the non-P0 `power()` helper in room 190; this is diagnostic coverage,
-not a full playability claim.
+must not be committed. `IWBT_Dife`, ArioTrials, and Crimson v1 are the shared
+L1/L2/L3 regression targets. Their current manual play paths and automated
+diagnostics cover the implemented critical slice, but Crimson's full long game
+has not been manually completed. Other `gm8-core` samples are machine-local
+compatibility probes rather than a new L4 baseline.
 
 ## Repository Layout
 
@@ -160,10 +158,11 @@ not a full playability claim.
 ## Compatibility Boundary
 
 The current runtime covers a meaningful IWanna-critical subset, including the
-proven movement, collision, lifecycle, savepoint, room, audio, and drawing paths
-recorded in `docs/notes/runtime-wasm-gap-analysis.md`. Remaining gaps include
-broader GML/GM8 parity, mouse semantics, advanced Draw behavior, per-frame masks,
-multi-view cameras, broad file/audio behavior, and DLL/external calls.
+proven movement, collision, lifecycle, savepoint, room, keyboard/mouse, audio,
+and drawing paths recorded in `docs/notes/runtime-wasm-gap-analysis.md`.
+Remaining gaps include broader GML/GM8 parity, strict event ordering, advanced
+Draw behavior, per-frame masks, multi-view cameras, dynamic/text file behavior,
+broader audio behavior, and DLL/external calls.
 
 The API reports compatibility as `supported`, `partial`, or `blocked`; it does
 not promise universal playability.
