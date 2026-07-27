@@ -349,7 +349,7 @@ describe('wasm bridge loader', () => {
     };
 
     pushU32(0x424d5749);
-    pushU16(2);
+    pushU16(3);
     pushU16(2);
     pushString('ready');
     pushU64(1);
@@ -475,11 +475,29 @@ describe('wasm bridge loader', () => {
       keysHeld: [0x10],
       keysPressed: [0x10],
       keysReleased: [],
+      mouseX: -12,
+      mouseY: 345,
+      mouseButtonsHeld: [1],
+      mouseButtonsPressed: [1],
+      mouseButtonsReleased: [0],
     });
 
     expect(legacyStep).not.toHaveBeenCalled();
     expect(binaryStep).toHaveBeenCalledTimes(1);
     expect(capturedInput[0]?.[0]).toBe(0x49);
+    const inputView = new DataView(
+      capturedInput[0]!.buffer,
+      capturedInput[0]!.byteOffset,
+      capturedInput[0]!.byteLength
+    );
+    expect(inputView.getUint16(4, true)).toBe(3);
+    expect(inputView.getInt32(12, true)).toBe(-12);
+    expect(inputView.getInt32(16, true)).toBe(345);
+    expect([...capturedInput[0]!.slice(-15)]).toEqual([
+      1, 0, 0, 0, 1,
+      1, 0, 0, 0, 1,
+      1, 0, 0, 0, 0,
+    ]);
     expect(result?.snapshot.inputTrace.activeKeys).toEqual(['0x10:p1jp1jr0']);
     expect(result?.snapshot.deaths).toBe(3);
     expect(result?.frame.commands.map((command) => command.kind)).toEqual([

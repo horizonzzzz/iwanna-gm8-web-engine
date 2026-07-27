@@ -2,7 +2,7 @@ import type { RuntimePackage } from '../types';
 import { createWebAudioHost, type WasmAudioHost, type WasmSoundMode } from './wasmAudioHost';
 
 const BRIDGE_BUFFER_MAGIC = 0x424d5749;
-const BRIDGE_BUFFER_VERSION = 2;
+const BRIDGE_BUFFER_VERSION = 3;
 const BRIDGE_INPUT_KIND = 1;
 const BRIDGE_STEP_RESULT_KIND = 2;
 const textEncoder = new TextEncoder();
@@ -76,6 +76,11 @@ export type WasmRuntimeInputState = {
   keysHeld?: number[];
   keysPressed?: number[];
   keysReleased?: number[];
+  mouseX?: number;
+  mouseY?: number;
+  mouseButtonsHeld?: number[];
+  mouseButtonsPressed?: number[];
+  mouseButtonsReleased?: number[];
 };
 
 export type WasmRuntimeFrame = {
@@ -302,6 +307,18 @@ class BridgeBufferWriter {
     this.writeU8(value >> 24);
   }
 
+  writeI32(value: number): void {
+    this.writeU32(value >>> 0);
+  }
+
+  writeU8Array(values: number[] | undefined): void {
+    const array = values ?? [];
+    this.writeU32(array.length);
+    for (const value of array) {
+      this.writeU8(value);
+    }
+  }
+
   writeU16Array(values: number[] | undefined): void {
     const array = values ?? [];
     this.writeU32(array.length);
@@ -424,9 +441,14 @@ function writeBinaryInput(exports: WasmRuntimeExports, input: WasmRuntimeInputSt
   writer.writeHeader(BRIDGE_INPUT_KIND);
   writer.writeU16(flags);
   writer.writeU16(0);
+  writer.writeI32(input.mouseX ?? 0);
+  writer.writeI32(input.mouseY ?? 0);
   writer.writeU16Array(input.keysHeld);
   writer.writeU16Array(input.keysPressed);
   writer.writeU16Array(input.keysReleased);
+  writer.writeU8Array(input.mouseButtonsHeld);
+  writer.writeU8Array(input.mouseButtonsPressed);
+  writer.writeU8Array(input.mouseButtonsReleased);
   const bytes = writer.intoBytes();
   const pointer = exports.iwm_alloc(bytes.byteLength);
   new Uint8Array(exports.memory.buffer, pointer, bytes.byteLength).set(bytes);

@@ -5,7 +5,7 @@ pub use iwm_runtime_host::{
     RuntimeRenderFrame as BridgeFrameSnapshot,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebInputState {
     pub left: bool,
@@ -20,6 +20,16 @@ pub struct WebInputState {
     pub keys_pressed: Vec<u16>,
     #[serde(default)]
     pub keys_released: Vec<u16>,
+    #[serde(default)]
+    pub mouse_x: i32,
+    #[serde(default)]
+    pub mouse_y: i32,
+    #[serde(default)]
+    pub mouse_buttons_held: Vec<u8>,
+    #[serde(default)]
+    pub mouse_buttons_pressed: Vec<u8>,
+    #[serde(default)]
+    pub mouse_buttons_released: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize)]

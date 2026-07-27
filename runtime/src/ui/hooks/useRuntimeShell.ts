@@ -31,6 +31,13 @@ type ShellBackend =
 
 type KeyboardInputSource = KeyboardInputState | { current: KeyboardInputState };
 type RuntimeTelemetryMode = 'immediate' | 'throttled';
+type MouseInputState = {
+  x: number;
+  y: number;
+  held: Set<number>;
+  pressed: Set<number>;
+  released: Set<number>;
+};
 
 type RuntimeShellOptions = {
   allowStaticFallback?: boolean;
@@ -39,6 +46,10 @@ type RuntimeShellOptions = {
 
 function currentKeyboardInput(source: KeyboardInputSource): KeyboardInputState {
   return 'current' in source ? source.current : source;
+}
+
+function gmMouseButton(button: number): number | null {
+  return button === 0 ? 0 : button === 2 ? 1 : button === 1 ? 2 : null;
 }
 
 function nowMs(): number {
@@ -150,6 +161,13 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
   ]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mouseInputRef = useRef<MouseInputState>({
+    x: 0,
+    y: 0,
+    held: new Set(),
+    pressed: new Set(),
+    released: new Set(),
+  });
   const loadedPackageRef = useRef<RuntimePackage | null>(null);
   const packagePathRef = useRef(packagePath);
   const currentRoomIdRef = useRef<number | null>(null);
@@ -172,6 +190,59 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
   const pendingSnapshotRef = useRef<WasmRuntimeBridgeSnapshot | null>(null);
   const pendingPerformanceRef = useRef<RuntimePerformanceStats | null>(null);
   const pendingRoomIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    function updatePosition(event: MouseEvent): void {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
+      mouseInputRef.current.x = Math.floor((event.clientX - rect.left) * canvas.width / rect.width);
+      mouseInputRef.current.y = Math.floor((event.clientY - rect.top) * canvas.height / rect.height);
+    }
+
+    function handleMouseDown(event: MouseEvent): void {
+      const canvas = canvasRef.current;
+      const button = gmMouseButton(event.button);
+      if (!canvas || event.target !== canvas || button == null) {
+        return;
+      }
+      updatePosition(event);
+      mouseInputRef.current.held.add(button);
+      mouseInputRef.current.pressed.add(button);
+    }
+
+    function handleMouseUp(event: MouseEvent): void {
+      const button = gmMouseButton(event.button);
+      if (button == null || !mouseInputRef.current.held.has(button)) {
+        return;
+      }
+      updatePosition(event);
+      mouseInputRef.current.held.delete(button);
+      mouseInputRef.current.released.add(button);
+    }
+
+    function handleContextMenu(event: MouseEvent): void {
+      if (event.target === canvasRef.current) {
+        event.preventDefault();
+      }
+    }
+
+    window.addEventListener('mousemove', updatePosition);
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('contextmenu', handleContextMenu);
+    return () => {
+      window.removeEventListener('mousemove', updatePosition);
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('contextmenu', handleContextMenu);
+    };
+  }, []);
 
   useEffect(() => {
     packagePathRef.current = packagePath;
@@ -327,6 +398,7 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
       }
 
       const backend = backendRef.current;
+      const mouse = mouseInputRef.current;
       backend.session.setInputState({
         left: keyboard.left,
         right: keyboard.right,
@@ -335,11 +407,18 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
         keysHeld: keyboard.keysHeld,
         keysPressed: keyboard.keysPressed,
         keysReleased: keyboard.keysReleased,
+        mouseX: mouse.x,
+        mouseY: mouse.y,
+        mouseButtonsHeld: [...mouse.held],
+        mouseButtonsPressed: [...mouse.pressed],
+        mouseButtonsReleased: [...mouse.released],
       });
       const collectPerformance = telemetryMode === 'immediate';
       const frameStart = collectPerformance ? nowMs() : 0;
       const { snapshot: nextSnapshot, frame, timings } = await backend.session.stepOnce();
       keyboard.clearEdgeKeys();
+      mouse.pressed.clear();
+      mouse.released.clear();
       const renderStart = collectPerformance ? nowMs() : 0;
       const canvas = canvasRef.current;
       if (canvas) {

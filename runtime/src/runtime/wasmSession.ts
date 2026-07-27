@@ -43,7 +43,16 @@ export class WasmRuntimeSession {
 
   setInputState(
     snapshot: Pick<WasmRuntimeInputState, 'left' | 'right' | 'jump' | 'restart'>
-      & { keysHeld?: number[]; keysPressed?: number[]; keysReleased?: number[] }
+      & {
+        keysHeld?: number[];
+        keysPressed?: number[];
+        keysReleased?: number[];
+        mouseX?: number;
+        mouseY?: number;
+        mouseButtonsHeld?: number[];
+        mouseButtonsPressed?: number[];
+        mouseButtonsReleased?: number[];
+      }
   ): void {
     const jumpPressed = snapshot.jump && !this.previousJump;
     const jumpReleased = !snapshot.jump && this.previousJump;
@@ -70,6 +79,19 @@ export class WasmRuntimeSession {
       this.pendingKeyReleases.add(key);
     }
 
+    const mouseInput = snapshot.mouseX != null
+      || snapshot.mouseY != null
+      || snapshot.mouseButtonsHeld != null
+      || snapshot.mouseButtonsPressed != null
+      || snapshot.mouseButtonsReleased != null
+      ? {
+          mouseX: snapshot.mouseX ?? 0,
+          mouseY: snapshot.mouseY ?? 0,
+          mouseButtonsHeld: snapshot.mouseButtonsHeld ?? [],
+          mouseButtonsPressed: snapshot.mouseButtonsPressed ?? [],
+          mouseButtonsReleased: snapshot.mouseButtonsReleased ?? []
+        }
+      : {};
     this.input = {
       left: snapshot.left,
       right: snapshot.right,
@@ -79,7 +101,8 @@ export class WasmRuntimeSession {
       restart: snapshot.restart,
       keysHeld: [...heldKeys],
       keysPressed: [...this.pendingKeyPresses],
-      keysReleased: [...this.pendingKeyReleases]
+      keysReleased: [...this.pendingKeyReleases],
+      ...mouseInput
     };
 
     this.previousJump = snapshot.jump;
@@ -129,6 +152,12 @@ export class WasmRuntimeSession {
     this.input.jumpReleased = false;
     this.input.keysPressed = [];
     this.input.keysReleased = [];
+    if (this.input.mouseButtonsPressed) {
+      this.input.mouseButtonsPressed = [];
+    }
+    if (this.input.mouseButtonsReleased) {
+      this.input.mouseButtonsReleased = [];
+    }
     return {
       snapshot,
       frame,

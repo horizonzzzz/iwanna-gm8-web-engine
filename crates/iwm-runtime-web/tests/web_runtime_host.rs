@@ -2,7 +2,11 @@ mod support;
 
 use std::path::Path;
 
+use iwm_runtime_core::{
+    LoweredLogicEntry, LoweredLogicExpr, LoweredLogicFile, LoweredLogicStatement,
+};
 use iwm_runtime_host::{RuntimeAudioHost, RuntimeSoundMode};
+use iwm_runtime_model::ObjectEventEntry;
 use iwm_runtime_web::{BridgeDrawCommand, WebAudioHost, WebInputState, WebRuntimeHost};
 use serde_json::json;
 
@@ -75,6 +79,42 @@ fn web_runtime_host_requires_boot_before_tick() {
     let error = host.tick(1).unwrap_err();
 
     assert!(error.contains("not booted"));
+}
+
+#[test]
+fn web_runtime_host_maps_mouse_input_to_local_mouse_events() {
+    let mut package = sample_package();
+    let block_id = "object:0:event:6:4";
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type: 6,
+        sub_event: 4,
+        event_tag: "mouse:left-pressed".into(),
+        block_id: block_id.into(),
+        action_count: 0,
+    });
+    package.lowered_logic = Some(LoweredLogicFile {
+        format: "iwm-lowered-logic-v1".into(),
+        entries: vec![LoweredLogicEntry {
+            block_id: block_id.into(),
+            statements: vec![LoweredLogicStatement::FunctionCall {
+                name: "room_goto".into(),
+                args: vec![LoweredLogicExpr::LiteralNumber(1.0)],
+            }],
+        }],
+    });
+
+    let mut host = WebRuntimeHost::new();
+    host.boot(package).unwrap();
+    host.set_input(WebInputState {
+        mouse_x: 32,
+        mouse_y: 64,
+        mouse_buttons_held: vec![0],
+        mouse_buttons_pressed: vec![0],
+        ..WebInputState::default()
+    });
+
+    let snapshot = host.tick(1).unwrap();
+    assert_eq!(snapshot.room_id, Some(1));
 }
 
 #[test]
@@ -160,6 +200,7 @@ fn web_runtime_host_snapshot_exposes_player_motion_and_reset_state() {
         keys_held: vec![],
         keys_pressed: vec![],
         keys_released: vec![],
+        ..WebInputState::default()
     });
 
     let after_tick = host.tick(1).unwrap();
@@ -211,6 +252,7 @@ fn web_runtime_host_snapshot_exposes_jump_trace_after_jump_press() {
         keys_held: vec![0x20],
         keys_pressed: vec![0x20],
         keys_released: vec![],
+        ..WebInputState::default()
     });
 
     let after_tick = host.tick(1).unwrap();
@@ -240,6 +282,7 @@ fn web_runtime_host_accepts_raw_virtual_key_input() {
         keys_held: vec![0x10],
         keys_pressed: vec![0x10],
         keys_released: vec![],
+        ..WebInputState::default()
     });
 
     let snapshot = host.tick(1).unwrap();
@@ -262,6 +305,7 @@ fn web_runtime_host_step_returns_snapshot_and_frame_together() {
             keys_held: vec![],
             keys_pressed: vec![],
             keys_released: vec![],
+            ..WebInputState::default()
         })
         .unwrap();
 
@@ -290,6 +334,7 @@ fn web_runtime_host_preserves_raw_key_edges_when_semantic_jump_is_false() {
         keys_held: vec![0x20],
         keys_pressed: vec![0x20],
         keys_released: vec![],
+        ..WebInputState::default()
     });
 
     let after_press = host.tick(1).unwrap();
@@ -313,6 +358,7 @@ fn web_runtime_host_preserves_raw_key_edges_when_semantic_jump_is_false() {
         keys_held: vec![],
         keys_pressed: vec![],
         keys_released: vec![0x20],
+        ..WebInputState::default()
     });
 
     let after_release = host.tick(1).unwrap();
@@ -356,6 +402,7 @@ fn web_runtime_host_does_not_map_semantic_jump_to_space_without_raw_space_input(
         keys_held: vec![],
         keys_pressed: vec![],
         keys_released: vec![],
+        ..WebInputState::default()
     });
 
     let after_tick = host.tick(1).unwrap();
@@ -515,6 +562,7 @@ fn web_runtime_host_accepts_input_and_returns_render_frame_json() {
         keys_held: vec![],
         keys_pressed: vec![],
         keys_released: vec![],
+        ..WebInputState::default()
     });
 
     host.tick(1).unwrap();
@@ -540,6 +588,7 @@ fn web_runtime_host_treats_restart_as_a_one_shot_press_edge() {
         keys_held: vec![],
         keys_pressed: vec![],
         keys_released: vec![],
+        ..WebInputState::default()
     });
     let reset = host.tick(1).unwrap();
     assert_eq!(
@@ -557,6 +606,7 @@ fn web_runtime_host_treats_restart_as_a_one_shot_press_edge() {
         keys_held: vec![],
         keys_pressed: vec![],
         keys_released: vec![],
+        ..WebInputState::default()
     });
     let after_hold = host.tick(1).unwrap();
     assert!(after_hold.player.as_ref().map(|player| player.x).unwrap() > 32.0);
@@ -577,6 +627,7 @@ fn web_runtime_host_clears_input_edge_bits_after_each_tick() {
         keys_held: vec![],
         keys_pressed: vec![],
         keys_released: vec![],
+        ..WebInputState::default()
     });
 
     host.tick(1).unwrap();
@@ -592,6 +643,7 @@ fn web_runtime_host_clears_input_edge_bits_after_each_tick() {
         keys_held: vec![],
         keys_pressed: vec![],
         keys_released: vec![],
+        ..WebInputState::default()
     });
     host.tick(1).unwrap();
 
@@ -614,6 +666,7 @@ fn web_runtime_host_reemits_raw_press_after_release_cycle() {
         keys_held: vec![0x10],
         keys_pressed: vec![0x10],
         keys_released: vec![],
+        ..WebInputState::default()
     });
     let first = host.tick(1).unwrap();
     assert_eq!(
@@ -631,6 +684,7 @@ fn web_runtime_host_reemits_raw_press_after_release_cycle() {
         keys_held: vec![],
         keys_pressed: vec![],
         keys_released: vec![0x10],
+        ..WebInputState::default()
     });
     host.tick(1).unwrap();
 
@@ -644,6 +698,7 @@ fn web_runtime_host_reemits_raw_press_after_release_cycle() {
         keys_held: vec![0x10],
         keys_pressed: vec![0x10],
         keys_released: vec![],
+        ..WebInputState::default()
     });
     let second = host.tick(1).unwrap();
     assert_eq!(
@@ -697,6 +752,7 @@ fn real_sample_shift_jump_retriggers_after_landing_in_sampleroom01() {
             keys_held: vec![],
             keys_pressed: vec![],
             keys_released: vec![],
+            ..WebInputState::default()
         });
         init_snapshot = host.tick(1).unwrap();
     }
@@ -728,6 +784,7 @@ fn real_sample_shift_jump_retriggers_after_landing_in_sampleroom01() {
             keys_held: vec![],
             keys_pressed: vec![],
             keys_released: vec![],
+            ..WebInputState::default()
         });
         settled_start = host.tick(1).unwrap();
     }
@@ -750,6 +807,7 @@ fn real_sample_shift_jump_retriggers_after_landing_in_sampleroom01() {
         keys_held: vec![0x10],
         keys_pressed: vec![0x10],
         keys_released: vec![],
+        ..WebInputState::default()
     });
     let first_jump = host.tick(1).unwrap();
     assert!(
@@ -771,6 +829,7 @@ fn real_sample_shift_jump_retriggers_after_landing_in_sampleroom01() {
         keys_held: vec![],
         keys_pressed: vec![],
         keys_released: vec![0x10],
+        ..WebInputState::default()
     });
     host.tick(1).unwrap();
 
@@ -787,6 +846,7 @@ fn real_sample_shift_jump_retriggers_after_landing_in_sampleroom01() {
             keys_held: vec![],
             keys_pressed: vec![],
             keys_released: vec![],
+            ..WebInputState::default()
         });
         let snapshot = host.tick(1).unwrap();
         last_player = snapshot.player.clone();
@@ -815,6 +875,7 @@ fn real_sample_shift_jump_retriggers_after_landing_in_sampleroom01() {
         keys_held: vec![0x10],
         keys_pressed: vec![0x10],
         keys_released: vec![],
+        ..WebInputState::default()
     });
     let second_jump = host.tick(1).unwrap();
 

@@ -12,6 +12,10 @@ fn push_u32(bytes: &mut Vec<u8>, value: u32) {
     bytes.extend_from_slice(&value.to_le_bytes());
 }
 
+fn push_i32(bytes: &mut Vec<u8>, value: i32) {
+    bytes.extend_from_slice(&value.to_le_bytes());
+}
+
 fn push_keys(bytes: &mut Vec<u8>, values: &[u16]) {
     push_u32(bytes, values.len() as u32);
     for value in values {
@@ -19,17 +23,27 @@ fn push_keys(bytes: &mut Vec<u8>, values: &[u16]) {
     }
 }
 
+fn push_buttons(bytes: &mut Vec<u8>, values: &[u8]) {
+    push_u32(bytes, values.len() as u32);
+    bytes.extend_from_slice(values);
+}
+
 #[test]
 fn decode_web_input_state_from_buffer_reads_flags_and_key_edges() {
     let mut bytes = Vec::new();
     push_u32(&mut bytes, 0x424d5749);
-    push_u16(&mut bytes, 2);
+    push_u16(&mut bytes, 3);
     push_u16(&mut bytes, 1);
     push_u16(&mut bytes, 0b0010_1101);
     push_u16(&mut bytes, 0);
+    push_i32(&mut bytes, -12);
+    push_i32(&mut bytes, 345);
     push_keys(&mut bytes, &[0x10, 0x5a]);
     push_keys(&mut bytes, &[0x10]);
     push_keys(&mut bytes, &[0x5a]);
+    push_buttons(&mut bytes, &[0, 1]);
+    push_buttons(&mut bytes, &[1]);
+    push_buttons(&mut bytes, &[0]);
 
     let input = decode_web_input_state_from_buffer(&bytes).unwrap();
 
@@ -42,6 +56,11 @@ fn decode_web_input_state_from_buffer_reads_flags_and_key_edges() {
     assert_eq!(input.keys_held, vec![0x10, 0x5a]);
     assert_eq!(input.keys_pressed, vec![0x10]);
     assert_eq!(input.keys_released, vec![0x5a]);
+    assert_eq!(input.mouse_x, -12);
+    assert_eq!(input.mouse_y, 345);
+    assert_eq!(input.mouse_buttons_held, vec![0, 1]);
+    assert_eq!(input.mouse_buttons_pressed, vec![1]);
+    assert_eq!(input.mouse_buttons_released, vec![0]);
 }
 
 #[test]
@@ -158,7 +177,7 @@ fn encode_bridge_step_result_to_buffer_writes_header_snapshot_and_present_frame(
     let bytes = encode_bridge_step_result_to_buffer(&step).unwrap();
 
     assert_eq!(&bytes[0..4], &0x424d5749u32.to_le_bytes());
-    assert_eq!(&bytes[4..6], &2u16.to_le_bytes());
+    assert_eq!(&bytes[4..6], &3u16.to_le_bytes());
     assert_eq!(&bytes[6..8], &2u16.to_le_bytes());
     assert!(bytes.ends_with(&[6]));
 }

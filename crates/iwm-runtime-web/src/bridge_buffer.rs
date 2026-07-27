@@ -6,7 +6,7 @@ use crate::{
 };
 
 const MAGIC: u32 = 0x424d5749;
-const VERSION: u16 = 2;
+const VERSION: u16 = 3;
 const INPUT_KIND: u16 = 1;
 const STEP_RESULT_KIND: u16 = 2;
 
@@ -22,9 +22,14 @@ pub fn decode_web_input_state_from_buffer(bytes: &[u8]) -> Result<WebInputState,
         jump_pressed: flags & 0b0000_1000 != 0,
         jump_released: flags & 0b0001_0000 != 0,
         restart: flags & 0b0010_0000 != 0,
+        mouse_x: reader.read_i32()?,
+        mouse_y: reader.read_i32()?,
         keys_held: reader.read_u16_vec()?,
         keys_pressed: reader.read_u16_vec()?,
         keys_released: reader.read_u16_vec()?,
+        mouse_buttons_held: reader.read_u8_vec()?,
+        mouse_buttons_pressed: reader.read_u8_vec()?,
+        mouse_buttons_released: reader.read_u8_vec()?,
     })
 }
 
@@ -83,6 +88,19 @@ impl<'a> BinaryReader<'a> {
 
     fn read_u32(&mut self) -> Result<u32, String> {
         Ok(u32::from_le_bytes(self.read_exact()?))
+    }
+
+    fn read_i32(&mut self) -> Result<i32, String> {
+        Ok(i32::from_le_bytes(self.read_exact()?))
+    }
+
+    fn read_u8_vec(&mut self) -> Result<Vec<u8>, String> {
+        let count = self.read_u32()? as usize;
+        let mut values = Vec::with_capacity(count);
+        for _ in 0..count {
+            values.push(self.read_exact::<1>()?[0]);
+        }
+        Ok(values)
     }
 
     fn read_u16_vec(&mut self) -> Result<Vec<u16>, String> {

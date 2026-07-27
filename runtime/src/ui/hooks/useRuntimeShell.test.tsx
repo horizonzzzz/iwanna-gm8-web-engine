@@ -130,6 +130,56 @@ describe('useRuntimeShell', () => {
     expect(result.current.performance?.commandCount).toBe(2);
   });
 
+  it('maps scaled canvas mouse input to GM button and room coordinates', async () => {
+    const bridge = arrangeWasmPackage();
+    const { result } = renderHook(() => useRuntimeShell());
+    const canvas = document.createElement('canvas');
+    document.body.appendChild(canvas);
+    canvas.width = 800;
+    canvas.height = 600;
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      left: 10,
+      top: 20,
+      right: 410,
+      bottom: 320,
+      width: 400,
+      height: 300,
+      x: 10,
+      y: 20,
+      toJSON: () => ({}),
+    });
+    result.current.canvasRef.current = canvas;
+
+    await act(async () => {
+      await result.current.loadCurrentPackage();
+    });
+
+    fireEvent.mouseMove(window, { clientX: 210, clientY: 170 });
+    fireEvent.mouseDown(canvas, { button: 2, clientX: 210, clientY: 170 });
+    await act(async () => {
+      await result.current.tickRuntimeOnce(makeKeyboard());
+    });
+
+    expect(bridge.setInput).toHaveBeenLastCalledWith(expect.objectContaining({
+      mouseX: 400,
+      mouseY: 300,
+      mouseButtonsHeld: [1],
+      mouseButtonsPressed: [1],
+      mouseButtonsReleased: [],
+    }));
+
+    fireEvent.mouseUp(window, { button: 2, clientX: 210, clientY: 170 });
+    await act(async () => {
+      await result.current.tickRuntimeOnce(makeKeyboard());
+    });
+    expect(bridge.setInput).toHaveBeenLastCalledWith(expect.objectContaining({
+      mouseButtonsHeld: [],
+      mouseButtonsPressed: [],
+      mouseButtonsReleased: [1],
+    }));
+    canvas.remove();
+  });
+
   it('starts automatic ticking after a wasm package loads', async () => {
     arrangeWasmPackage();
 

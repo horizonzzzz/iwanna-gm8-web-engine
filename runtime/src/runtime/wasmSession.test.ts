@@ -69,6 +69,38 @@ describe('WasmRuntimeSession', () => {
     });
   });
 
+  it('submits mouse position and button edge transitions', async () => {
+    const bridge = makeBridge();
+    const session = new WasmRuntimeSession(bridge);
+    session.setInputState({
+      left: false,
+      right: false,
+      jump: false,
+      restart: false,
+      mouseX: 123,
+      mouseY: 45,
+      mouseButtonsHeld: [1],
+      mouseButtonsPressed: [1],
+      mouseButtonsReleased: [],
+    });
+
+    await session.stepOnce();
+    await session.stepOnce();
+
+    expect(bridge.step).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      mouseX: 123,
+      mouseY: 45,
+      mouseButtonsHeld: [1],
+      mouseButtonsPressed: [1],
+      mouseButtonsReleased: [],
+    }));
+    expect(bridge.step).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      mouseButtonsHeld: [1],
+      mouseButtonsPressed: [],
+      mouseButtonsReleased: [],
+    }));
+  });
+
   it('tracks raw virtual-key hold and edge transitions across steps', async () => {
     const bridge = makeBridge();
     const session = new WasmRuntimeSession(bridge);

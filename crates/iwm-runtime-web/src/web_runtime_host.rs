@@ -115,6 +115,37 @@ impl WebRuntimeHost {
                 });
         }
 
+        for button in &input.mouse_buttons_held {
+            states.insert(
+                RuntimeButton::Mouse(*button),
+                ButtonState {
+                    pressed: true,
+                    just_pressed: input.mouse_buttons_pressed.contains(button),
+                    just_released: input.mouse_buttons_released.contains(button),
+                },
+            );
+        }
+        for button in &input.mouse_buttons_pressed {
+            states
+                .entry(RuntimeButton::Mouse(*button))
+                .and_modify(|state| state.just_pressed = true)
+                .or_insert(ButtonState {
+                    pressed: false,
+                    just_pressed: true,
+                    just_released: false,
+                });
+        }
+        for button in &input.mouse_buttons_released {
+            states
+                .entry(RuntimeButton::Mouse(*button))
+                .and_modify(|state| state.just_released = true)
+                .or_insert(ButtonState {
+                    pressed: false,
+                    just_pressed: false,
+                    just_released: true,
+                });
+        }
+
         merge_semantic_button_state(
             &mut states,
             RuntimeButton::Keyboard(0x25),
@@ -143,6 +174,10 @@ impl WebRuntimeHost {
             },
         );
 
+        self.host
+            .headless
+            .input
+            .set_mouse_position((input.mouse_x, input.mouse_y));
         self.host.headless.input.replace_button_states(states);
         self.previous_left = input.left;
         self.previous_right = input.right;
