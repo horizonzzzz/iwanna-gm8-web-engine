@@ -165,6 +165,7 @@ pub struct RuntimeInstance {
     pub facing_left: bool,
     pub visible: bool,
     pub alive: bool,
+    pub active: bool,
     pub persistent: bool,
     pub solid: bool,
     pub hazard: bool,
@@ -177,6 +178,10 @@ pub struct RuntimeInstance {
 const GM_ROUND_TOLERANCE: f64 = 0.0001;
 
 impl RuntimeInstance {
+    pub(crate) fn is_active(&self) -> bool {
+        self.alive && self.active
+    }
+
     pub fn set_speed(&mut self, speed: f64) {
         self.vars
             .insert("speed".into(), RuntimeValue::Number(speed));

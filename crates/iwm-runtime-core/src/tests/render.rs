@@ -599,6 +599,16 @@ fn runtime_core_executes_draw_events_for_text_commands() {
                 ],
             },
             LoweredLogicStatement::FunctionCall {
+                name: "draw_rectangle".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(30.0),
+                    LoweredLogicExpr::LiteralNumber(40.0),
+                    LoweredLogicExpr::LiteralNumber(10.0),
+                    LoweredLogicExpr::LiteralNumber(20.0),
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                ],
+            },
+            LoweredLogicStatement::FunctionCall {
                 name: "draw_sprite".into(),
                 args: vec![
                     LoweredLogicExpr::Identifier("spr_sparse".into()),
@@ -632,6 +642,16 @@ fn runtime_core_executes_draw_events_for_text_commands() {
             && colour.b == 0
             && colour.a == 255
             && align == "center"
+    )));
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::FillRect {
+            x: 10,
+            y: 20,
+            width: 20,
+            height: 20,
+            colour,
+        } if colour.r == 255 && colour.g == 0 && colour.b == 0 && colour.a == 255
     )));
     assert!(frame.commands.iter().any(|command| matches!(
         command,

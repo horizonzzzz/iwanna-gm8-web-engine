@@ -103,14 +103,20 @@ impl RuntimeCore {
     // zero by the game's own GML. Looping sounds therefore MUST survive the
     // reset. We deviate from GM8 only for one-shots (the death jingle) so
     // pressing R cuts them instead of letting them ring over the rebuilt room.
-    fn stop_one_shot_sounds_for_scene_change<H: RuntimeHost>(&mut self, host: &mut H, reason: &str) {
+    fn stop_one_shot_sounds_for_scene_change<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+        reason: &str,
+    ) {
         for sound_id in std::mem::take(&mut self.active_one_shot_sounds) {
             if let Err(error) = host.stop_sound(sound_id) {
                 self.record_diagnostic(
                     host,
                     iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
                     "runtime-audio-host-error",
-                    format!("function=sound_stop sound_id={sound_id} reason={reason} error={error}"),
+                    format!(
+                        "function=sound_stop sound_id={sound_id} reason={reason} error={error}"
+                    ),
                 );
             }
         }

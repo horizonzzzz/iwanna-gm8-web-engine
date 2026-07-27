@@ -116,6 +116,87 @@ fn instance_destroy_dispatches_destroy_event_before_marking_dead() {
 }
 
 #[test]
+fn instance_change_preserves_identity_and_runs_lifecycle_events_in_order() {
+    let mut package = sample_package();
+    let target_id = package
+        .objects
+        .iter()
+        .find(|object| object.name == SPAWNED_OBJECT_NAME)
+        .map(|object| object.id)
+        .unwrap_or_else(|| {
+            add_spawned_object(
+                &mut package,
+                vec![LoweredLogicStatement::Assignment {
+                    target: LoweredLogicExpr::MemberAccess {
+                        target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                        member: "lifecycle".into(),
+                    },
+                    value: LoweredLogicExpr::LiteralNumber(2.0),
+                }],
+            );
+            SPAWNED_OBJECT_ID
+        });
+    add_destroy_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "lifecycle".into(),
+            },
+            value: LoweredLogicExpr::LiteralNumber(1.0),
+        }],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "instance_change".into(),
+            args: vec![
+                LoweredLogicExpr::LiteralNumber(target_id as f64),
+                LoweredLogicExpr::LiteralBool(true),
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let (runtime_id, instance_id, x, y) = {
+        let player = player(&core);
+        (player.runtime_id, player.instance_id, player.x, player.y)
+    };
+    core.current_room
+        .as_mut()
+        .unwrap()
+        .instances
+        .iter_mut()
+        .find(|instance| instance.runtime_id == runtime_id)
+        .unwrap()
+        .vars
+        .insert("custom".into(), RuntimeValue::Number(42.0));
+
+    core.execute_lowered_step_events(&mut host).unwrap();
+
+    let changed = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.runtime_id == runtime_id)
+        .unwrap();
+    assert_eq!(changed.instance_id, instance_id);
+    assert_eq!((changed.x, changed.y), (x, y));
+    assert_eq!(changed.object_id, target_id);
+    assert_eq!(changed.object_name, SPAWNED_OBJECT_NAME);
+    assert_eq!(
+        changed.vars.get("custom"),
+        Some(&RuntimeValue::Number(42.0))
+    );
+    assert_eq!(
+        core.globals.get("global.lifecycle"),
+        Some(&RuntimeValue::Number(2.0))
+    );
+}
+
+#[test]
 fn instance_destroy_inside_with_marks_target_instance_not_caller() {
     let mut package = sample_package();
     add_step_block(
@@ -906,4 +987,63 @@ fn non_player_step_motion_advances_instance_and_allows_collision_destroy() {
         core.globals.get("global.bullet_destroy_ran"),
         Some(&RuntimeValue::Bool(true))
     );
+}
+
+#[test]
+fn instance_deactivate_object_removes_targets_without_destroying_them() {
+    let mut package = sample_package();
+    package.objects[1].events.push(ObjectEventEntry {
+        event_type: 3,
+        sub_event: 0,
+        event_tag: "step".into(),
+        block_id: "object:1:event:3:0".into(),
+        action_count: 1,
+    });
+    append_lowered_entry(
+        &mut package,
+        "object:1:event:3:0".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "deactivated_marker_ran".into(),
+            },
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "instance_deactivate_object".into(),
+                args: vec![LoweredLogicExpr::Identifier("obj_marker".into())],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("active_marker_count".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "instance_number".into(),
+                    args: vec![LoweredLogicExpr::Identifier("obj_marker".into())],
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+    core.tick(&mut host).unwrap();
+
+    let marker = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "obj_marker")
+        .unwrap();
+    assert!(marker.alive);
+    assert!(!marker.active);
+    assert_eq!(
+        player_var(&core, "active_marker_count"),
+        Some(&RuntimeValue::Number(0.0))
+    );
+    assert_eq!(core.globals.get("global.deactivated_marker_ran"), None);
 }

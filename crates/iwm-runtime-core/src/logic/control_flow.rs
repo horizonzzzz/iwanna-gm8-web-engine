@@ -64,7 +64,7 @@ pub(super) fn write_with_target_indices(
             output.extend(
                 context
                     .room_instances_iter()
-                    .filter(|(_, instance)| instance.alive)
+                    .filter(|(_, instance)| instance.is_active())
                     .map(|(index, _)| index),
             );
             return;
@@ -81,7 +81,9 @@ pub(super) fn write_with_target_indices(
             output.extend(
                 context
                     .room_instances_iter()
-                    .filter(|(_, candidate)| candidate.alive && candidate.object_id == object_id)
+                    .filter(|(_, candidate)| {
+                        candidate.is_active() && candidate.object_id == object_id
+                    })
                     .map(|(index, _)| index),
             );
         }
@@ -104,7 +106,7 @@ pub(super) fn write_with_target_indices(
                     for &index in object_index.indices_for_object_id(*object_id) {
                         if context
                             .room_instance(index)
-                            .is_some_and(|instance| instance.alive)
+                            .is_some_and(|instance| instance.is_active())
                         {
                             output.push(index);
                         }
@@ -118,8 +120,9 @@ pub(super) fn write_with_target_indices(
                     context
                         .room_instances_iter()
                         .filter_map(|(index, instance)| {
-                            (instance.alive && wanted_object_ids.contains(&instance.object_id))
-                                .then_some(index)
+                            (instance.is_active()
+                                && wanted_object_ids.contains(&instance.object_id))
+                            .then_some(index)
                         }),
                 );
                 return;
@@ -130,7 +133,7 @@ pub(super) fn write_with_target_indices(
                     output.extend(indices.iter().copied().filter(|&index| {
                         context
                             .room_instance(index)
-                            .is_some_and(|instance| instance.alive)
+                            .is_some_and(|instance| instance.is_active())
                     }));
                 }
             }
@@ -160,7 +163,7 @@ fn push_with_instance_ref_target(
         context
             .room_instances_iter()
             .filter_map(|(index, candidate)| {
-                (candidate.alive
+                (candidate.is_active()
                     && (candidate.instance_id as f64 == instance_ref
                         || candidate.runtime_id as f64 == instance_ref))
                     .then_some(index)

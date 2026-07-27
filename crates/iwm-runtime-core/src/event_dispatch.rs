@@ -10,16 +10,32 @@ const COLLISION_SPATIAL_CELL_SIZE: i32 = 64;
 #[derive(Clone)]
 pub(crate) enum RuntimeEventSelector {
     Create,
+    StepBegin,
     Step,
+    StepEnd,
     Draw,
     Destroy,
     Alarm(u32),
     KeyboardHeld(u16),
     KeyboardPressed(u16),
     KeyboardReleased(u16),
+    MouseHeld {
+        button: u8,
+        global: bool,
+    },
+    MousePressed {
+        button: u8,
+        global: bool,
+    },
+    MouseReleased {
+        button: u8,
+        global: bool,
+    },
     OtherAnimationEnd,
     OtherRoomStart,
     OtherOutside,
+    OtherBoundary,
+    OtherEndOfPath,
     Timeline,
     #[cfg_attr(not(test), allow(dead_code))]
     Collision {
@@ -186,10 +202,12 @@ pub(crate) fn inherited_event_block_id(
     None
 }
 
-fn event_selector_parts(selector: &RuntimeEventSelector) -> (usize, u32, String) {
+pub(crate) fn event_selector_parts(selector: &RuntimeEventSelector) -> (usize, u32, String) {
     match selector {
         RuntimeEventSelector::Create => (0usize, 0u32, "create".to_string()),
+        RuntimeEventSelector::StepBegin => (3usize, 1u32, "step:begin".to_string()),
         RuntimeEventSelector::Step => (3usize, 0u32, "step".to_string()),
+        RuntimeEventSelector::StepEnd => (3usize, 2u32, "step:end".to_string()),
         RuntimeEventSelector::Draw => (8usize, 0u32, "draw".to_string()),
         RuntimeEventSelector::Destroy => (1usize, 0u32, "destroy".to_string()),
         RuntimeEventSelector::Alarm(slot) => (2usize, *slot, format!("alarm:{slot}")),
@@ -208,16 +226,47 @@ fn event_selector_parts(selector: &RuntimeEventSelector) -> (usize, u32, String)
             *key as u32,
             format!("keyrelease:{}", format_key_name(*key)),
         ),
+        RuntimeEventSelector::MouseHeld { button, global } => {
+            mouse_event_parts(*button, *global, 0, 50, "")
+        }
+        RuntimeEventSelector::MousePressed { button, global } => {
+            mouse_event_parts(*button, *global, 4, 53, "-pressed")
+        }
+        RuntimeEventSelector::MouseReleased { button, global } => {
+            mouse_event_parts(*button, *global, 7, 56, "-released")
+        }
         RuntimeEventSelector::OtherAnimationEnd => {
             (7usize, 7u32, "other:animation-end".to_string())
         }
         RuntimeEventSelector::OtherRoomStart => (7usize, 4u32, "other:room-start".to_string()),
         RuntimeEventSelector::OtherOutside => (7usize, 0u32, "other:outside".to_string()),
+        RuntimeEventSelector::OtherBoundary => (7usize, 1u32, "other:boundary".to_string()),
+        RuntimeEventSelector::OtherEndOfPath => (7usize, 8u32, "other:end-of-path".to_string()),
         RuntimeEventSelector::Timeline => (usize::MAX, 0u32, "timeline".to_string()),
         RuntimeEventSelector::Collision { target_object_id } => {
             (4usize, *target_object_id as u32, "collision".to_string())
         }
     }
+}
+
+fn mouse_event_parts(
+    button: u8,
+    global: bool,
+    local_base: u32,
+    global_base: u32,
+    suffix: &str,
+) -> (usize, u32, String) {
+    let button_name = ["left", "right", "middle"]
+        .get(button as usize)
+        .copied()
+        .unwrap_or("unknown");
+    let scope = if global { "global-" } else { "" };
+    let sub_event = if global { global_base } else { local_base } + button as u32;
+    (
+        6usize,
+        sub_event,
+        format!("mouse:{scope}{button_name}{suffix}"),
+    )
 }
 
 fn object_parent_id(objects: &[ObjectDefinition], object_id: usize) -> Option<usize> {
@@ -239,7 +288,7 @@ pub(crate) fn runtime_instance_indices_by_object_id_from_instances(
 ) -> HashMap<usize, Vec<usize>> {
     let mut indices = HashMap::new();
     for (index, instance) in instances.iter().enumerate() {
-        if instance.alive {
+        if instance.is_active() {
             indices
                 .entry(instance.object_id)
                 .or_insert_with(Vec::new)
@@ -266,7 +315,7 @@ impl RuntimeCollisionSpatialIndex {
     pub(crate) fn rebuild(&mut self, room: &RuntimeRoomState) {
         self.clear_cells();
         for (instance_index, instance) in room.instances.iter().enumerate() {
-            if !instance.alive {
+            if !instance.is_active() {
                 continue;
             }
             let (left, top, right, bottom) = bounds_at(instance, instance.x, instance.y);

@@ -192,7 +192,7 @@ impl RuntimeCore {
             .collect::<Vec<_>>();
 
         for instance in &room.instances {
-            if !instance.alive {
+            if !instance.is_active() {
                 continue;
             }
             let Some(object) = self
@@ -317,7 +317,7 @@ impl RuntimeCore {
                 .instances
                 .iter()
                 .enumerate()
-                .filter(|(_, instance)| instance.alive)
+                .filter(|(_, instance)| instance.is_active())
                 .filter_map(|(index, instance)| {
                     let entries = object_event_block_ids(
                         &self.package,
@@ -350,7 +350,7 @@ impl RuntimeCore {
             }) else {
                 continue;
             };
-            if !instance.alive {
+            if !instance.is_active() {
                 continue;
             }
 
@@ -391,6 +391,7 @@ impl RuntimeCore {
                     let mut with_target_indices = Vec::new();
                     let mut statement_env = RuntimeStatementEnvironment {
                         script_entries,
+                        create_event_entries: &self.cached_create_event_entries,
                         sound_index: &self.sound_index,
                         globals: &mut self.globals,
                         room_speed: &mut current_room_speed,

@@ -53,7 +53,7 @@ impl RuntimeObjectIndex {
         }
 
         for (index, instance) in room.instances.iter().enumerate() {
-            if !instance.alive {
+            if !instance.is_active() {
                 continue;
             }
             self.indices_by_object_id

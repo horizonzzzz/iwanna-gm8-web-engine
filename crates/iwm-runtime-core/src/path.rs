@@ -47,39 +47,46 @@ pub(crate) fn start_path(
     set_number(instance, "path_ystart", instance.y);
 }
 
-pub(crate) fn advance_path(instance: &mut RuntimeInstance, paths: &[PathResource]) -> bool {
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PathAdvance {
+    pub(crate) moved: bool,
+    pub(crate) ended: bool,
+}
+
+pub(crate) fn advance_path(instance: &mut RuntimeInstance, paths: &[PathResource]) -> PathAdvance {
     let Some(path_id) = number(instance, "path_index")
         .filter(|value| value.is_finite() && *value >= 0.0)
         .map(|value| value.round() as usize)
     else {
-        return false;
+        return PathAdvance::default();
     };
     let Some(path) = paths.iter().find(|path| path.id == path_id) else {
         stop_path(instance);
-        return false;
+        return PathAdvance::default();
     };
     let nodes = control_nodes(path);
     let Some(first) = nodes.first().copied() else {
         stop_path(instance);
-        return false;
+        return PathAdvance::default();
     };
     let last = nodes.last().copied().unwrap_or(first);
     if last.distance <= 0.0 {
         stop_path(instance);
-        return false;
+        return PathAdvance::default();
     }
 
     let speed = number(instance, "path_speed").unwrap_or(0.0);
     let scale = number(instance, "path_scale").unwrap_or(1.0);
     if speed == 0.0 || scale == 0.0 {
-        return false;
+        return PathAdvance::default();
     }
     let previous = number(instance, "path_position").unwrap_or(0.0);
     set_number(instance, "path_positionprevious", previous.clamp(0.0, 1.0));
     let point_speed = point_at(&nodes, last.distance, previous).speed;
     let mut position = previous + speed * (point_speed / 100.0) / (last.distance * scale);
     let end_action = number(instance, "path_endaction").unwrap_or(0.0).round() as i32;
-    if position <= 0.0 || position >= 1.0 {
+    let ended = position <= 0.0 || position >= 1.0;
+    if ended {
         let reversed = position < 0.0;
         let opposite = if reversed {
             position + 1.0
@@ -117,7 +124,7 @@ pub(crate) fn advance_path(instance: &mut RuntimeInstance, paths: &[PathResource
                 );
             }
             _ => {
-                position = 1.0;
+                position = if reversed { 0.0 } else { 1.0 };
                 set_number(instance, "path_index", -1.0);
             }
         }
@@ -137,7 +144,7 @@ pub(crate) fn advance_path(instance: &mut RuntimeInstance, paths: &[PathResource
     instance.set_speed(0.0);
     instance.x = new_x;
     instance.y = new_y;
-    true
+    PathAdvance { moved: true, ended }
 }
 
 fn stop_path(instance: &mut RuntimeInstance) {

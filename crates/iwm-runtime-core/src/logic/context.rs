@@ -42,35 +42,34 @@ pub(crate) struct RuntimeBinaryFileState {
 #[derive(Debug)]
 struct RuntimeBinaryFileHandle {
     path: String,
-    mode: RuntimeBinaryFileMode,
-}
-
-#[derive(Debug)]
-enum RuntimeBinaryFileMode {
-    Read { bytes: Vec<u8>, cursor: usize },
-    Write { bytes: Vec<u8> },
-    Append { bytes: Vec<u8> },
+    bytes: Vec<u8>,
+    cursor: usize,
+    readable: bool,
+    writable: bool,
 }
 
 impl RuntimeBinaryFileState {
     pub(crate) fn open<H: RuntimeHost>(&mut self, host: &H, path: String, mode: i32) -> i32 {
         let handle = self.next_handle.max(1);
         self.next_handle = handle.saturating_add(1);
-        let file_mode = match mode {
-            0 => RuntimeBinaryFileMode::Read {
-                bytes: host.read(Path::new(&path)).unwrap_or_default(),
-                cursor: 0,
-            },
-            2 => RuntimeBinaryFileMode::Append {
-                bytes: host.read(Path::new(&path)).unwrap_or_default(),
-            },
-            _ => RuntimeBinaryFileMode::Write { bytes: Vec::new() },
+        let (readable, writable) = match mode {
+            0 => (true, false),
+            2 => (true, true),
+            _ => (false, true),
+        };
+        let bytes = if readable {
+            host.read(Path::new(&path)).unwrap_or_default()
+        } else {
+            Vec::new()
         };
         self.handles.insert(
             handle,
             RuntimeBinaryFileHandle {
                 path,
-                mode: file_mode,
+                bytes,
+                cursor: 0,
+                readable,
+                writable,
             },
         );
         handle
@@ -80,11 +79,11 @@ impl RuntimeBinaryFileState {
         let Some(file) = self.handles.get_mut(&handle) else {
             return 0;
         };
-        let RuntimeBinaryFileMode::Read { bytes, cursor } = &mut file.mode else {
+        if !file.readable {
             return 0;
-        };
-        let byte = bytes.get(*cursor).copied().unwrap_or(0);
-        *cursor = cursor.saturating_add(1);
+        }
+        let byte = file.bytes.get(file.cursor).copied().unwrap_or(0);
+        file.cursor = file.cursor.saturating_add(1);
         byte
     }
 
@@ -92,11 +91,19 @@ impl RuntimeBinaryFileState {
         let Some(file) = self.handles.get_mut(&handle) else {
             return;
         };
-        match &mut file.mode {
-            RuntimeBinaryFileMode::Write { bytes } | RuntimeBinaryFileMode::Append { bytes } => {
-                bytes.push(byte);
-            }
-            RuntimeBinaryFileMode::Read { .. } => {}
+        if !file.writable {
+            return;
+        }
+        if file.cursor >= file.bytes.len() {
+            file.bytes.resize(file.cursor.saturating_add(1), 0);
+        }
+        file.bytes[file.cursor] = byte;
+        file.cursor = file.cursor.saturating_add(1);
+    }
+
+    pub(crate) fn seek(&mut self, handle: i32, cursor: usize) {
+        if let Some(file) = self.handles.get_mut(&handle) {
+            file.cursor = cursor;
         }
     }
 
@@ -108,10 +115,8 @@ impl RuntimeBinaryFileState {
         let Some(file) = self.handles.remove(&handle) else {
             return Ok(());
         };
-        if let RuntimeBinaryFileMode::Write { bytes } | RuntimeBinaryFileMode::Append { bytes } =
-            file.mode
-        {
-            host.write_temp(Path::new(&file.path), &bytes)?;
+        if file.writable {
+            host.write_temp(Path::new(&file.path), &file.bytes)?;
         }
         Ok(())
     }

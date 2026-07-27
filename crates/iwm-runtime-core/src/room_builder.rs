@@ -4,7 +4,7 @@ use iwm_runtime_model::{ObjectDefinition, RoomDefinition, SpriteResource};
 
 use crate::helpers::{adjusted_spawn_for_player, is_preferred_player_name};
 use crate::types::{RuntimeCollisionMask, RuntimeJumpState, RuntimeRoomView};
-use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState};
+use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState, RuntimeValue};
 
 impl RuntimeCore {
     pub fn boot_default_room(&mut self) -> Result<(), RuntimeCoreError> {
@@ -67,17 +67,12 @@ impl RuntimeCore {
                     .get(&(instance.object_id as usize))
                     .and_then(|index| self.package.objects.get(*index))?;
                 let metrics = self.sprite_metrics(object);
-                let mut vars = HashMap::new();
-                vars.insert(
-                    "image_xscale".into(),
-                    crate::RuntimeValue::Number(instance.xscale),
+                let vars = runtime_instance_vars(
+                    instance.x as f64,
+                    instance.y as f64,
+                    instance.xscale,
+                    instance.yscale,
                 );
-                vars.insert(
-                    "image_yscale".into(),
-                    crate::RuntimeValue::Number(instance.yscale),
-                );
-                vars.insert("image_index".into(), crate::RuntimeValue::Number(0.0));
-                vars.insert("image_speed".into(), crate::RuntimeValue::Number(1.0));
                 Some(RuntimeInstance {
                     runtime_id,
                     instance_id: instance.instance_id,
@@ -102,6 +97,7 @@ impl RuntimeCore {
                     facing_left: false,
                     visible: object.visible,
                     alive: true,
+                    active: true,
                     persistent: object.persistent,
                     solid: instance.is_solid || object.solid,
                     hazard: instance.is_hazard || object.is_hazard.unwrap_or(false),
@@ -129,7 +125,7 @@ impl RuntimeCore {
         if let Some((spawn_x, spawn_y)) = room_state.spawn_point {
             if let Some(player_index) = room_state.instances.iter().position(|instance| {
                 instance.player_candidate
-                    && instance.alive
+                    && instance.is_active()
                     && is_preferred_player_name(&instance.object_name)
             }) {
                 let adjusted = adjusted_spawn_for_player(
@@ -149,15 +145,7 @@ impl RuntimeCore {
     }
 
     pub(crate) fn sprite_metrics(&self, object: &ObjectDefinition) -> RuntimeSpriteMetrics {
-        let sprite = self.sprite_for_index(object.mask_index).or_else(|| {
-            if object.mask_index < 0 {
-                self.sprite_for_index(object.sprite_index)
-            } else {
-                None
-            }
-        });
-
-        sprite.map(RuntimeSpriteMetrics::from).unwrap_or_default()
+        sprite_metrics_for_object(object, &self.package.resources.sprites)
     }
 
     pub(crate) fn instantiate_runtime_object(
@@ -172,28 +160,7 @@ impl RuntimeCore {
             .get(&object_id)
             .and_then(|index| self.package.objects.get(*index))?;
         let metrics = self.sprite_metrics(object);
-        let mut vars = HashMap::new();
-        vars.insert("image_xscale".into(), crate::RuntimeValue::Number(1.0));
-        vars.insert("image_yscale".into(), crate::RuntimeValue::Number(1.0));
-        vars.insert("image_index".into(), crate::RuntimeValue::Number(0.0));
-        vars.insert("image_speed".into(), crate::RuntimeValue::Number(1.0));
-        vars.insert("timeline_index".into(), crate::RuntimeValue::Number(-1.0));
-        vars.insert("timeline_position".into(), crate::RuntimeValue::Number(0.0));
-        vars.insert("timeline_speed".into(), crate::RuntimeValue::Number(1.0));
-        vars.insert("timeline_running".into(), crate::RuntimeValue::Bool(false));
-        vars.insert("timeline_loop".into(), crate::RuntimeValue::Bool(false));
-        vars.insert("path_index".into(), crate::RuntimeValue::Number(-1.0));
-        vars.insert("path_position".into(), crate::RuntimeValue::Number(0.0));
-        vars.insert(
-            "path_positionprevious".into(),
-            crate::RuntimeValue::Number(0.0),
-        );
-        vars.insert("path_speed".into(), crate::RuntimeValue::Number(0.0));
-        vars.insert("path_scale".into(), crate::RuntimeValue::Number(1.0));
-        vars.insert("path_orientation".into(), crate::RuntimeValue::Number(0.0));
-        vars.insert("path_endaction".into(), crate::RuntimeValue::Number(0.0));
-        vars.insert("path_xstart".into(), crate::RuntimeValue::Number(x));
-        vars.insert("path_ystart".into(), crate::RuntimeValue::Number(y));
+        let vars = runtime_instance_vars(x, y, 1.0, 1.0);
         Some(RuntimeInstance {
             runtime_id,
             instance_id: -1 - runtime_id as i32,
@@ -218,6 +185,7 @@ impl RuntimeCore {
             facing_left: false,
             visible: object.visible,
             alive: true,
+            active: true,
             persistent: object.persistent,
             solid: object.solid,
             hazard: object.is_hazard.unwrap_or(false),
@@ -227,6 +195,50 @@ impl RuntimeCore {
             vars,
         })
     }
+}
+
+fn runtime_instance_vars(
+    x: f64,
+    y: f64,
+    xscale: f64,
+    yscale: f64,
+) -> HashMap<String, RuntimeValue> {
+    HashMap::from([
+        ("image_xscale".into(), RuntimeValue::Number(xscale)),
+        ("image_yscale".into(), RuntimeValue::Number(yscale)),
+        ("image_index".into(), RuntimeValue::Number(0.0)),
+        ("image_speed".into(), RuntimeValue::Number(1.0)),
+        ("timeline_index".into(), RuntimeValue::Number(-1.0)),
+        ("timeline_position".into(), RuntimeValue::Number(0.0)),
+        ("timeline_speed".into(), RuntimeValue::Number(1.0)),
+        ("timeline_running".into(), RuntimeValue::Bool(false)),
+        ("timeline_loop".into(), RuntimeValue::Bool(false)),
+        ("path_index".into(), RuntimeValue::Number(-1.0)),
+        ("path_position".into(), RuntimeValue::Number(0.0)),
+        ("path_positionprevious".into(), RuntimeValue::Number(0.0)),
+        ("path_speed".into(), RuntimeValue::Number(0.0)),
+        ("path_scale".into(), RuntimeValue::Number(1.0)),
+        ("path_orientation".into(), RuntimeValue::Number(0.0)),
+        ("path_endaction".into(), RuntimeValue::Number(0.0)),
+        ("path_xstart".into(), RuntimeValue::Number(x)),
+        ("path_ystart".into(), RuntimeValue::Number(y)),
+    ])
+}
+
+pub(crate) fn sprite_metrics_for_object(
+    object: &ObjectDefinition,
+    sprites: &[SpriteResource],
+) -> RuntimeSpriteMetrics {
+    let sprite_index = if object.mask_index >= 0 {
+        object.mask_index
+    } else {
+        object.sprite_index
+    };
+    usize::try_from(sprite_index)
+        .ok()
+        .and_then(|id| sprites.iter().find(|sprite| sprite.id == id))
+        .map(RuntimeSpriteMetrics::from)
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone)]
@@ -288,19 +300,5 @@ impl From<&SpriteResource> for RuntimeSpriteMetrics {
                 .collect(),
             per_frame_collision_masks: sprite.per_frame_collision_masks,
         }
-    }
-}
-
-impl RuntimeCore {
-    fn sprite_for_index(&self, sprite_index: i32) -> Option<&SpriteResource> {
-        if sprite_index < 0 {
-            return None;
-        }
-
-        self.package
-            .resources
-            .sprites
-            .iter()
-            .find(|sprite| sprite.id == sprite_index as usize)
     }
 }

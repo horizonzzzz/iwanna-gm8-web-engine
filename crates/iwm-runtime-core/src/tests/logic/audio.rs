@@ -248,7 +248,8 @@ fn core_stops_one_shots_but_keeps_bgm_loop_when_game_restart_reloads_first_room(
     assert!(host.audio.is_sound_playing(7).unwrap());
     assert!(host.audio.is_sound_playing(42).unwrap());
 
-    host.input.set_button_state(RuntimeButton::Keyboard(65), ButtonState::default());
+    host.input
+        .set_button_state(RuntimeButton::Keyboard(65), ButtonState::default());
     host.input.set_button_state(
         RuntimeButton::Keyboard(82),
         ButtonState {

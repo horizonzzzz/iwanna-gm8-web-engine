@@ -807,7 +807,8 @@ fn real_sample_r_restart_keeps_stage_bgm_loop_running() {
     // creation code guards with sound_isplaying, so an R retry must neither
     // stop the BGM nor restart it from zero.
     assert_eq!(
-        host.audio.stopped_all_count, 0,
+        host.audio.stopped_all_count,
+        0,
         "R restart must not stop_all_sounds; diagnostics={:?}",
         core.diagnostics().iter().rev().take(12).collect::<Vec<_>>()
     );

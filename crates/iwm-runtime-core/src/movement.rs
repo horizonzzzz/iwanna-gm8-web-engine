@@ -27,13 +27,37 @@ pub(crate) enum PlayerStepMode {
 }
 
 impl RuntimeCore {
+    pub(crate) fn advance_player_path(&mut self) -> Result<bool, RuntimeCoreError> {
+        if self.death_waiting_for_restart {
+            return Ok(false);
+        }
+
+        let Some(room) = self.current_room.as_mut() else {
+            return Err(RuntimeCoreError::NoRooms);
+        };
+        let Some(player_index) = room.instances.iter().position(is_player_instance) else {
+            return Ok(false);
+        };
+        let player = &mut room.instances[player_index];
+        let previous = (player.x, player.y);
+        let advance = crate::path::advance_path(player, &self.package.resources.paths);
+        if advance.moved {
+            player.previous_x = previous.0;
+            player.previous_y = previous.1;
+        }
+        if advance.ended {
+            self.path_ended_instance_indices.push(player_index);
+        }
+        Ok(advance.moved)
+    }
+
     pub(crate) fn step_non_player_instances(&mut self) -> Result<(), RuntimeCoreError> {
         let Some(room) = self.current_room.as_mut() else {
             return Err(RuntimeCoreError::NoRooms);
         };
 
-        for instance in &mut room.instances {
-            if !instance.alive || is_player_instance(instance) {
+        for (instance_index, instance) in room.instances.iter_mut().enumerate() {
+            if !instance.is_active() || is_player_instance(instance) {
                 continue;
             }
 
@@ -42,7 +66,9 @@ impl RuntimeCore {
             apply_gm_motion_vars(instance);
             instance.x += instance.hspeed;
             instance.y += instance.vspeed;
-            crate::path::advance_path(instance, &self.package.resources.paths);
+            if crate::path::advance_path(instance, &self.package.resources.paths).ended {
+                self.path_ended_instance_indices.push(instance_index);
+            }
         }
 
         Ok(())
@@ -58,6 +84,10 @@ impl RuntimeCore {
     ) -> Result<(), RuntimeCoreError> {
         let enable_builtin_jump = mode == PlayerStepMode::BuiltinPlatformer;
         if self.death_waiting_for_restart {
+            return Ok(());
+        }
+
+        if self.advance_player_path()? {
             return Ok(());
         }
 
@@ -130,7 +160,7 @@ impl RuntimeCore {
             &room.instances,
             Some(player_snapshot.runtime_id),
             movement_padding,
-            |instance| instance.alive && instance.solid,
+            |instance| instance.is_active() && instance.solid,
         );
         let room = self
             .current_room
@@ -143,10 +173,6 @@ impl RuntimeCore {
 
         player.previous_x = player.x;
         player.previous_y = player.y;
-
-        if crate::path::advance_path(player, &self.package.resources.paths) {
-            return Ok(());
-        }
 
         match (left_pressed, right_pressed) {
             (true, false) => player.facing_left = true,
@@ -271,7 +297,7 @@ impl RuntimeCore {
         let Some(player) = room
             .instances
             .iter()
-            .find(|instance| instance.alive && is_player_instance(instance))
+            .find(|instance| instance.is_active() && is_player_instance(instance))
         else {
             return Ok(());
         };
@@ -282,7 +308,7 @@ impl RuntimeCore {
             &room.instances,
             Some(player.runtime_id),
             2.0,
-            |instance| instance.alive && instance.hazard,
+            |instance| instance.is_active() && instance.hazard,
         );
         if !collides_at(
             player,
@@ -300,7 +326,7 @@ impl RuntimeCore {
             &room.instances,
             Some(player.runtime_id),
             2.0,
-            |instance| instance.alive && instance.solid,
+            |instance| instance.is_active() && instance.solid,
         );
         if final_solid_contact_shadows_hazard(player, &hazards, &solids) {
             return Ok(());

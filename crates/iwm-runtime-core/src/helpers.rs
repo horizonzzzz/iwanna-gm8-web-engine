@@ -16,7 +16,9 @@ pub(crate) fn is_preferred_player_name(name: &str) -> bool {
 }
 
 pub(crate) fn is_player_instance(instance: &RuntimeInstance) -> bool {
-    instance.player_candidate && instance.alive && is_preferred_player_name(&instance.object_name)
+    instance.player_candidate
+        && instance.is_active()
+        && is_preferred_player_name(&instance.object_name)
 }
 
 pub(crate) fn bounds_at(instance: &RuntimeInstance, x: f64, y: f64) -> (i32, i32, i32, i32) {
@@ -89,7 +91,7 @@ where
 {
     let (x, y) = position;
     let (other_x, other_y) = other_position;
-    if !other.alive || ignore_runtime_id == Some(other.runtime_id) || !predicate(other) {
+    if !other.is_active() || ignore_runtime_id == Some(other.runtime_id) || !predicate(other) {
         return false;
     }
 
@@ -316,7 +318,7 @@ pub(crate) fn adjusted_spawn_for_player(
     let solids = room
         .instances
         .iter()
-        .filter(|instance| instance.alive && instance.solid)
+        .filter(|instance| instance.is_active() && instance.solid)
         .cloned()
         .collect::<Vec<_>>();
 

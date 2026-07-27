@@ -56,6 +56,142 @@ fn creation_code_path_start_initializes_and_moves_instance_on_tick() {
 }
 
 #[test]
+fn path_endpoint_dispatches_end_of_path_event_even_when_reversing() {
+    let mut package = sample_package();
+    package.resources.paths.push(PathResource {
+        id: 5,
+        name: "pathShort".into(),
+        smooth: false,
+        precision: 4,
+        closed: false,
+        points: vec![
+            PathPointResource {
+                x: 0.0,
+                y: 0.0,
+                speed: 100.0,
+            },
+            PathPointResource {
+                x: 1.0,
+                y: 0.0,
+                speed: 100.0,
+            },
+        ],
+    });
+    let player_object = package
+        .objects
+        .iter_mut()
+        .find(|object| object.name == "obj_player")
+        .unwrap();
+    player_object
+        .events
+        .push(iwm_runtime_model::ObjectEventEntry {
+            event_type: 7,
+            sub_event: 8,
+            event_tag: "other:end-of-path".into(),
+            block_id: "object:0:event:7:8".into(),
+            action_count: 1,
+        });
+    append_lowered_entry(
+        &mut package,
+        "object:0:event:7:8".into(),
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::MemberAccess {
+                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                member: "path_ended".into(),
+            },
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: "<".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("path_index".into())),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+            },
+            then_branch: vec![LoweredLogicStatement::FunctionCall {
+                name: "path_start".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(5.0),
+                    LoweredLogicExpr::LiteralNumber(2.0),
+                    LoweredLogicExpr::LiteralNumber(3.0),
+                    LoweredLogicExpr::LiteralBool(false),
+                ],
+            }],
+            else_branch: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        core.globals.get("global.path_ended"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    let player = player(&core);
+    assert_eq!(
+        player.vars.get("path_index"),
+        Some(&RuntimeValue::Number(5.0))
+    );
+    assert_eq!(
+        player.vars.get("path_speed"),
+        Some(&RuntimeValue::Number(-2.0))
+    );
+}
+
+#[test]
+fn reversed_path_stop_finishes_at_the_start_point() {
+    let mut package = sample_package();
+    package.resources.paths.push(PathResource {
+        id: 6,
+        name: "pathReverseStop".into(),
+        smooth: false,
+        precision: 4,
+        closed: false,
+        points: vec![
+            PathPointResource {
+                x: 0.0,
+                y: 0.0,
+                speed: 100.0,
+            },
+            PathPointResource {
+                x: 1.0,
+                y: 0.0,
+                speed: 100.0,
+            },
+        ],
+    });
+    package.rooms[0].instances[1].creation_block_id = Some("instance:1:create".into());
+    append_lowered_entry(
+        &mut package,
+        "instance:1:create".into(),
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "path_start".into(),
+            args: vec![
+                LoweredLogicExpr::LiteralNumber(6.0),
+                LoweredLogicExpr::LiteralNumber(-2.0),
+                LoweredLogicExpr::LiteralNumber(0.0),
+                LoweredLogicExpr::LiteralBool(false),
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let initial_x = core.current_room().unwrap().instances[1].x;
+    core.tick(&mut host()).unwrap();
+
+    let instance = &core.current_room().unwrap().instances[1];
+    assert_eq!(instance.x, initial_x);
+    assert_eq!(
+        instance.vars.get("path_index"),
+        Some(&RuntimeValue::Number(-1.0))
+    );
+}
+
+#[test]
 fn core_applies_lowered_create_assignments_to_player_vars_and_movement() {
     let mut package = sample_package();
     package.lowered_logic = Some(crate::LoweredLogicFile {

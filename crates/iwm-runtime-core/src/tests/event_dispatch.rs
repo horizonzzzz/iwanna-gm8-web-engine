@@ -1,4 +1,4 @@
-use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeValue};
+use crate::{LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimePackage, RuntimeValue};
 use iwm_runtime_host::{ButtonState, RuntimeButton};
 use iwm_runtime_model::{
     ObjectDefinition, ObjectEventEntry, RoomInstancePlacement, SpriteCollisionMask,
@@ -7,7 +7,7 @@ use iwm_runtime_model::{
 use super::support::{
     add_alarm_block, add_collision_block, add_create_block, add_keyboard_block,
     add_keyboard_press_block, add_keyboard_release_block, add_step_block, append_lowered_entry,
-    host, sample_package,
+    host, player, sample_package,
 };
 use crate::event_dispatch::{
     collision_event_target_object_ids, object_event_block_ids,
@@ -15,6 +15,279 @@ use crate::event_dispatch::{
     RuntimeEventSelector,
 };
 use crate::tick_context::{RuntimeObjectIndex, RuntimeObjectQueryScratch};
+
+#[test]
+fn core_dispatches_begin_step_collision_and_end_step_in_order() {
+    let mut package = sample_package();
+    package.rooms[0].instances[1].x = 12;
+    package.rooms[0].instances[1].y = 24;
+    add_player_event_block(&mut package, 3, 1, "step:begin", vec![phase_digit(1.0)]);
+    add_step_block(&mut package, vec![phase_digit(2.0)]);
+    add_collision_block(&mut package, 1, vec![phase_digit(3.0)]);
+    add_player_event_block(&mut package, 3, 2, "step:end", vec![phase_digit(4.0)]);
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    core.tick(&mut host()).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("event_order"),
+        Some(&RuntimeValue::Number(1234.0))
+    );
+}
+
+#[test]
+fn core_dispatches_boundary_event_when_bbox_crosses_room_edge() {
+    let mut package = sample_package();
+    add_player_event_block(
+        &mut package,
+        7,
+        1,
+        "other:boundary",
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("boundary_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    core.current_room.as_mut().unwrap().instances[0].x = -1.0;
+    core.tick(&mut host()).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("boundary_hit"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn local_mouse_press_requires_hit_but_global_press_does_not() {
+    let mut package = sample_package();
+    add_player_event_block(
+        &mut package,
+        6,
+        4,
+        "mouse:left-pressed",
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("local_mouse_press".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+    add_player_event_block(
+        &mut package,
+        6,
+        53,
+        "mouse:global-left-pressed",
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("global_mouse_press".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_mouse_position((300, 200));
+    host.input.set_button_state(
+        RuntimeButton::Mouse(0),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("local_mouse_press"), None);
+    assert_eq!(
+        player.vars.get("global_mouse_press"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn key_release_dispatches_before_mouse_events() {
+    let mut package = sample_package();
+    add_keyboard_release_block(&mut package, 65, vec![phase_digit(1.0)]);
+    add_player_event_block(
+        &mut package,
+        6,
+        53,
+        "mouse:global-left-pressed",
+        vec![phase_digit(2.0)],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_button_state(
+        RuntimeButton::Keyboard(65),
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: true,
+        },
+    );
+    host.input.set_button_state(
+        RuntimeButton::Mouse(0),
+        ButtonState {
+            pressed: true,
+            just_pressed: true,
+            just_released: false,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        player(&core).vars.get("event_order"),
+        Some(&RuntimeValue::Number(12.0))
+    );
+}
+
+#[test]
+fn local_mouse_events_dispatch_before_global_events_for_other_buttons() {
+    let mut package = sample_package();
+    add_player_event_block(&mut package, 6, 1, "mouse:right", vec![phase_digit(1.0)]);
+    add_player_event_block(
+        &mut package,
+        6,
+        50,
+        "mouse:global-left",
+        vec![phase_digit(2.0)],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    let (x, y) = {
+        let player = player(&core);
+        (player.x.round() as i32, player.y.round() as i32)
+    };
+    host.input.set_mouse_position((x, y));
+    for button in [0, 1] {
+        host.input.set_button_state(
+            RuntimeButton::Mouse(button),
+            ButtonState {
+                pressed: true,
+                just_pressed: false,
+                just_released: false,
+            },
+        );
+    }
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        player(&core).vars.get("event_order"),
+        Some(&RuntimeValue::Number(12.0))
+    );
+}
+
+#[test]
+fn local_mouse_press_and_release_use_precise_edge_states() {
+    let mut package = sample_package();
+    add_player_event_block(
+        &mut package,
+        6,
+        4,
+        "mouse:left-pressed",
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("mouse_press".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+    add_player_event_block(
+        &mut package,
+        6,
+        7,
+        "mouse:left-released",
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("mouse_release".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_mouse_position((12, 24));
+    host.input.set_button_state(
+        RuntimeButton::Mouse(0),
+        ButtonState {
+            pressed: false,
+            just_pressed: false,
+            just_released: true,
+        },
+    );
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(player.vars.get("mouse_press"), None);
+    assert_eq!(
+        player.vars.get("mouse_release"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
+fn step_event_reads_mouse_position_globals() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("seen_mouse_x".into()),
+                value: LoweredLogicExpr::Identifier("mouse_x".into()),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("seen_mouse_y".into()),
+                value: LoweredLogicExpr::Identifier("mouse_y".into()),
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.input.set_mouse_position((91, 37));
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.player_candidate)
+        .unwrap();
+    assert_eq!(
+        player.vars.get("seen_mouse_x"),
+        Some(&RuntimeValue::Number(91.0))
+    );
+    assert_eq!(
+        player.vars.get("seen_mouse_y"),
+        Some(&RuntimeValue::Number(37.0))
+    );
+}
 
 #[test]
 fn core_dispatches_held_keyboard_event_blocks() {
@@ -1504,6 +1777,39 @@ fn right_spike_mask(size: u32) -> SpriteCollisionMask {
         bbox_top: 0,
         bbox_bottom: size - 1,
         data,
+    }
+}
+
+fn add_player_event_block(
+    package: &mut RuntimePackage,
+    event_type: usize,
+    sub_event: u32,
+    event_tag: &str,
+    statements: Vec<LoweredLogicStatement>,
+) {
+    let block_id = format!("test:object:0:event:{event_type}:{sub_event}");
+    package.objects[0].events.push(ObjectEventEntry {
+        event_type,
+        sub_event,
+        event_tag: event_tag.into(),
+        block_id: block_id.clone(),
+        action_count: 0,
+    });
+    append_lowered_entry(package, block_id, statements);
+}
+
+fn phase_digit(digit: f64) -> LoweredLogicStatement {
+    LoweredLogicStatement::Assignment {
+        target: LoweredLogicExpr::Identifier("event_order".into()),
+        value: LoweredLogicExpr::BinaryExpr {
+            op: "+".into(),
+            left: Box::new(LoweredLogicExpr::BinaryExpr {
+                op: "*".into(),
+                left: Box::new(LoweredLogicExpr::Identifier("event_order".into())),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(10.0)),
+            }),
+            right: Box::new(LoweredLogicExpr::LiteralNumber(digit)),
+        },
     }
 }
 

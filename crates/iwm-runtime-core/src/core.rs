@@ -7,14 +7,14 @@ use iwm_runtime_host::{ButtonState, RuntimeButton, RuntimeHost};
 use iwm_runtime_model::RoomDefinition;
 
 use crate::event_dispatch::{
-    event_owner_id_for_block_id, object_event_block_ids, runtime_event_dispatch_tables,
-    runtime_instance_indices_by_object_id_from_instances, RuntimeCollisionSpatialIndex,
-    RuntimeEventDispatchTables, RuntimeEventSelector,
+    event_owner_id_for_block_id, event_selector_parts, object_event_block_ids,
+    runtime_event_dispatch_tables, runtime_instance_indices_by_object_id_from_instances,
+    RuntimeCollisionSpatialIndex, RuntimeEventDispatchTables, RuntimeEventSelector,
 };
 use crate::helpers::{
     as_number, bounds_at, collides_at, collides_with_instances_at, is_player_instance,
 };
-use crate::logic::{RuntimeBinaryFileState, RuntimeSparseInstanceOverlay};
+use crate::logic::{instance_contains_point, RuntimeBinaryFileState, RuntimeSparseInstanceOverlay};
 use crate::tick_context::{RuntimeCollisionHit, RuntimeTickContext};
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCoreError,
@@ -77,6 +77,7 @@ pub struct RuntimeCore {
     /// stop exactly these so a death jingle is cut on R while looping BGM
     /// survives the reset (GM8 keeps all sounds across game_restart).
     pub(crate) active_one_shot_sounds: HashSet<i32>,
+    pub(crate) path_ended_instance_indices: Vec<usize>,
 }
 
 impl RuntimeCore {
@@ -179,6 +180,7 @@ impl RuntimeCore {
             tick_context: RuntimeTickContext::default(),
             random_state: Cell::new(0x4d59_5df4_d0f3_3173),
             active_one_shot_sounds: HashSet::new(),
+            path_ended_instance_indices: Vec::new(),
         };
 
         core.cached_room_order = core.runtime_room_order();
@@ -288,7 +290,7 @@ impl RuntimeCore {
                 let solids = room
                     .instances
                     .iter()
-                    .filter(|instance| instance.alive && instance.solid)
+                    .filter(|instance| instance.is_active() && instance.solid)
                     .cloned()
                     .collect::<Vec<_>>();
                 room.instances
@@ -365,7 +367,7 @@ impl RuntimeCore {
 
         let mut calls = Vec::new();
         for (instance_idx, instance) in room.instances.iter().enumerate() {
-            if !instance.alive {
+            if !instance.is_active() {
                 continue;
             }
             let Some(create_entries) = self.cached_create_event_entries.get(&instance.object_id)
@@ -429,6 +431,11 @@ impl RuntimeCore {
         let right = self.bound_button_state(host, "global.rightbutton", 0x27);
         let mut jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
         let restart = self.bound_restart_button_state(host);
+        let (mouse_x, mouse_y) = host.mouse_position();
+        self.globals
+            .insert("mouse_x".into(), RuntimeValue::Number(mouse_x as f64));
+        self.globals
+            .insert("mouse_y".into(), RuntimeValue::Number(mouse_y as f64));
         self.update_jump_input_trace(host, jump);
 
         self.tick += 1;
@@ -443,6 +450,11 @@ impl RuntimeCore {
         }
         self.room_needs_first_render_settle = false;
         tick_phases.view_sync_nanos += mark_phase_elapsed(host, &mut phase_start);
+
+        self.execute_event_blocks(host, RuntimeEventSelector::StepBegin)?;
+        if self.has_pending_scene_change() {
+            self.apply_pending_room_change(host)?;
+        }
 
         self.process_timelines(host)?;
         if self.has_pending_scene_change() {
@@ -463,6 +475,7 @@ impl RuntimeCore {
             );
             tick_phases.step_events_nanos += mark_phase_elapsed(host, &mut phase_start);
         } else {
+            self.path_ended_instance_indices.clear();
             let step_result = self.execute_lowered_step_events(host)?;
             tick_phases.step_events_nanos += mark_phase_elapsed(host, &mut phase_start);
 
@@ -501,19 +514,25 @@ impl RuntimeCore {
             if let Some(step_mode) = step_mode {
                 jump = self.bound_button_state(host, "global.jumpbutton", 0x20);
                 self.step_player(host, left.pressed, right.pressed, jump, step_mode)?;
+            } else {
+                self.advance_player_path()?;
             }
             tick_phases.player_movement_nanos += mark_phase_elapsed(host, &mut phase_start);
 
             self.step_non_player_instances()?;
             tick_phases.player_movement_nanos += mark_phase_elapsed(host, &mut phase_start);
+            self.dispatch_path_end_events(host)?;
         }
 
         self.dispatch_outside_room_events(host)?;
+        self.dispatch_boundary_events(host)?;
 
         self.dispatch_collision_events(host)?;
         tick_phases.collision_events_nanos += mark_phase_elapsed(host, &mut phase_start);
 
         self.detect_player_hazard_after_collision_events(host)?;
+
+        self.execute_event_blocks(host, RuntimeEventSelector::StepEnd)?;
 
         // Dispatch alarm events (countdown alarm state)
         self.process_alarm_countdowns(host)?;
@@ -545,6 +564,8 @@ impl RuntimeCore {
                 }
             }
         }
+
+        self.dispatch_mouse_events(host)?;
 
         if restart.just_pressed && !self.has_pending_scene_change() {
             let current_room_id = self
@@ -603,6 +624,11 @@ impl RuntimeCore {
         }
 
         let button_states = button_states_without_transitions(host);
+        self.execute_event_blocks(host, RuntimeEventSelector::StepBegin)?;
+        if self.has_pending_scene_change() {
+            self.apply_pending_room_change(host)?;
+            return Ok(());
+        }
         let step_result =
             self.execute_lowered_step_events_with_button_states(host, &button_states)?;
         self.sync_current_room_views_from_globals();
@@ -618,6 +644,12 @@ impl RuntimeCore {
         }
 
         self.dispatch_collision_events(host)?;
+        if self.has_pending_scene_change() {
+            self.apply_pending_room_change(host)?;
+            return Ok(());
+        }
+
+        self.execute_event_blocks(host, RuntimeEventSelector::StepEnd)?;
         if self.has_pending_scene_change() {
             self.apply_pending_room_change(host)?;
             return Ok(());
@@ -647,7 +679,7 @@ impl RuntimeCore {
             .instances
             .iter_mut()
             .enumerate()
-            .filter(|(_, instance)| instance.alive)
+            .filter(|(_, instance)| instance.is_active())
         {
             let sprite_id = instance
                 .vars
@@ -714,7 +746,7 @@ impl RuntimeCore {
                 .current_room
                 .as_ref()
                 .and_then(|room| room.instances.get(instance_idx))
-                .filter(|instance| instance.alive)
+                .filter(|instance| instance.is_active())
             else {
                 continue;
             };
@@ -877,7 +909,7 @@ impl RuntimeCore {
                 room.instances
                     .iter()
                     .enumerate()
-                    .filter_map(|(index, instance)| instance.alive.then_some(index))
+                    .filter_map(|(index, instance)| instance.is_active().then_some(index))
                     .collect::<Vec<_>>()
             })
             .ok_or(RuntimeCoreError::NoRooms)?;
@@ -928,7 +960,7 @@ impl RuntimeCore {
             room.instances
                 .iter()
                 .enumerate()
-                .filter(|(_, i)| i.alive)
+                .filter(|(_, i)| i.is_active())
                 .filter_map(|(idx, instance)| {
                     self.cached_entry_indices_for_selector(instance.object_id, &selector)
                         .map(|entry_indices| (idx, entry_indices.to_vec()))
@@ -962,7 +994,7 @@ impl RuntimeCore {
             room.instances
                 .iter()
                 .enumerate()
-                .filter(|(_, instance)| instance.alive)
+                .filter(|(_, instance)| instance.is_active())
                 .filter_map(|(instance_index, instance)| {
                     let running = instance
                         .vars
@@ -1072,7 +1104,7 @@ impl RuntimeCore {
             room.instances
                 .iter()
                 .enumerate()
-                .filter(|(_, instance)| instance.alive)
+                .filter(|(_, instance)| instance.is_active())
                 .filter_map(|(instance_index, instance)| {
                     let (left, top, right, bottom) = bounds_at(instance, instance.x, instance.y);
                     let outside = right < 0
@@ -1095,6 +1127,173 @@ impl RuntimeCore {
                 None,
                 selector.clone(),
                 "other:outside".into(),
+                None,
+            );
+            if self.has_pending_scene_change() {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn dispatch_boundary_events<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+    ) -> Result<(), RuntimeCoreError> {
+        let selector = RuntimeEventSelector::OtherBoundary;
+        let lookups = {
+            let Some(room) = self.current_room.as_ref() else {
+                return Err(RuntimeCoreError::NoRooms);
+            };
+            room.instances
+                .iter()
+                .enumerate()
+                .filter(|(_, instance)| instance.is_active())
+                .filter_map(|(instance_index, instance)| {
+                    let (left, top, right, bottom) = bounds_at(instance, instance.x, instance.y);
+                    let intersects = left < 0
+                        || top < 0
+                        || right > room.width as i32
+                        || bottom > room.height as i32;
+                    if !intersects {
+                        return None;
+                    }
+                    self.cached_entry_indices_for_selector(instance.object_id, &selector)
+                        .map(|entries| (instance_index, entries.to_vec()))
+                })
+                .collect::<Vec<_>>()
+        };
+        for (instance_index, entry_indices) in lookups {
+            self.apply_event_entry_indices_to_instance(
+                host,
+                instance_index,
+                &entry_indices,
+                None,
+                selector.clone(),
+                "other:boundary".into(),
+                None,
+            );
+            if self.has_pending_scene_change() {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn dispatch_mouse_events<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+    ) -> Result<(), RuntimeCoreError> {
+        let mut states = [ButtonState::default(); 3];
+        for (button, state) in host.active_buttons() {
+            if let RuntimeButton::Mouse(button @ 0..=2) = button {
+                states[button as usize] = state;
+            }
+        }
+        for global in [false, true] {
+            for (pressed, released) in [(false, false), (true, false), (false, true)] {
+                for (button, state) in states.iter().enumerate() {
+                    let dispatch = if pressed {
+                        state.just_pressed
+                    } else if released {
+                        state.just_released
+                    } else {
+                        state.pressed
+                    };
+                    if dispatch {
+                        self.dispatch_mouse_event(host, button as u8, global, pressed, released)?;
+                    }
+                    if self.has_pending_scene_change() {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn dispatch_mouse_event<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+        button: u8,
+        global: bool,
+        pressed: bool,
+        released: bool,
+    ) -> Result<(), RuntimeCoreError> {
+        let selector = if pressed {
+            RuntimeEventSelector::MousePressed { button, global }
+        } else if released {
+            RuntimeEventSelector::MouseReleased { button, global }
+        } else {
+            RuntimeEventSelector::MouseHeld { button, global }
+        };
+        let event_tag = selector_event_tag(&selector);
+        let (mouse_x, mouse_y) = host.mouse_position();
+        let lookups = {
+            let Some(room) = self.current_room.as_ref() else {
+                return Err(RuntimeCoreError::NoRooms);
+            };
+            room.instances
+                .iter()
+                .enumerate()
+                .filter(|(_, instance)| instance.is_active())
+                .filter(|(_, instance)| {
+                    global || instance_contains_point(instance, mouse_x, mouse_y)
+                })
+                .filter_map(|(instance_index, instance)| {
+                    self.cached_entry_indices_for_selector(instance.object_id, &selector)
+                        .map(|entries| (instance_index, entries.to_vec()))
+                })
+                .collect::<Vec<_>>()
+        };
+        for (instance_index, entry_indices) in lookups {
+            self.apply_event_entry_indices_to_instance(
+                host,
+                instance_index,
+                &entry_indices,
+                None,
+                selector.clone(),
+                event_tag.clone(),
+                None,
+            );
+            if self.has_pending_scene_change() {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn dispatch_path_end_events<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+    ) -> Result<(), RuntimeCoreError> {
+        let selector = RuntimeEventSelector::OtherEndOfPath;
+        let indices = std::mem::take(&mut self.path_ended_instance_indices);
+        for instance_index in indices {
+            let Some((alive, object_id)) = self
+                .current_room
+                .as_ref()
+                .and_then(|room| room.instances.get(instance_index))
+                .map(|instance| (instance.is_active(), instance.object_id))
+            else {
+                continue;
+            };
+            if !alive {
+                continue;
+            }
+            let Some(entry_indices) = self
+                .cached_entry_indices_for_selector(object_id, &selector)
+                .map(<[usize]>::to_vec)
+            else {
+                continue;
+            };
+            self.apply_event_entry_indices_to_instance(
+                host,
+                instance_index,
+                &entry_indices,
+                None,
+                selector.clone(),
+                "other:end-of-path".into(),
                 None,
             );
             if self.has_pending_scene_change() {
@@ -1240,6 +1439,7 @@ impl RuntimeCore {
                 let mut with_target_indices = Vec::new();
                 let mut statement_env = crate::logic::RuntimeStatementEnvironment {
                     script_entries,
+                    create_event_entries: &self.cached_create_event_entries,
                     sound_index: &self.sound_index,
                     globals: &mut self.globals,
                     room_speed: &mut current_room_speed,
@@ -1328,7 +1528,7 @@ impl RuntimeCore {
             room.instances
                 .iter()
                 .enumerate()
-                .filter(|(_, i)| i.alive)
+                .filter(|(_, i)| i.is_active())
                 .flat_map(|(idx, instance)| {
                     instance.vars.iter().filter_map(move |(key, value)| {
                         match (parse_alarm_slot(key), value) {
@@ -1406,7 +1606,7 @@ impl RuntimeCore {
             tick_context.clear_collision_hits();
             tick_context.rebuild_collision_spatial_index(room);
             for (instance_index, instance) in room.instances.iter().enumerate() {
-                if !instance.alive {
+                if !instance.is_active() {
                     continue;
                 }
                 let Some(target_object_ids) =
@@ -1480,7 +1680,9 @@ impl RuntimeCore {
                 {
                     continue;
                 }
-                if !room.instances[hit.instance_idx].alive || !room.instances[hit.other_idx].alive {
+                if !room.instances[hit.instance_idx].is_active()
+                    || !room.instances[hit.other_idx].is_active()
+                {
                     continue;
                 }
                 {
@@ -1633,13 +1835,13 @@ impl RuntimeCore {
                 let mut still_overlapping = false;
                 if let Some(room) = self.current_room.as_mut() {
                     if let Some(instance) = room.instances.get_mut(hit.instance_idx) {
-                        if instance.alive {
+                        if instance.is_active() {
                             instance.x += instance.hspeed;
                             instance.y += instance.vspeed;
                         }
                     }
                     if let Some(other) = room.instances.get_mut(hit.other_idx) {
-                        if other.alive {
+                        if other.is_active() {
                             other.x += other.hspeed;
                             other.y += other.vspeed;
                         }
@@ -1648,7 +1850,9 @@ impl RuntimeCore {
                         room.instances.get(hit.instance_idx),
                         room.instances.get(hit.other_idx),
                     ) {
-                        (Some(instance), Some(other)) if instance.alive && other.alive => {
+                        (Some(instance), Some(other))
+                            if instance.is_active() && other.is_active() =>
+                        {
                             collides_at(
                                 instance,
                                 instance.x,
@@ -2010,6 +2214,7 @@ fn is_host_file_function(name: &str) -> bool {
             | "file_bin_open"
             | "file_bin_read_byte"
             | "file_bin_write_byte"
+            | "file_bin_seek"
             | "file_bin_close"
             | "file_delete"
     )
@@ -2027,36 +2232,7 @@ fn button_states_without_transitions<H: RuntimeHost>(
 }
 
 fn selector_event_tag(selector: &RuntimeEventSelector) -> String {
-    match selector {
-        RuntimeEventSelector::Create => "create".into(),
-        RuntimeEventSelector::Step => "step".into(),
-        RuntimeEventSelector::Draw => "draw".into(),
-        RuntimeEventSelector::Destroy => "destroy".into(),
-        RuntimeEventSelector::Alarm(slot) => format!("alarm:{slot}"),
-        RuntimeEventSelector::KeyboardHeld(key) => {
-            format!("keyboard:{}", format_selector_key_name(*key))
-        }
-        RuntimeEventSelector::KeyboardPressed(key) => {
-            format!("keypress:{}", format_selector_key_name(*key))
-        }
-        RuntimeEventSelector::KeyboardReleased(key) => {
-            format!("keyrelease:{}", format_selector_key_name(*key))
-        }
-        RuntimeEventSelector::OtherAnimationEnd => "other:animation-end".into(),
-        RuntimeEventSelector::OtherRoomStart => "other:room-start".into(),
-        RuntimeEventSelector::OtherOutside => "other:outside".into(),
-        RuntimeEventSelector::Timeline => "timeline".into(),
-        RuntimeEventSelector::Collision { .. } => "collision".into(),
-    }
-}
-
-fn format_selector_key_name(sub_event: u16) -> String {
-    let key = sub_event as u8 as char;
-    if key.is_ascii_alphanumeric() {
-        key.to_ascii_lowercase().to_string()
-    } else {
-        format!("0x{:02x}", sub_event as u8)
-    }
+    event_selector_parts(selector).2
 }
 
 fn mark_phase_elapsed<H: RuntimeHost>(host: &H, phase_start: &mut Option<u128>) -> u64 {

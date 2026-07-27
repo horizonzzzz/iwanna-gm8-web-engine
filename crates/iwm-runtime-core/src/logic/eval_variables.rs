@@ -94,6 +94,10 @@ pub(super) fn evaluate_identifier(
         }
     }
 
+    if name.eq_ignore_ascii_case("mouse_x") || name.eq_ignore_ascii_case("mouse_y") {
+        return globals.get(&name.to_ascii_lowercase()).cloned();
+    }
+
     if let Some(instance) = instance {
         if let Some(value) = instance.vars.get(name) {
             return Some(value.clone());
@@ -337,7 +341,7 @@ fn resolve_instance_receiver<'a>(
             {
                 return context
                     .room_instances_matching_object_ids(target_object_ids)
-                    .find(|(_, candidate)| candidate.alive)
+                    .find(|(_, candidate)| candidate.is_active())
                     .map(|(_, candidate)| candidate);
             }
         }

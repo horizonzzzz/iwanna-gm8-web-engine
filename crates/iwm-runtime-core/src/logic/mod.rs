@@ -36,6 +36,7 @@ pub(crate) use context::{
     RuntimeBinaryFileState, RuntimeEvalContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay,
     RuntimeViewValues, StepExecutionResult,
 };
+pub(crate) use eval_functions::instance_contains_point;
 pub(crate) use overlay::RuntimeSparseInstanceOverlay;
 pub(crate) use statement::{
     apply_runtime_statement, gm_colour_number_to_rgba, RuntimeDrawContext, RuntimeExecutionTrace,
@@ -78,7 +79,7 @@ impl RuntimeCore {
                 room.instances
                     .iter()
                     .enumerate()
-                    .filter(|(_, instance)| instance.alive)
+                    .filter(|(_, instance)| instance.is_active())
                     .filter_map(|(index, instance)| {
                         self.cached_dispatch_tables
                             .step_entry_indices_by_object_id
@@ -104,7 +105,7 @@ impl RuntimeCore {
             }) else {
                 continue;
             };
-            if !instance.alive {
+            if !instance.is_active() {
                 continue;
             }
             let is_player = crate::helpers::is_player_instance(&instance);
@@ -173,6 +174,7 @@ impl RuntimeCore {
                     tick_context.with_target_indices.clear();
                     let mut statement_env = RuntimeStatementEnvironment {
                         script_entries,
+                        create_event_entries: &self.cached_create_event_entries,
                         sound_index: &self.sound_index,
                         globals: &mut self.globals,
                         room_speed: &mut current_room_speed,
@@ -414,6 +416,7 @@ impl RuntimeCore {
                     for statement in &entry.statements {
                         let mut statement_env = RuntimeStatementEnvironment {
                             script_entries,
+                            create_event_entries: &self.cached_create_event_entries,
                             sound_index: &self.sound_index,
                             globals: &mut self.globals,
                             room_speed: &mut current_room_speed,

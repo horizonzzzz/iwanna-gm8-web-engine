@@ -81,6 +81,31 @@ pub(super) fn evaluate_irandom_call(
     Some(RuntimeValue::Number(value))
 }
 
+pub(super) fn evaluate_irandom_range_call(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let first = args
+        .first()
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?
+        .round();
+    let second = args
+        .get(1)
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?
+        .round();
+    let min = first.min(second);
+    let max = first.max(second);
+    let unit = next_random_unit(eval_context, instance, scope, min.to_bits() ^ max.to_bits());
+    Some(RuntimeValue::Number(
+        min + (unit * (max - min + 1.0)).floor(),
+    ))
+}
+
 pub(super) fn evaluate_choose_call(
     args: &[LoweredLogicExpr],
     instance: Option<&RuntimeInstance>,
@@ -126,6 +151,55 @@ pub(super) fn evaluate_point_direction(
         .to_degrees()
         .rem_euclid(360.0);
     Some(RuntimeValue::Number(direction))
+}
+
+pub(super) fn evaluate_point_distance(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let values = evaluate_number_args(args, 4, instance, globals, scope, eval_context)?;
+    Some(RuntimeValue::Number(
+        (values[2] - values[0]).hypot(values[3] - values[1]),
+    ))
+}
+
+pub(super) fn evaluate_lengthdir(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    y_axis: bool,
+) -> Option<RuntimeValue> {
+    let values = evaluate_number_args(args, 2, instance, globals, scope, eval_context)?;
+    let radians = values[1].to_radians();
+    Some(RuntimeValue::Number(if y_axis {
+        -radians.sin() * values[0]
+    } else {
+        radians.cos() * values[0]
+    }))
+}
+
+fn evaluate_number_args(
+    args: &[LoweredLogicExpr],
+    count: usize,
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<Vec<f64>> {
+    let values = args
+        .iter()
+        .take(count)
+        .map(|arg| {
+            evaluate_expr(arg, instance, globals, scope, eval_context)
+                .and_then(|value| as_number(&value))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    (values.len() == count).then_some(values)
 }
 
 pub(super) fn evaluate_keyboard_query(
@@ -275,7 +349,7 @@ pub(super) fn evaluate_instance_position(
     let hit = context
         .room_instances_matching_object_ids(&target_object_ids)
         .find(|(_, candidate)| {
-            candidate.alive && instance_contains_point(candidate, point_x, point_y)
+            candidate.is_active() && instance_contains_point(candidate, point_x, point_y)
         })
         .map(|(_, candidate)| candidate.instance_id as f64)
         .unwrap_or(-4.0);
@@ -286,7 +360,11 @@ pub(super) fn evaluate_instance_position(
 /// instance's bounding box, and additionally inside its precise mask when one is
 /// available. Marker objects such as `warpInvisible` have no mask, so the bbox
 /// alone decides for them.
-fn instance_contains_point(instance: &RuntimeInstance, world_x: i32, world_y: i32) -> bool {
+pub(crate) fn instance_contains_point(
+    instance: &RuntimeInstance,
+    world_x: i32,
+    world_y: i32,
+) -> bool {
     let (left, top, right, bottom) = inclusive_bounds_at(instance);
     if world_x < left || world_x > right || world_y < top || world_y > bottom {
         return false;
@@ -305,7 +383,7 @@ pub(super) fn evaluate_instance_exists(
     let target_object_ids = instance_target_object_ids(args.first()?, context)?;
     let exists = context
         .room_instances_matching_object_ids(&target_object_ids)
-        .any(|(_, instance)| instance.alive);
+        .any(|(_, instance)| instance.is_active());
     Some(RuntimeValue::Bool(exists))
 }
 
@@ -315,6 +393,34 @@ pub(super) fn evaluate_instance_number(
 ) -> Option<RuntimeValue> {
     let mut scratch = RuntimeObjectQueryScratch::default();
     evaluate_instance_number_with_scratch(args, eval_context, &mut scratch)
+}
+
+pub(super) fn evaluate_instance_find(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let context = eval_context?;
+    let target_object_ids = instance_target_object_ids(args.first()?, context)?;
+    let index = args
+        .get(1)
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .and_then(|value| as_number(&value))?
+        .round();
+    if index < 0.0 {
+        return Some(RuntimeValue::Number(-4.0));
+    }
+    let hit = context
+        .room_instances_iter()
+        .filter(|(_, candidate)| {
+            candidate.is_active() && target_object_ids.contains(&candidate.object_id)
+        })
+        .nth(index as usize)
+        .map(|(_, candidate)| candidate.instance_id as f64)
+        .unwrap_or(-4.0);
+    Some(RuntimeValue::Number(hit))
 }
 
 fn horizontal_query_only_touches_supporting_top(
@@ -359,7 +465,7 @@ pub(super) fn evaluate_instance_number_with_scratch(
         .candidates()
         .iter()
         .filter_map(|&index| context.room_instance(index))
-        .filter(|instance| instance.alive)
+        .filter(|instance| instance.is_active())
         .count();
     Some(RuntimeValue::Number(count as f64))
 }
@@ -395,7 +501,7 @@ pub(super) fn evaluate_distance_to_object_with_scratch(
         .candidates()
         .iter()
         .filter_map(|&index| context.room_instance(index))
-        .filter(|candidate| candidate.alive && candidate.runtime_id != instance.runtime_id)
+        .filter(|candidate| candidate.is_active() && candidate.runtime_id != instance.runtime_id)
         .map(|candidate| instance_bbox_distance(instance, candidate))
         .fold(1_000_000.0, f64::min);
 
@@ -411,6 +517,65 @@ pub(super) fn evaluate_collision_line(
 ) -> Option<RuntimeValue> {
     let mut scratch = RuntimeObjectQueryScratch::default();
     evaluate_collision_line_with_scratch(args, instance, globals, scope, eval_context, &mut scratch)
+}
+
+pub(super) fn evaluate_collision_rectangle(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> Option<RuntimeValue> {
+    let mut scratch = RuntimeObjectQueryScratch::default();
+    evaluate_collision_rectangle_with_scratch(
+        args,
+        instance,
+        globals,
+        scope,
+        eval_context,
+        &mut scratch,
+    )
+}
+
+pub(super) fn evaluate_collision_rectangle_with_scratch(
+    args: &[LoweredLogicExpr],
+    instance: Option<&RuntimeInstance>,
+    globals: &HashMap<String, RuntimeValue>,
+    scope: Option<&RuntimeExecutionScope>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    scratch: &mut RuntimeObjectQueryScratch,
+) -> Option<RuntimeValue> {
+    let context = eval_context?;
+    let values = evaluate_number_args(args, 4, instance, globals, scope, eval_context)?;
+    let left = values[0].min(values[2]).round() as i32;
+    let top = values[1].min(values[3]).round() as i32;
+    let right = values[0].max(values[2]).round() as i32;
+    let bottom = values[1].max(values[3]).round() as i32;
+    let target_object_ids = instance_target_object_ids(args.get(4)?, context)?;
+    let precise = args
+        .get(5)
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .map(|value| is_truthy(Some(value)))
+        .unwrap_or(false);
+    let exclude_self = args
+        .get(6)
+        .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
+        .map(|value| is_truthy(Some(value)))
+        .unwrap_or(false);
+    let current_runtime_id = instance.map(|instance| instance.runtime_id);
+    context.write_room_instance_indices_matching_object_ids(&target_object_ids, scratch);
+    let hit = scratch
+        .candidates()
+        .iter()
+        .filter_map(|&index| context.room_instance(index))
+        .find(|candidate| {
+            candidate.is_active()
+                && (!exclude_self || current_runtime_id != Some(candidate.runtime_id))
+                && rectangle_intersects_instance(candidate, left, top, right, bottom, precise)
+        })
+        .map(|candidate| candidate.instance_id as f64)
+        .unwrap_or(-4.0);
+    Some(RuntimeValue::Number(hit))
 }
 
 pub(super) fn evaluate_collision_line_with_scratch(
@@ -462,7 +627,7 @@ pub(super) fn evaluate_collision_line_with_scratch(
         .iter()
         .filter_map(|&index| context.room_instance(index))
         .find(|candidate| {
-            candidate.alive
+            candidate.is_active()
                 && (!exclude_self || current_runtime_id != Some(candidate.runtime_id))
                 && line_intersects_instance(candidate, x1, y1, x2, y2, precise)
         })
@@ -525,6 +690,12 @@ fn instance_target_object_ids(
     context: &RuntimeEvalContext<'_>,
 ) -> Option<Vec<usize>> {
     match expr {
+        LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("all") => Some(
+            context
+                .room_instances_iter()
+                .map(|(_, instance)| instance.object_id)
+                .collect(),
+        ),
         LoweredLogicExpr::Identifier(name) => context
             .place_target_ids_by_name
             .get(&name.to_ascii_lowercase())
@@ -532,6 +703,12 @@ fn instance_target_object_ids(
         LoweredLogicExpr::LiteralNumber(number) if number.is_finite() && *number >= 0.0 => {
             Some(vec![number.round() as usize])
         }
+        LoweredLogicExpr::LiteralNumber(number) if *number == -3.0 => Some(
+            context
+                .room_instances_iter()
+                .map(|(_, instance)| instance.object_id)
+                .collect(),
+        ),
         _ => None,
     }
 }
@@ -592,6 +769,36 @@ fn line_intersects_instance(
         return true;
     }
     line_points(x1, y1, x2, y2).any(|(x, y)| instance_mask_contains_point(instance, x, y))
+}
+
+fn rectangle_intersects_instance(
+    instance: &RuntimeInstance,
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+    precise: bool,
+) -> bool {
+    let (instance_left, instance_top, instance_right, instance_bottom) =
+        inclusive_bounds_at(instance);
+    if left > instance_right
+        || right < instance_left
+        || top > instance_bottom
+        || bottom < instance_top
+    {
+        return false;
+    }
+    if !precise || instance.collision_masks.is_empty() {
+        return true;
+    }
+    for y in top.max(instance_top)..=bottom.min(instance_bottom) {
+        for x in left.max(instance_left)..=right.min(instance_right) {
+            if instance_mask_contains_point(instance, x, y) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn line_intersects_inclusive_rect(

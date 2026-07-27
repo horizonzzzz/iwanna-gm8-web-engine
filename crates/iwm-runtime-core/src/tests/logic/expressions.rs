@@ -996,6 +996,107 @@ fn core_executes_file_bin_write_and_read_byte_calls_against_host_files() {
 }
 
 #[test]
+fn core_reads_file_bin_byte_after_absolute_seek() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::VariableDeclaration {
+                names: vec!["f".into()],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("f".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "file_bin_open".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralText("save1".into()),
+                        LoweredLogicExpr::LiteralNumber(0.0),
+                    ],
+                },
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "file_bin_seek".into(),
+                args: vec![
+                    LoweredLogicExpr::Identifier("f".into()),
+                    LoweredLogicExpr::LiteralNumber(2.0),
+                ],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("seek_byte".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "file_bin_read_byte".into(),
+                    args: vec![LoweredLogicExpr::Identifier("f".into())],
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    host.files
+        .write_temp(std::path::Path::new("save1"), &[1, 2, 65])
+        .unwrap();
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        player_var(&core, "seek_byte"),
+        Some(&RuntimeValue::Number(65.0))
+    );
+    assert_no_runtime_blockers(&core);
+}
+
+#[test]
+fn core_writes_file_bin_byte_after_absolute_seek_with_zero_fill() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::VariableDeclaration {
+                names: vec!["f".into()],
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("f".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "file_bin_open".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralText("save1".into()),
+                        LoweredLogicExpr::LiteralNumber(1.0),
+                    ],
+                },
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "file_bin_seek".into(),
+                args: vec![
+                    LoweredLogicExpr::Identifier("f".into()),
+                    LoweredLogicExpr::LiteralNumber(10.0),
+                ],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "file_bin_write_byte".into(),
+                args: vec![
+                    LoweredLogicExpr::Identifier("f".into()),
+                    LoweredLogicExpr::LiteralNumber(65.0),
+                ],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "file_bin_close".into(),
+                args: vec![LoweredLogicExpr::Identifier("f".into())],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        host.files.read(std::path::Path::new("save1")).unwrap(),
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 65]
+    );
+    assert_no_runtime_blockers(&core);
+}
+
+#[test]
 fn core_evaluates_file_bin_read_byte_inside_binary_expressions() {
     let mut package = sample_package();
     add_step_block(
@@ -1411,6 +1512,103 @@ fn core_evaluates_collision_line_against_object_name_targets() {
         player.vars.get("line_hit"),
         Some(&RuntimeValue::Number(12.0))
     );
+}
+
+#[test]
+fn core_evaluates_collision_rectangle_and_geometry_helpers() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("rect_hit".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "collision_rectangle".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralNumber(40.0),
+                        LoweredLogicExpr::LiteralNumber(60.0),
+                        LoweredLogicExpr::LiteralNumber(64.0),
+                        LoweredLogicExpr::LiteralNumber(80.0),
+                        LoweredLogicExpr::Identifier("obj_marker".into()),
+                        LoweredLogicExpr::LiteralBool(false),
+                        LoweredLogicExpr::LiteralBool(true),
+                    ],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("distance".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "point_distance".into(),
+                    args: vec![0.0, 0.0, 3.0, 4.0]
+                        .into_iter()
+                        .map(LoweredLogicExpr::LiteralNumber)
+                        .collect(),
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("ldx".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "lengthdir_x".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralNumber(10.0),
+                        LoweredLogicExpr::LiteralNumber(0.0),
+                    ],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("ldy".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "lengthdir_y".into(),
+                    args: vec![
+                        LoweredLogicExpr::LiteralNumber(10.0),
+                        LoweredLogicExpr::LiteralNumber(90.0),
+                    ],
+                },
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("found".into()),
+                value: LoweredLogicExpr::Call {
+                    name: "instance_find".into(),
+                    args: vec![
+                        LoweredLogicExpr::Identifier("obj_marker".into()),
+                        LoweredLogicExpr::LiteralNumber(0.0),
+                    ],
+                },
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let marker = core
+            .current_room
+            .as_mut()
+            .unwrap()
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "obj_marker")
+            .unwrap();
+        marker.x = 48.0;
+        marker.y = 64.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = player(&core);
+    assert_eq!(
+        player.vars.get("rect_hit"),
+        Some(&RuntimeValue::Number(12.0))
+    );
+    assert_eq!(
+        player.vars.get("distance"),
+        Some(&RuntimeValue::Number(5.0))
+    );
+    assert_eq!(player.vars.get("ldx"), Some(&RuntimeValue::Number(10.0)));
+    assert!(
+        matches!(player.vars.get("ldy"), Some(RuntimeValue::Number(value)) if (*value + 10.0).abs() < 1e-10)
+    );
+    assert_eq!(player.vars.get("found"), Some(&RuntimeValue::Number(12.0)));
 }
 
 #[test]
@@ -1872,4 +2070,94 @@ fn core_instance_position_resolves_instance_and_member_at_point() {
     );
     assert_eq!(player_var(&core, "miss"), Some(&RuntimeValue::Number(-4.0)));
     assert_no_runtime_blockers(&core);
+}
+
+#[test]
+fn core_executes_gm8_movement_helpers() {
+    let mut package = sample_package();
+    package.rooms[0].instances[2].x = 64;
+    package.rooms[0].instances[2].y = 64;
+    package.objects[1]
+        .events
+        .push(iwm_runtime_model::ObjectEventEntry {
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            block_id: "object:1:event:3:0".into(),
+            action_count: 1,
+        });
+    append_lowered_entry(
+        &mut package,
+        "object:1:event:3:0".into(),
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "move_towards_point".into(),
+                args: vec![number(58.0), number(64.0), number(4.0)],
+            },
+            assign_var(
+                "towards_hspeed",
+                LoweredLogicExpr::Identifier("hspeed".into()),
+            ),
+            assign_var(
+                "towards_vspeed",
+                LoweredLogicExpr::Identifier("vspeed".into()),
+            ),
+            LoweredLogicStatement::FunctionCall {
+                name: "motion_add".into(),
+                args: vec![number(90.0), number(2.0)],
+            },
+            assign_var(
+                "added_hspeed",
+                LoweredLogicExpr::Identifier("hspeed".into()),
+            ),
+            assign_var(
+                "added_vspeed",
+                LoweredLogicExpr::Identifier("vspeed".into()),
+            ),
+            assign_var("x", number(-9.0)),
+            LoweredLogicStatement::FunctionCall {
+                name: "move_wrap".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralBool(true),
+                    LoweredLogicExpr::LiteralBool(false),
+                    number(8.0),
+                ],
+            },
+            assign_var("wrapped_x", LoweredLogicExpr::Identifier("x".into())),
+            assign_var("x", number(48.0)),
+            assign_var("y", number(64.0)),
+            assign_var("hspeed", number(2.0)),
+            assign_var("vspeed", number(0.0)),
+            LoweredLogicStatement::FunctionCall {
+                name: "move_bounce_solid".into(),
+                args: vec![number(0.0)],
+            },
+        ],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    core.tick(&mut host()).unwrap();
+    let marker = &core.current_room().unwrap().instances[1];
+    assert_eq!(
+        marker.vars.get("towards_hspeed"),
+        Some(&RuntimeValue::Number(4.0))
+    );
+    assert_eq!(
+        marker.vars.get("towards_vspeed"),
+        Some(&RuntimeValue::Number(0.0))
+    );
+    assert_eq!(
+        marker.vars.get("added_hspeed"),
+        Some(&RuntimeValue::Number(4.0))
+    );
+    assert_eq!(
+        marker.vars.get("added_vspeed"),
+        Some(&RuntimeValue::Number(-2.0))
+    );
+    assert_eq!(
+        marker.vars.get("wrapped_x"),
+        Some(&RuntimeValue::Number(328.0))
+    );
+    assert_eq!((marker.x, marker.y), (46.0, 64.0));
+    assert_eq!((marker.hspeed, marker.vspeed), (-2.0, 0.0));
 }

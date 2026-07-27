@@ -188,6 +188,7 @@ fn make_test_instance() -> RuntimeInstance {
         facing_left: false,
         visible: true,
         alive: true,
+        active: true,
         persistent: false,
         solid: false,
         hazard: false,

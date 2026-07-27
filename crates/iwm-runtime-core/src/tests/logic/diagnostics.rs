@@ -70,6 +70,36 @@ fn core_reports_unsupported_function_with_execution_context() {
 }
 
 #[test]
+fn core_handles_nonblocking_prompt_statements_without_runtime_blockers() {
+    let mut package = sample_package();
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::FunctionCall {
+                name: "show_message".into(),
+                args: vec![LoweredLogicExpr::LiteralText("Game Paused".into())],
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "get_integer".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralText("Answer".into()),
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                ],
+            },
+        ],
+    );
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert!(core.diagnostics().iter().any(|diagnostic| {
+        diagnostic.code == "runtime-show-message" && diagnostic.message.contains("Game Paused")
+    }));
+    assert_no_runtime_blockers(&core);
+}
+
+#[test]
 fn core_reports_unsupported_expression_function_with_execution_context() {
     let mut package = sample_package();
     add_step_block(

@@ -2,11 +2,12 @@ use std::collections::HashMap;
 
 use super::context::{RuntimeEvalContext, RuntimeExecutionScope};
 use super::eval_functions::{
-    evaluate_choose_call, evaluate_collision_line, evaluate_distance_to_object,
-    evaluate_instance_exists, evaluate_instance_number, evaluate_instance_place,
-    evaluate_instance_position, evaluate_irandom_call, evaluate_keyboard_query, evaluate_ord_call,
-    evaluate_place_query, evaluate_point_direction, evaluate_random_call,
-    evaluate_random_range_call,
+    evaluate_choose_call, evaluate_collision_line, evaluate_collision_rectangle,
+    evaluate_distance_to_object, evaluate_instance_exists, evaluate_instance_find,
+    evaluate_instance_number, evaluate_instance_place, evaluate_instance_position,
+    evaluate_irandom_call, evaluate_irandom_range_call, evaluate_keyboard_query,
+    evaluate_lengthdir, evaluate_ord_call, evaluate_place_query, evaluate_point_direction,
+    evaluate_point_distance, evaluate_random_call, evaluate_random_range_call,
 };
 pub(super) use super::eval_values::is_truthy;
 use super::eval_values::{eval_binary_expr, runtime_value_to_string_text};
@@ -100,6 +101,9 @@ pub(super) fn evaluate_expr(
             }
             "random" => evaluate_random_call(args, instance, globals, scope, eval_context),
             "irandom" => evaluate_irandom_call(args, instance, globals, scope, eval_context),
+            "irandom_range" => {
+                evaluate_irandom_range_call(args, instance, globals, scope, eval_context)
+            }
             "random_range" => {
                 evaluate_random_range_call(args, instance, globals, scope, eval_context)
             }
@@ -107,6 +111,13 @@ pub(super) fn evaluate_expr(
             "point_direction" => {
                 evaluate_point_direction(args, instance, globals, scope, eval_context)
             }
+            "point_distance" => {
+                evaluate_point_distance(args, instance, globals, scope, eval_context)
+            }
+            "lengthdir_x" => {
+                evaluate_lengthdir(args, instance, globals, scope, eval_context, false)
+            }
+            "lengthdir_y" => evaluate_lengthdir(args, instance, globals, scope, eval_context, true),
             "string" => args
                 .first()
                 .and_then(|arg| evaluate_expr(arg, instance, globals, scope, eval_context))
@@ -114,6 +125,7 @@ pub(super) fn evaluate_expr(
                 .map(RuntimeValue::Text),
             "instance_exists" => evaluate_instance_exists(args, eval_context),
             "instance_number" => evaluate_instance_number(args, eval_context),
+            "instance_find" => evaluate_instance_find(args, instance, globals, scope, eval_context),
             "instance_place" => {
                 evaluate_instance_place(args, instance, globals, scope, eval_context)
             }
@@ -125,6 +137,9 @@ pub(super) fn evaluate_expr(
             }
             "collision_line" => {
                 evaluate_collision_line(args, instance, globals, scope, eval_context)
+            }
+            "collision_rectangle" => {
+                evaluate_collision_rectangle(args, instance, globals, scope, eval_context)
             }
             "keyboard_check"
             | "keyboard_check_direct"
