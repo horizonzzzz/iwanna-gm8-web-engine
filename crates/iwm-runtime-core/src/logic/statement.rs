@@ -131,6 +131,63 @@ impl Default for RuntimeDrawContext {
     }
 }
 
+fn schedule_room_transition<H: RuntimeHost>(
+    value: &RuntimeValue,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) -> bool {
+    let Some(room_id) = runtime_value_to_room_id(value).filter(|room_id| {
+        eval_context
+            .map(|context| context.room_order.contains(room_id))
+            .unwrap_or(true)
+    }) else {
+        return false;
+    };
+
+    *env.pending_game_restart = false;
+    *env.pending_room_reset = false;
+    *env.pending_room_transition = Some(room_id);
+    true
+}
+
+fn assign_runtime_value_or_room_transition<H: RuntimeHost>(
+    target: &LoweredLogicExpr,
+    key: String,
+    value: RuntimeValue,
+    instance: &mut RuntimeInstance,
+    scope: &mut RuntimeExecutionScope,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) {
+    if matches!(target, LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("room") && !scope.is_local_key(name))
+    {
+        if !schedule_room_transition(&value, eval_context, env) {
+            record_host_diagnostic(
+                env.host,
+                env.diagnostics,
+                iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                "runtime-step-room-assignment-unresolved",
+                format!(
+                    "could not resolve room assignment target for {}",
+                    instance.object_name
+                ),
+            );
+        }
+        return;
+    }
+
+    assign_runtime_value(
+        key,
+        value,
+        instance,
+        env.globals,
+        scope,
+        Some(&mut *env.room_speed),
+        env.sprites,
+        env.sprite_index,
+    );
+}
+
 pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
     statement: &LoweredLogicStatement,
     instance: &mut RuntimeInstance,
@@ -168,15 +225,14 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     Some(scope),
                     eval_context,
                 ) {
-                    assign_runtime_value(
+                    assign_runtime_value_or_room_transition(
+                        target,
                         key,
                         value,
                         instance,
-                        env.globals,
                         scope,
-                        Some(&mut *env.room_speed),
-                        env.sprites,
-                        env.sprite_index,
+                        eval_context,
+                        env,
                     );
                 }
             }
@@ -326,7 +382,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
             }
             match name.as_str() {
                 "room_goto" => {
-                    if let Some(room_id) = args
+                    let transition_scheduled = args
                         .first()
                         .and_then(|arg| {
                             evaluate_with_diagnostics(
@@ -338,17 +394,9 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                                 instance,
                             )
                         })
-                        .and_then(|value| runtime_value_to_room_id(&value))
-                        .filter(|room_id| {
-                            eval_context
-                                .map(|context| context.room_order.contains(room_id))
-                                .unwrap_or(true)
-                        })
-                    {
-                        *env.pending_game_restart = false;
-                        *env.pending_room_reset = false;
-                        *env.pending_room_transition = Some(room_id);
-                    } else {
+                        .map(|value| schedule_room_transition(&value, eval_context, env))
+                        .unwrap_or(false);
+                    if !transition_scheduled {
                         record_host_diagnostic(
                             env.host,
                             env.diagnostics,
@@ -1726,15 +1774,14 @@ fn execute_assignment_expression<H: RuntimeHost>(
                     env,
                     instance,
                 ) {
-                    assign_runtime_value(
+                    assign_runtime_value_or_room_transition(
+                        left,
                         key,
                         value,
                         instance,
-                        env.globals,
                         scope,
-                        Some(&mut *env.room_speed),
-                        env.sprites,
-                        env.sprite_index,
+                        eval_context,
+                        env,
                     );
                 }
             }

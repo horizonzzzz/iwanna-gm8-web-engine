@@ -156,6 +156,26 @@ fn core_executes_lowered_step_room_goto_calls() {
 }
 
 #[test]
+fn core_executes_lowered_step_room_assignments() {
+    let mut package = sample_package();
+    package.rooms[0].instances[0].creation_block_id = None;
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("room".into()),
+            value: LoweredLogicExpr::LiteralNumber(9.0),
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(core.snapshot().room_id, Some(9));
+}
+
+#[test]
 fn lowered_script_continues_after_room_goto_before_transition_applies() {
     let mut package = sample_package();
     add_script_block(
