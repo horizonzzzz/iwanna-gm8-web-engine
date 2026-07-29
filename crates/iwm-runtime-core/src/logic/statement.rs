@@ -116,9 +116,9 @@ impl Default for RuntimeDrawContext {
     fn default() -> Self {
         Self {
             colour: Rgba8 {
-                r: 255,
-                g: 255,
-                b: 255,
+                r: 0,
+                g: 0,
+                b: 0,
                 a: 255,
             },
             align: "left".into(),

@@ -579,6 +579,14 @@ fn runtime_core_executes_draw_events_for_text_commands() {
         "object:8:event:8:0".into(),
         vec![
             LoweredLogicStatement::FunctionCall {
+                name: "draw_text".into(),
+                args: vec![
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::LiteralText("Default".into()),
+                ],
+            },
+            LoweredLogicStatement::FunctionCall {
                 name: "draw_set_color".into(),
                 args: vec![LoweredLogicExpr::Identifier("c_red".into())],
             },
@@ -626,6 +634,15 @@ fn runtime_core_executes_draw_events_for_text_commands() {
     core.render(&mut host).unwrap();
 
     let frame = host.renderer.submitted_frames.last().unwrap();
+    assert!(frame.commands.iter().any(|command| matches!(
+        command,
+        RuntimeDrawCommand::DrawText { text, colour, .. }
+            if text == "Default"
+                && colour.r == 0
+                && colour.g == 0
+                && colour.b == 0
+                && colour.a == 255
+    )));
     assert!(frame.commands.iter().any(|command| matches!(
         command,
         RuntimeDrawCommand::DrawText {
