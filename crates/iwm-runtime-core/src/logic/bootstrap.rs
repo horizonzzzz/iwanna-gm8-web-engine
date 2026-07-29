@@ -12,6 +12,7 @@ use super::eval_variables::{
 };
 use super::statement::runtime_values_equal;
 use crate::helpers::as_number;
+use crate::room_builder::next_runtime_instance_id;
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeInstance,
     RuntimeRoomState, RuntimeValue,
@@ -628,7 +629,9 @@ impl RuntimeCore {
         }
 
         let runtime_id = room_state.instances.len();
-        let Some(new_instance) = self.instantiate_runtime_object(object_id, runtime_id, x, y)
+        let instance_id = next_runtime_instance_id(&room_state.instances);
+        let Some(new_instance) =
+            self.instantiate_runtime_object(object_id, runtime_id, instance_id, x, y)
         else {
             return;
         };

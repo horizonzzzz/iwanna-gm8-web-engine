@@ -9,6 +9,7 @@ use super::eval::evaluate_expr;
 use super::eval_variables::instance_member_access;
 use super::statement::{evaluate_with_diagnostics, RuntimeStatementEnvironment};
 use crate::helpers::as_number;
+use crate::room_builder::next_runtime_instance_id;
 use crate::{LoweredLogicExpr, RuntimeInstance, RuntimeValue};
 
 pub(super) fn assign_runtime_member_reference<H: RuntimeHost>(
@@ -168,7 +169,9 @@ pub(super) fn runtime_instance_create_request(
         .room_instances
         .len()
         .saturating_add(pending_create_count);
-    let instance_id = -1 - runtime_id as i32;
+    let pending_instance_count = pending_create_count.min(i32::MAX as usize) as i32;
+    let instance_id =
+        next_runtime_instance_id(context.room_instances).saturating_add(pending_instance_count);
     Some(RuntimeInstanceCreateRequest {
         object_id,
         runtime_id,

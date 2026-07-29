@@ -1,6 +1,148 @@
 use super::*;
 
 #[test]
+fn vine_collision_rectangle_detects_a_runtime_created_player() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.rooms[0]
+        .instances
+        .retain(|instance| instance.object_id != 0);
+    package.objects.push(ObjectDefinition {
+        id: 6,
+        name: "world".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: false,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 0,
+            sub_event: 0,
+            event_tag: "create".into(),
+            block_id: "object:6:event:0:0".into(),
+            action_count: 0,
+        }],
+    });
+    package.objects.push(ObjectDefinition {
+        id: 7,
+        name: "vineR".into(),
+        sprite_index: -1,
+        parent_index: -1,
+        depth: 0,
+        persistent: false,
+        visible: false,
+        solid: false,
+        mask_index: -1,
+        is_hazard: Some(false),
+        is_checkpoint: Some(false),
+        is_player: false,
+        events: vec![ObjectEventEntry {
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            block_id: "object:7:event:3:0".into(),
+            action_count: 0,
+        }],
+    });
+    package.rooms[0].instances.extend([
+        RoomInstancePlacement {
+            instance_id: 16,
+            object_id: 6,
+            x: 12,
+            y: 24,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: false,
+            is_hazard: false,
+            is_checkpoint: false,
+        },
+        RoomInstancePlacement {
+            instance_id: 17,
+            object_id: 7,
+            x: 12,
+            y: 24,
+            xscale: 1.0,
+            yscale: 1.0,
+            angle: 0.0,
+            blend: 0x00ff_ffff,
+            creation_block_id: None,
+            is_solid: false,
+            is_hazard: false,
+            is_checkpoint: false,
+        },
+    ]);
+    append_lowered_entry(
+        &mut package,
+        "object:6:event:0:0".into(),
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "instance_create".into(),
+            args: vec![
+                LoweredLogicExpr::LiteralNumber(12.0),
+                LoweredLogicExpr::LiteralNumber(24.0),
+                LoweredLogicExpr::Identifier("player".into()),
+            ],
+        }],
+    );
+    append_lowered_entry(
+        &mut package,
+        "object:7:event:3:0".into(),
+        vec![LoweredLogicStatement::Conditional {
+            condition: LoweredLogicExpr::BinaryExpr {
+                op: ">".into(),
+                left: Box::new(LoweredLogicExpr::Call {
+                    name: "collision_rectangle".into(),
+                    args: vec![
+                        LoweredLogicExpr::Identifier("x".into()),
+                        LoweredLogicExpr::Identifier("y".into()),
+                        LoweredLogicExpr::BinaryExpr {
+                            op: "+".into(),
+                            left: Box::new(LoweredLogicExpr::Identifier("x".into())),
+                            right: Box::new(LoweredLogicExpr::LiteralNumber(16.0)),
+                        },
+                        LoweredLogicExpr::BinaryExpr {
+                            op: "+".into(),
+                            left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                            right: Box::new(LoweredLogicExpr::LiteralNumber(16.0)),
+                        },
+                        LoweredLogicExpr::Identifier("player".into()),
+                        LoweredLogicExpr::LiteralBool(true),
+                        LoweredLogicExpr::LiteralBool(true),
+                    ],
+                }),
+                right: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
+            },
+            then_branch: vec![LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("player".into())),
+                    member: "vine_contact".into(),
+                },
+                value: LoweredLogicExpr::LiteralBool(true),
+            }],
+            else_branch: vec![],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    assert!(player(&core).instance_id > 0);
+
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        player(&core).vars.get("vine_contact"),
+        Some(&RuntimeValue::Bool(true))
+    );
+}
+
+#[test]
 fn core_skips_builtin_jump_when_step_scripts_own_jump_queries() {
     let mut package = sample_package();
     add_step_block(

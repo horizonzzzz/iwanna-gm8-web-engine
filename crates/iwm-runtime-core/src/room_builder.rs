@@ -152,6 +152,7 @@ impl RuntimeCore {
         &self,
         object_id: usize,
         runtime_id: usize,
+        instance_id: i32,
         x: f64,
         y: f64,
     ) -> Option<RuntimeInstance> {
@@ -163,7 +164,7 @@ impl RuntimeCore {
         let vars = runtime_instance_vars(x, y, 1.0, 1.0);
         Some(RuntimeInstance {
             runtime_id,
-            instance_id: -1 - runtime_id as i32,
+            instance_id,
             object_id: object.id,
             object_name: object.name.clone(),
             x,
@@ -195,6 +196,15 @@ impl RuntimeCore {
             vars,
         })
     }
+}
+
+pub(crate) fn next_runtime_instance_id(instances: &[RuntimeInstance]) -> i32 {
+    instances
+        .iter()
+        .filter_map(|instance| (instance.instance_id > 0).then_some(instance.instance_id))
+        .max()
+        .unwrap_or(0)
+        .saturating_add(1)
 }
 
 fn runtime_instance_vars(

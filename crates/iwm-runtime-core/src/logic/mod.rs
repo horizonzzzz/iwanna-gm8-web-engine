@@ -337,6 +337,7 @@ impl RuntimeCore {
             let Some(mut instance) = self.instantiate_runtime_object(
                 create.object_id,
                 create.runtime_id,
+                create.instance_id,
                 create.x,
                 create.y,
             ) else {
