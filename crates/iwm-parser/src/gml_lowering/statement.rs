@@ -62,11 +62,15 @@ pub(super) fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
     }
 
     if stmt.starts_with("with ") || stmt.starts_with("with(") {
-        return lower_block_statement(stmt, "with").map(|(head, body)| {
-            LoweredLogicStatement::With {
-                target: lower_expr(&head),
-                body: lower_source(&body),
-            }
+        let (head, body) = lower_block_statement(stmt, "with")
+            .map(|(head, body)| (head, lower_source(&body)))
+            .or_else(|| {
+                lower_inline_conditional_parts(stmt, "with")
+                    .map(|(head, body, _)| (head, lower_branch_body(&body)))
+            })?;
+        return Some(LoweredLogicStatement::With {
+            target: lower_expr(&head),
+            body,
         });
     }
 

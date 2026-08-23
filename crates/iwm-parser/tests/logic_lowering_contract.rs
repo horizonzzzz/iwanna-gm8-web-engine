@@ -429,6 +429,47 @@ fn lowered_logic_file_recognizes_common_loop_blocks() {
 }
 
 #[test]
+fn lowered_logic_file_supports_inline_with_bodies() {
+    use iwm_parser::gml_lowering::lower_raw_logic_file;
+    use iwm_parser::models::{RawLogicFile, RawLogicScript};
+    use iwm_parser::{LoweredLogicExpr, LoweredLogicStatement};
+
+    let raw = RawLogicFile {
+        format: "iwm-raw-logic-v1".to_string(),
+        room_creation_codes: vec![],
+        instance_creation_codes: vec![],
+        object_events: vec![],
+        scripts: vec![RawLogicScript {
+            script_id: 17,
+            script_name: "scr_inline_with".to_string(),
+            gml_source: "with(player) instance_destroy(); with(bullet) instance_destroy();"
+                .to_string(),
+        }],
+        triggers: vec![],
+        timelines: vec![],
+    };
+
+    let lowered = lower_raw_logic_file(&raw);
+    let statements = &lowered.entries[0].statements;
+    assert_eq!(statements.len(), 2);
+
+    for (statement, target_name) in statements.iter().zip(["player", "bullet"]) {
+        assert!(matches!(
+            statement,
+            LoweredLogicStatement::With {
+                target: LoweredLogicExpr::Identifier(name),
+                body,
+            } if name == target_name
+                && matches!(
+                    body.as_slice(),
+                    [LoweredLogicStatement::FunctionCall { name, args }]
+                        if name == "instance_destroy" && args.is_empty()
+                )
+        ));
+    }
+}
+
+#[test]
 fn lowered_logic_file_translates_common_function_actions() {
     use iwm_parser::gml_lowering::lower_raw_logic_file;
     use iwm_parser::models::{RawCodeAction, RawLogicEventBinding, RawLogicFile};
