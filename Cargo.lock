@@ -763,6 +763,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "iwm-gml-lowering"
+version = "0.2.0-beta.3"
+dependencies = [
+ "iwm-runtime-model",
+]
+
+[[package]]
 name = "iwm-parser"
 version = "0.2.0-beta.3"
 dependencies = [
@@ -770,6 +777,7 @@ dependencies = [
  "camino",
  "gm8exe",
  "iwm-detector",
+ "iwm-gml-lowering",
  "iwm-runtime-model",
  "png",
  "serde",
@@ -783,6 +791,7 @@ dependencies = [
 name = "iwm-runtime-core"
 version = "0.2.0-beta.3"
 dependencies = [
+ "iwm-gml-lowering",
  "iwm-runtime-host",
  "iwm-runtime-model",
  "serde",

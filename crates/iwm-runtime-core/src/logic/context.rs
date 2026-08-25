@@ -122,6 +122,186 @@ impl RuntimeBinaryFileState {
     }
 }
 
+/// GM8 text-file handles.
+///
+/// Mirrors [`RuntimeBinaryFileState`]: the whole file lives in memory while the
+/// handle is open and is flushed through the same [`RuntimeFileHost`] on close,
+/// so browser saves land in the package-scoped `localStorage` store that the
+/// binary slice already uses.
+#[derive(Debug, Default)]
+pub(crate) struct RuntimeTextFileState {
+    next_handle: i32,
+    handles: HashMap<i32, RuntimeTextFileHandle>,
+}
+
+#[derive(Debug)]
+struct RuntimeTextFileHandle {
+    path: String,
+    text: String,
+    /// Byte offset into `text`. Only ever moved to a UTF-8 boundary.
+    cursor: usize,
+    readable: bool,
+    writable: bool,
+}
+
+impl RuntimeTextFileState {
+    /// `mode` follows GM8: 0 = read, 1 = write (truncate), 2 = append.
+    pub(crate) fn open<H: RuntimeHost>(&mut self, host: &H, path: String, mode: i32) -> i32 {
+        let handle = self.next_handle.max(1);
+        self.next_handle = handle.saturating_add(1);
+        let (readable, writable) = match mode {
+            0 => (true, false),
+            _ => (false, true),
+        };
+        let text = if mode == 0 || mode == 2 {
+            host.read(Path::new(&path))
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let cursor = if mode == 2 { text.len() } else { 0 };
+        self.handles.insert(
+            handle,
+            RuntimeTextFileHandle {
+                path,
+                text,
+                cursor,
+                readable,
+                writable,
+            },
+        );
+        handle
+    }
+
+    pub(crate) fn write_string(&mut self, handle: i32, value: &str) {
+        let Some(file) = self.handles.get_mut(&handle) else {
+            return;
+        };
+        if !file.writable {
+            return;
+        }
+        file.text.push_str(value);
+        file.cursor = file.text.len();
+    }
+
+    pub(crate) fn writeln(&mut self, handle: i32) {
+        self.write_string(handle, "\r\n");
+    }
+
+    /// Reads from the cursor to the end of the current line without consuming
+    /// the line terminator, matching `file_text_read_string`.
+    pub(crate) fn read_string(&mut self, handle: i32) -> String {
+        let Some(file) = self.handles.get_mut(&handle) else {
+            return String::new();
+        };
+        if !file.readable {
+            return String::new();
+        }
+        let end = line_end(&file.text, file.cursor);
+        let value = file.text[file.cursor..end].to_string();
+        file.cursor = end;
+        value
+    }
+
+    pub(crate) fn read_real(&mut self, handle: i32) -> f64 {
+        let Some(file) = self.handles.get_mut(&handle) else {
+            return 0.0;
+        };
+        if !file.readable {
+            return 0.0;
+        }
+        let end = line_end(&file.text, file.cursor);
+        let slice = &file.text[file.cursor..end];
+        let leading_blanks = slice.len() - slice.trim_start_matches([' ', '\t']).len();
+        let number_len = numeric_prefix_len(&slice[leading_blanks..]);
+        let value = slice[leading_blanks..leading_blanks + number_len]
+            .parse::<f64>()
+            .unwrap_or(0.0);
+        file.cursor += leading_blanks + number_len;
+        value
+    }
+
+    /// Skips the remainder of the current line, including its terminator.
+    pub(crate) fn readln(&mut self, handle: i32) {
+        let Some(file) = self.handles.get_mut(&handle) else {
+            return;
+        };
+        if !file.readable {
+            return;
+        }
+        let end = line_end(&file.text, file.cursor);
+        file.cursor = skip_line_terminator(&file.text, end);
+    }
+
+    pub(crate) fn eof(&self, handle: i32) -> bool {
+        self.handles
+            .get(&handle)
+            .map(|file| file.cursor >= file.text.len())
+            .unwrap_or(true)
+    }
+
+    pub(crate) fn eoln(&self, handle: i32) -> bool {
+        self.handles
+            .get(&handle)
+            .map(|file| file.cursor >= line_end(&file.text, file.cursor))
+            .unwrap_or(true)
+    }
+
+    pub(crate) fn close<H: RuntimeHost>(
+        &mut self,
+        host: &mut H,
+        handle: i32,
+    ) -> Result<(), RuntimeHostError> {
+        let Some(file) = self.handles.remove(&handle) else {
+            return Ok(());
+        };
+        if file.writable {
+            host.write_temp(Path::new(&file.path), file.text.as_bytes())?;
+        }
+        Ok(())
+    }
+}
+
+/// Byte offset of the next `\r` or `\n` at or after `from`, else the text length.
+fn line_end(text: &str, from: usize) -> usize {
+    if from >= text.len() {
+        return text.len();
+    }
+    text[from..]
+        .find(['\r', '\n'])
+        .map(|offset| from + offset)
+        .unwrap_or(text.len())
+}
+
+fn skip_line_terminator(text: &str, at: usize) -> usize {
+    let rest = &text[at.min(text.len())..];
+    if rest.starts_with("\r\n") {
+        at + 2
+    } else if rest.starts_with('\r') || rest.starts_with('\n') {
+        at + 1
+    } else {
+        at
+    }
+}
+
+/// Length of the leading `[+-]?digits[.digits]` run, which is as much numeric
+/// syntax as GM8 save files ever contain.
+fn numeric_prefix_len(slice: &str) -> usize {
+    let mut len = 0;
+    let mut seen_dot = false;
+    for (index, ch) in slice.char_indices() {
+        match ch {
+            '+' | '-' if index == 0 => {}
+            '.' if !seen_dot => seen_dot = true,
+            ch if ch.is_ascii_digit() => {}
+            _ => break,
+        }
+        len = index + ch.len_utf8();
+    }
+    len
+}
+
 pub(crate) struct RuntimeRoomInstanceOverlay<'a> {
     committed_updates: Option<&'a RuntimeSparseInstanceOverlay>,
     pending_updates: RuntimeSparseInstanceOverlay,

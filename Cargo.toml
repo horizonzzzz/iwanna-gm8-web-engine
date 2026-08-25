@@ -3,6 +3,7 @@ resolver = "2"
 exclude = ["vendor/OpenGMK/gm8exe"]
 members = [
   "crates/iwm-detector",
+  "crates/iwm-gml-lowering",
   "crates/iwm-parser",
   "crates/iwm-cli",
   "crates/iwm-api",

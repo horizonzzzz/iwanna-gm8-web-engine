@@ -1,9 +1,9 @@
 use iwm_runtime_model::LoweredLogicStatement;
 
-use super::statement::lower_statement;
-use super::syntax::{extract_braced_block, split_top_level_statements};
+use crate::statement::lower_statement;
+use crate::syntax::{extract_braced_block, split_top_level_statements};
 
-pub(super) fn looks_like_gml_source(source: &str) -> bool {
+pub fn looks_like_gml_source(source: &str) -> bool {
     let trimmed = source.trim();
     !trimmed.is_empty()
         && (trimmed.contains('=')
@@ -13,7 +13,7 @@ pub(super) fn looks_like_gml_source(source: &str) -> bool {
             || trimmed.contains(';'))
 }
 
-pub(super) fn lower_source(source: &str) -> Vec<LoweredLogicStatement> {
+pub fn lower_source(source: &str) -> Vec<LoweredLogicStatement> {
     let source = strip_block_comments(&strip_line_comments(source));
     if let Some(unwrapped) = unwrap_top_level_braced_block(&source) {
         return lower_source(&unwrapped);

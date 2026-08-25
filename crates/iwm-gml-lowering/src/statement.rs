@@ -2,14 +2,14 @@ use iwm_runtime_model::{
     LoweredLogicConditionalBranch, LoweredLogicExpr, LoweredLogicStatement, LoweredLogicSwitchCase,
 };
 
-use super::expression::lower_expr;
-use super::source::lower_source;
-use super::syntax::{
+use crate::expression::lower_expr;
+use crate::source::lower_source;
+use crate::syntax::{
     extract_braced_block, extract_parenthesized_block, split_head_and_body,
     split_top_level_commas_or_semicolons, split_top_level_csv, split_top_level_operator,
 };
 
-pub(super) fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
+pub fn lower_statement(stmt: &str) -> Option<LoweredLogicStatement> {
     let stmt = stmt.trim();
     if stmt.is_empty() {
         return None;

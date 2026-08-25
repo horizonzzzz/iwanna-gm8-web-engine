@@ -6,7 +6,14 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
-No changes yet.
+### Added
+
+- Added the GM8 text-file API (`file_text_open_read`/`_write`/`_append`, `file_text_write_string`/`_real`, `file_text_writeln`, `file_text_read_string`/`_real`, `file_text_readln`, `file_text_eof`, `file_text_eoln`, `file_text_close`), `room_get_name()`, and `execute_file()` / `execute_string()` to the lowered runtime slice.
+- Added the shared `iwm-gml-lowering` crate so the parser and the runtime share one GML lowering implementation; the runtime needs it to execute save files written at run time.
+
+### Fixed
+
+- Fixed save points not persisting in classic IWBTG-engine games such as I Wanna Kill the Kamilia: `savegame()` writes a GML source file that `loadgame()` replays, so with the text-file API missing every write was a no-op and pressing the restart key fell through to `room_goto(beginning)` instead of returning to the save.
 
 ## [0.2.0-beta.3] - 2026-07-27
 

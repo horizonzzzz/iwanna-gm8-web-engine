@@ -36,8 +36,14 @@ pub extern "C" fn iwm_alloc(len: usize) -> *mut u8 {
     pointer
 }
 
+/// Releases a buffer allocated by [`iwm_alloc`].
+///
+/// # Safety
+///
+/// `pointer` must have been returned by [`iwm_alloc`] and `len` must be the
+/// same capacity passed to that allocation.
 #[no_mangle]
-pub extern "C" fn iwm_free(pointer: *mut u8, len: usize) {
+pub unsafe extern "C" fn iwm_free(pointer: *mut u8, len: usize) {
     if pointer.is_null() {
         return;
     }

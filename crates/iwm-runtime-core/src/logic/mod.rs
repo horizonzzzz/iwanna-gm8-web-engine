@@ -34,7 +34,7 @@ use crate::{
 pub(crate) use bootstrap::apply_view_globals_to_room;
 pub(crate) use context::{
     RuntimeBinaryFileState, RuntimeEvalContext, RuntimeExecutionScope, RuntimeRoomInstanceOverlay,
-    RuntimeViewValues, StepExecutionResult,
+    RuntimeTextFileState, RuntimeViewValues, StepExecutionResult,
 };
 pub(crate) use eval_functions::instance_contains_point;
 pub(crate) use overlay::RuntimeSparseInstanceOverlay;
@@ -183,6 +183,8 @@ impl RuntimeCore {
                         pending_game_restart: &mut self.pending_game_restart,
                         active_one_shot_sounds: &mut self.active_one_shot_sounds,
                         binary_files: &mut self.binary_files,
+                        text_files: &mut self.text_files,
+                        execute_source_depth: &mut self.execute_source_depth,
                         host: &mut *host,
                         diagnostics: &mut self.diagnostics,
                         object_query_scratch: Some(&mut tick_context.object_query_scratch),
@@ -190,6 +192,7 @@ impl RuntimeCore {
                         room_instance_updates: &mut with_updates,
                         room_instance_creates: &mut instance_creates,
                         objects,
+                        rooms: &self.package.rooms,
                         sprites: &self.package.resources.sprites,
                         paths: &self.package.resources.paths,
                         sprite_index: &self.sprite_index,
@@ -426,6 +429,8 @@ impl RuntimeCore {
                             pending_game_restart: &mut self.pending_game_restart,
                             active_one_shot_sounds: &mut self.active_one_shot_sounds,
                             binary_files: &mut self.binary_files,
+                            text_files: &mut self.text_files,
+                            execute_source_depth: &mut self.execute_source_depth,
                             host: &mut *host,
                             diagnostics: &mut self.diagnostics,
                             object_query_scratch: None,
@@ -433,6 +438,7 @@ impl RuntimeCore {
                             room_instance_updates: &mut room_instance_updates,
                             room_instance_creates: creates,
                             objects,
+                            rooms: &self.package.rooms,
                             sprites: &self.package.resources.sprites,
                             paths: &self.package.resources.paths,
                             sprite_index: &self.sprite_index,

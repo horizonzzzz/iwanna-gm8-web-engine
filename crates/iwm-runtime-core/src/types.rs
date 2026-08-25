@@ -7,116 +7,12 @@ use iwm_runtime_model::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoweredLogicFile {
-    pub format: String,
-    pub entries: Vec<LoweredLogicEntry>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoweredLogicEntry {
-    pub block_id: String,
-    pub statements: Vec<LoweredLogicStatement>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "kind", content = "value", rename_all = "kebab-case")]
-pub enum LoweredLogicExpr {
-    Identifier(String),
-    LiteralNumber(f64),
-    LiteralBool(bool),
-    LiteralText(String),
-    UnaryExpr {
-        op: String,
-        child: Box<LoweredLogicExpr>,
-    },
-    Call {
-        name: String,
-        args: Vec<LoweredLogicExpr>,
-    },
-    MemberAccess {
-        target: Box<LoweredLogicExpr>,
-        member: String,
-    },
-    IndexAccess {
-        target: Box<LoweredLogicExpr>,
-        index: Box<LoweredLogicExpr>,
-    },
-    BinaryExpr {
-        op: String,
-        left: Box<LoweredLogicExpr>,
-        right: Box<LoweredLogicExpr>,
-    },
-    Raw {
-        source: String,
-    },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoweredLogicConditionalBranch {
-    pub condition: LoweredLogicExpr,
-    pub body: Vec<LoweredLogicStatement>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoweredLogicSwitchCase {
-    pub value: Option<LoweredLogicExpr>,
-    pub body: Vec<LoweredLogicStatement>,
-    pub break_after: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum LoweredLogicStatement {
-    Assignment {
-        target: LoweredLogicExpr,
-        value: LoweredLogicExpr,
-    },
-    VariableDeclaration {
-        names: Vec<String>,
-    },
-    Return {
-        value: Option<LoweredLogicExpr>,
-    },
-    FunctionCall {
-        name: String,
-        args: Vec<LoweredLogicExpr>,
-    },
-    Conditional {
-        condition: LoweredLogicExpr,
-        then_branch: Vec<LoweredLogicStatement>,
-        else_branch: Vec<LoweredLogicStatement>,
-    },
-    ConditionalChain {
-        branches: Vec<LoweredLogicConditionalBranch>,
-        else_branch: Vec<LoweredLogicStatement>,
-    },
-    Switch {
-        expression: LoweredLogicExpr,
-        cases: Vec<LoweredLogicSwitchCase>,
-    },
-    With {
-        target: LoweredLogicExpr,
-        body: Vec<LoweredLogicStatement>,
-    },
-    Repeat {
-        count: LoweredLogicExpr,
-        body: Vec<LoweredLogicStatement>,
-    },
-    While {
-        condition: LoweredLogicExpr,
-        body: Vec<LoweredLogicStatement>,
-    },
-    For {
-        init: LoweredLogicExpr,
-        condition: LoweredLogicExpr,
-        step: LoweredLogicExpr,
-        body: Vec<LoweredLogicStatement>,
-    },
-    Raw {
-        source: String,
-    },
-}
+// The lowered-logic IR is owned by `iwm-runtime-model` so that the package
+// builder, the runtime, and `iwm-gml-lowering` all speak one type.
+pub use iwm_runtime_model::{
+    LoweredLogicConditionalBranch, LoweredLogicEntry, LoweredLogicExpr, LoweredLogicFile,
+    LoweredLogicStatement, LoweredLogicSwitchCase,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeValue {

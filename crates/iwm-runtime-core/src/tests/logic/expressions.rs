@@ -2161,3 +2161,225 @@ fn core_executes_gm8_movement_helpers() {
     assert_eq!((marker.x, marker.y), (46.0, 64.0));
     assert_eq!((marker.hspeed, marker.vspeed), (-2.0, 0.0));
 }
+
+/// Opens a text file for writing, writes `chunks`, and closes it.
+fn write_text_file(path: &str, chunks: &[&str]) -> Vec<LoweredLogicStatement> {
+    let mut statements = vec![LoweredLogicStatement::Assignment {
+        target: LoweredLogicExpr::Identifier("f".into()),
+        value: LoweredLogicExpr::Call {
+            name: "file_text_open_write".into(),
+            args: vec![LoweredLogicExpr::LiteralText(path.into())],
+        },
+    }];
+    for chunk in chunks {
+        statements.push(LoweredLogicStatement::FunctionCall {
+            name: "file_text_write_string".into(),
+            args: vec![
+                LoweredLogicExpr::Identifier("f".into()),
+                LoweredLogicExpr::LiteralText((*chunk).into()),
+            ],
+        });
+    }
+    statements.push(LoweredLogicStatement::FunctionCall {
+        name: "file_text_close".into(),
+        args: vec![LoweredLogicExpr::Identifier("f".into())],
+    });
+    statements
+}
+
+#[test]
+fn core_flushes_file_text_writes_to_the_host_on_close() {
+    let mut statements = write_text_file("IWRTK_globaldata", &["musicOn = 1"]);
+    statements.push(LoweredLogicStatement::FunctionCall {
+        name: "file_text_writeln".into(),
+        args: vec![LoweredLogicExpr::Identifier("f".into())],
+    });
+
+    let mut package = sample_package();
+    add_step_block(&mut package, statements);
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    assert_eq!(
+        host.files
+            .read(std::path::Path::new("IWRTK_globaldata"))
+            .unwrap(),
+        b"musicOn = 1".to_vec(),
+        "writes after close must not reach the host"
+    );
+    assert_no_runtime_blockers(&core);
+}
+
+#[test]
+fn core_reads_back_text_files_line_by_line() {
+    let mut statements = write_text_file("save0", &["12.5 rest\r\nsecond line"]);
+    statements.extend([
+        LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("f".into()),
+            value: LoweredLogicExpr::Call {
+                name: "file_text_open_read".into(),
+                args: vec![LoweredLogicExpr::LiteralText("save0".into())],
+            },
+        },
+        assign_var(
+            "first_real",
+            LoweredLogicExpr::Call {
+                name: "file_text_read_real".into(),
+                args: vec![LoweredLogicExpr::Identifier("f".into())],
+            },
+        ),
+        assign_var(
+            "rest_of_line",
+            LoweredLogicExpr::Call {
+                name: "file_text_read_string".into(),
+                args: vec![LoweredLogicExpr::Identifier("f".into())],
+            },
+        ),
+        assign_var(
+            "at_line_end",
+            LoweredLogicExpr::Call {
+                name: "file_text_eoln".into(),
+                args: vec![LoweredLogicExpr::Identifier("f".into())],
+            },
+        ),
+        LoweredLogicStatement::FunctionCall {
+            name: "file_text_readln".into(),
+            args: vec![LoweredLogicExpr::Identifier("f".into())],
+        },
+        assign_var(
+            "second_line",
+            LoweredLogicExpr::Call {
+                name: "file_text_read_string".into(),
+                args: vec![LoweredLogicExpr::Identifier("f".into())],
+            },
+        ),
+        assign_var(
+            "at_eof",
+            LoweredLogicExpr::Call {
+                name: "file_text_eof".into(),
+                args: vec![LoweredLogicExpr::Identifier("f".into())],
+            },
+        ),
+        LoweredLogicStatement::FunctionCall {
+            name: "file_text_close".into(),
+            args: vec![LoweredLogicExpr::Identifier("f".into())],
+        },
+    ]);
+
+    let core = run_step(statements);
+
+    assert_eq!(player_var(&core, "first_real"), Some(&RuntimeValue::Number(12.5)));
+    assert_eq!(
+        player_var(&core, "rest_of_line"),
+        Some(&RuntimeValue::Text(" rest".into()))
+    );
+    assert_eq!(player_var(&core, "at_line_end"), Some(&RuntimeValue::Bool(true)));
+    assert_eq!(
+        player_var(&core, "second_line"),
+        Some(&RuntimeValue::Text("second line".into()))
+    );
+    assert_eq!(player_var(&core, "at_eof"), Some(&RuntimeValue::Bool(true)));
+    assert_no_runtime_blockers(&core);
+}
+
+#[test]
+fn core_resolves_room_get_name_for_the_active_room() {
+    let core = run_step(vec![assign_var(
+        "active_room_name",
+        LoweredLogicExpr::Call {
+            name: "room_get_name".into(),
+            args: vec![LoweredLogicExpr::Identifier("room".into())],
+        },
+    )]);
+
+    assert_eq!(
+        player_var(&core, "active_room_name"),
+        Some(&RuntimeValue::Text("room7".into()))
+    );
+    assert_no_runtime_blockers(&core);
+}
+
+/// The Kamilia save chain end to end: `savegame()` writes a GML source file and
+/// `loadgame()` replays it through `execute_file()`.
+#[test]
+fn core_executes_saved_gml_source_through_execute_file() {
+    let mut statements = write_text_file(
+        "IWRTK_save0",
+        &["saved_x = 199\r\nsaved_y = 486\r\ndifficulty = 2\r\n"],
+    );
+    statements.push(LoweredLogicStatement::FunctionCall {
+        name: "execute_file".into(),
+        args: vec![LoweredLogicExpr::LiteralText("IWRTK_save0".into())],
+    });
+
+    let core = run_step(statements);
+
+    assert_eq!(player_var(&core, "saved_x"), Some(&RuntimeValue::Number(199.0)));
+    assert_eq!(player_var(&core, "saved_y"), Some(&RuntimeValue::Number(486.0)));
+    assert_eq!(
+        player_var(&core, "difficulty"),
+        Some(&RuntimeValue::Number(2.0))
+    );
+    assert_no_runtime_blockers(&core);
+}
+
+/// `savegame()` writes `room_goto(<room_get_name(room)>)`, so the room name has
+/// to survive the write/lower/execute round trip.
+#[test]
+fn core_execute_file_restores_the_saved_room() {
+    let write_string = |value: LoweredLogicExpr| LoweredLogicStatement::FunctionCall {
+        name: "file_text_write_string".into(),
+        args: vec![LoweredLogicExpr::Identifier("f".into()), value],
+    };
+    let core = run_step(vec![
+        LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("f".into()),
+            value: LoweredLogicExpr::Call {
+                name: "file_text_open_write".into(),
+                args: vec![LoweredLogicExpr::LiteralText("IWRTK_save0".into())],
+            },
+        },
+        write_string(LoweredLogicExpr::LiteralText("room_goto(".into())),
+        write_string(LoweredLogicExpr::Call {
+            name: "room_get_name".into(),
+            args: vec![LoweredLogicExpr::LiteralNumber(9.0)],
+        }),
+        write_string(LoweredLogicExpr::LiteralText(");".into())),
+        LoweredLogicStatement::FunctionCall {
+            name: "file_text_close".into(),
+            args: vec![LoweredLogicExpr::Identifier("f".into())],
+        },
+        LoweredLogicStatement::FunctionCall {
+            name: "execute_file".into(),
+            args: vec![LoweredLogicExpr::LiteralText("IWRTK_save0".into())],
+        },
+    ]);
+
+    assert_eq!(core.current_room().unwrap().room_name, "room9");
+    assert_no_runtime_blockers(&core);
+}
+
+#[test]
+fn core_bounds_execute_file_recursion_through_self_executing_sources() {
+    let mut statements = write_text_file(
+        "IWRTK_loop",
+        &["looped = looped + 1\r\nexecute_file(\"IWRTK_loop\");\r\n"],
+    );
+    statements.insert(0, assign_var("looped", LoweredLogicExpr::LiteralNumber(0.0)));
+    statements.push(LoweredLogicStatement::FunctionCall {
+        name: "execute_file".into(),
+        args: vec![LoweredLogicExpr::LiteralText("IWRTK_loop".into())],
+    });
+
+    let core = run_step(statements);
+
+    assert!(
+        core.diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.code == "runtime-execute-source-depth-limit"),
+        "expected the recursion guard to fire: {:?}",
+        core.diagnostics()
+    );
+    assert_no_runtime_blockers(&core);
+}

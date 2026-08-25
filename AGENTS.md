@@ -47,6 +47,9 @@ The 2026-05-19 design is the historical MVP baseline; current Beta deployment de
   GM8-target detection and package inventory logic
 - `crates/iwm-parser/`
   GM8 parsing, package building, resource export, and logic extraction/lowering
+- `crates/iwm-gml-lowering/`
+  Shared GML source -> lowered-logic translation, used by the parser at build time
+  and by runtime-core for `execute_file()` / `execute_string()`
 - `crates/iwm-cli/`
   Developer CLI for detection and package building
 - `crates/iwm-api/`

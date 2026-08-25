@@ -178,14 +178,25 @@ pub(crate) fn add_persistent_instances(
     }
 }
 
+/// Whether a carried persistent instance is the *same* instance as one the room
+/// placed, and should therefore take its slot.
+///
+/// Identity requires the same object. `instance_id` alone is not enough: ids for
+/// instances created by `instance_create()` are allocated from the room's current
+/// maximum, and a nested create (the `bow` a `player`'s Create event spawns) is
+/// allocated before its parent has been pushed into the room, so parent and child
+/// can share an id. Without the object check, carrying both would make the child
+/// evict the parent and a save-restored player would lose its position.
 fn persistent_instance_replaces_room_instance(
     incoming: &RuntimeInstance,
     candidate: &RuntimeInstance,
 ) -> bool {
+    if incoming.object_id != candidate.object_id {
+        return false;
+    }
+
     incoming.instance_id == candidate.instance_id
-        || (is_player_instance(incoming)
-            && is_player_instance(candidate)
-            && incoming.object_id == candidate.object_id)
+        || (is_player_instance(incoming) && is_player_instance(candidate))
 }
 
 fn merge_missing_player_vars(incoming: &mut RuntimeInstance, candidate: &RuntimeInstance) {

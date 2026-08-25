@@ -6,7 +6,14 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ## [Unreleased]
 
-暂无更新。
+### 新增
+
+- 在 lowered runtime 中增加 GM8 文本文件 API（`file_text_open_read`/`_write`/`_append`、`file_text_write_string`/`_real`、`file_text_writeln`、`file_text_read_string`/`_real`、`file_text_readln`、`file_text_eof`、`file_text_eoln`、`file_text_close`）、`room_get_name()` 以及 `execute_file()` / `execute_string()`。
+- 新增共享 crate `iwm-gml-lowering`，让 parser 和 runtime 共用同一份 GML lowering 实现；runtime 需要它来执行运行时写出的存档文件。
+
+### 修复
+
+- 修复经典 IWBTG 引擎游戏（如 I Wanna Kill the Kamilia）存档点不生效的问题：`savegame()` 写出的是一份 GML 源码文件，由 `loadgame()` 重新执行；此前缺少文本文件 API，所有写入都是空操作，因此按重启键会走到 `room_goto(beginning)` 而不是回到存档点。
 
 ## [0.2.0-beta.3] - 2026-07-27
 

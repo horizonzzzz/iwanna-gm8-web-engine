@@ -1,11 +1,11 @@
 use iwm_runtime_model::LoweredLogicExpr;
 
-use super::syntax::{
+use crate::syntax::{
     extract_parenthesized_block, find_top_level_dot, split_top_level_csv, split_top_level_operator,
     split_top_level_trailing_index, strip_balanced_outer_parens,
 };
 
-pub(super) fn lower_expr(expr: &str) -> LoweredLogicExpr {
+pub fn lower_expr(expr: &str) -> LoweredLogicExpr {
     let expr = expr.trim();
     if expr.is_empty() {
         return LoweredLogicExpr::Raw {

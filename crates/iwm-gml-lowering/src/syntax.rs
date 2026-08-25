@@ -29,7 +29,7 @@ impl StringScanner {
     }
 }
 
-pub(super) fn extract_parenthesized_block(input: &str) -> Option<(String, String)> {
+pub(crate) fn extract_parenthesized_block(input: &str) -> Option<(String, String)> {
     let mut depth = 0usize;
     let mut start = None;
     let mut strings = StringScanner::default();
@@ -59,7 +59,7 @@ pub(super) fn extract_parenthesized_block(input: &str) -> Option<(String, String
     None
 }
 
-pub(super) fn extract_braced_block(input: &str) -> Option<(String, String)> {
+pub(crate) fn extract_braced_block(input: &str) -> Option<(String, String)> {
     let mut depth = 0usize;
     let mut start = None;
     let mut strings = StringScanner::default();
@@ -89,7 +89,7 @@ pub(super) fn extract_braced_block(input: &str) -> Option<(String, String)> {
     None
 }
 
-pub(super) fn split_head_and_body(rest: &str) -> Option<(String, String, String)> {
+pub(crate) fn split_head_and_body(rest: &str) -> Option<(String, String, String)> {
     let rest = rest.trim_start();
     let (head, tail) = if rest.starts_with('(') {
         extract_parenthesized_block(rest)?
@@ -121,7 +121,7 @@ fn normalize_group_head(head: &str) -> String {
     trimmed.to_string()
 }
 
-pub(super) fn strip_balanced_outer_parens(s: &str) -> &str {
+pub(crate) fn strip_balanced_outer_parens(s: &str) -> &str {
     let trimmed = s.trim();
     if trimmed.starts_with('(') && trimmed.ends_with(')') {
         let inner = &trimmed[1..trimmed.len() - 1];
@@ -151,7 +151,7 @@ pub(super) fn strip_balanced_outer_parens(s: &str) -> &str {
     trimmed
 }
 
-pub(super) fn split_top_level_statements(source: &str) -> Vec<String> {
+pub(crate) fn split_top_level_statements(source: &str) -> Vec<String> {
     let mut statements = Vec::new();
     let mut current = String::new();
     let mut paren_depth = 0usize;
@@ -217,7 +217,7 @@ pub(super) fn split_top_level_statements(source: &str) -> Vec<String> {
     statements
 }
 
-pub(super) fn split_top_level_commas_or_semicolons(source: &str) -> Vec<String> {
+pub(crate) fn split_top_level_commas_or_semicolons(source: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
     let mut paren_depth = 0usize;
@@ -255,7 +255,7 @@ pub(super) fn split_top_level_commas_or_semicolons(source: &str) -> Vec<String> 
     parts
 }
 
-pub(super) fn split_top_level_csv(source: &str) -> Vec<String> {
+pub(crate) fn split_top_level_csv(source: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
     let mut paren_depth = 0usize;
@@ -297,7 +297,7 @@ pub(super) fn split_top_level_csv(source: &str) -> Vec<String> {
     parts
 }
 
-pub(super) fn split_top_level_operator(source: &str, operator: &str) -> Option<(String, String)> {
+pub(crate) fn split_top_level_operator(source: &str, operator: &str) -> Option<(String, String)> {
     let mut paren_depth = 0usize;
     let mut bracket_depth = 0usize;
     let mut brace_depth = 0usize;
@@ -423,7 +423,7 @@ fn is_identifier_char(ch: Option<char>) -> bool {
     matches!(ch, Some(ch) if ch.is_ascii_alphanumeric() || ch == '_')
 }
 
-pub(super) fn split_top_level_trailing_index(source: &str) -> Option<(String, String)> {
+pub(crate) fn split_top_level_trailing_index(source: &str) -> Option<(String, String)> {
     if !source.ends_with(']') {
         return None;
     }
@@ -456,7 +456,7 @@ pub(super) fn split_top_level_trailing_index(source: &str) -> Option<(String, St
     None
 }
 
-pub(super) fn find_top_level_dot(source: &str) -> Option<usize> {
+pub(crate) fn find_top_level_dot(source: &str) -> Option<usize> {
     let mut paren_depth = 0usize;
     let mut bracket_depth = 0usize;
     let mut brace_depth = 0usize;

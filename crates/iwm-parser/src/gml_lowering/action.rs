@@ -1,9 +1,7 @@
+use iwm_gml_lowering::{looks_like_gml_source, lower_expr, lower_source};
 use iwm_runtime_model::{LoweredLogicExpr, LoweredLogicStatement};
 
 use crate::models::RawCodeAction;
-
-use super::expression::lower_expr;
-use super::source::{looks_like_gml_source, lower_source};
 
 pub(super) fn lower_action_list(actions: &[RawCodeAction]) -> Vec<LoweredLogicStatement> {
     let mut cursor = 0;

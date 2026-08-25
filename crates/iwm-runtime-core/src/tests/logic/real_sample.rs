@@ -2205,20 +2205,22 @@ fn real_sample_second_shift_press_after_manual_room_reload_uses_player_jump() {
             if let Some(LoweredLogicStatement::Conditional { then_branch, .. }) =
                 player_jump_entry.statements.get_mut(3)
             {
-                if let Some(LoweredLogicStatement::Conditional {
-                    then_branch: jump_ground_branch,
-                    ..
-                }) = then_branch.get_mut(0)
+                if let Some(LoweredLogicStatement::ConditionalChain { branches, .. }) =
+                    then_branch.get_mut(0)
                 {
-                    jump_ground_branch.insert(
-                        0,
-                        LoweredLogicStatement::Assignment {
-                            target: LoweredLogicExpr::Identifier(
-                                "debug_ground_branch_taken".into(),
-                            ),
-                            value: LoweredLogicExpr::LiteralBool(true),
-                        },
-                    );
+                    branches
+                        .first_mut()
+                        .expect("playerJump ground branch should exist")
+                        .body
+                        .insert(
+                            0,
+                            LoweredLogicStatement::Assignment {
+                                target: LoweredLogicExpr::Identifier(
+                                    "debug_ground_branch_taken".into(),
+                                ),
+                                value: LoweredLogicExpr::LiteralBool(true),
+                            },
+                        );
                 }
             }
         }
@@ -2644,5 +2646,288 @@ fn real_sample_spawned_bullet_moves_and_can_see_forward_block_collision() {
             bullet_after_step.hspeed,
             bullet_after_step.alive
         )
+    );
+}
+
+/// Kamilia's `global_init()` writes `IWRTK_globaldata` with `file_text_*` and then
+/// replays it with `execute_file()`. Both halves used to be unsupported, so the
+/// whole save-data chain silently did nothing.
+#[test]
+fn kamilia_global_init_writes_and_replays_globaldata_through_the_file_host() {
+    let Some(package) = local_sample_package("gm8-core/I Wanna Kill the Kamilia Ver. Final") else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    core.reload_room(34).unwrap();
+    let mut host = HeadlessHost::new("sandbox");
+
+    core.tick(&mut host).unwrap();
+
+    let globaldata = host
+        .files
+        .read(Path::new("IWRTK_globaldata"))
+        .expect("global_init() should have written IWRTK_globaldata through the file host");
+    let globaldata = String::from_utf8(globaldata).expect("globaldata is GML text");
+    assert!(globaldata.contains("musicOn = 1"), "{globaldata}");
+
+    assert!(
+        core.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "runtime-execute-source"
+                && diagnostic.message.contains("source=IWRTK_globaldata")
+        }),
+        "execute_file() should have replayed the written globaldata: {:?}",
+        core.diagnostics()
+    );
+
+    let world = core
+        .current_room
+        .as_ref()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name.eq_ignore_ascii_case("world") && instance.alive)
+        .expect("world should be live");
+    assert_eq!(world.vars.get("musicOn"), Some(&RuntimeValue::Number(1.0)));
+
+    assert!(
+        !core.diagnostics().iter().any(|diagnostic| {
+            diagnostic.code == "runtime-unsupported-function"
+                && (diagnostic.message.contains("file_text_")
+                    || diagnostic.message.contains("execute_file"))
+        }),
+        "save chain should no longer report unsupported functions: {:?}",
+        core.diagnostics()
+    );
+}
+
+/// The reported bug: shooting a SavePoint recolours it but `R` sent the player
+/// back to the start. `loadgame()` re-executes the save file, so with the text
+/// slice missing `file_exists()` was false and it fell through to
+/// `room_goto(beginning)`. This drives the real `world` Step `R` handler against a
+/// save file in `savegame()`'s exact format.
+#[test]
+fn kamilia_restart_key_restores_the_saved_position_through_execute_file() {
+    let Some(package) = local_sample_package("gm8-core/I Wanna Kill the Kamilia Ver. Final") else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    core.reload_room(34).unwrap();
+    let mut host = HeadlessHost::new("sandbox");
+    core.tick(&mut host).unwrap();
+
+    let mut saved = String::from(
+        "room_goto(testRoom);\r\n\
+         if !instance_exists(player) instance_create(0,0,player);\r\n\
+         player.x = 199\r\n\
+         player.y = 486\r\n\
+         difficulty = 2\r\n",
+    );
+    for index in 0..16 {
+        saved.push_str(&format!("bosses[{index}] = 0\r\n"));
+    }
+    host.files
+        .write_temp(Path::new("IWRTK_save0"), saved.as_bytes())
+        .unwrap();
+
+    // Walk the player off the saved spot so a restore is observable.
+    {
+        let player = core
+            .current_room
+            .as_mut()
+            .unwrap()
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .expect("testRoom should have a live player");
+        player.x = 32.0;
+        player.y = 64.0;
+    }
+
+    press_real_sample_key(&mut host, 0x52); // world.gameRestart == ord("R")
+    core.tick(&mut host).unwrap();
+    release_real_sample_key(&mut host, 0x52);
+
+    assert_eq!(
+        core.current_room.as_ref().unwrap().room_id,
+        34,
+        "loadgame() should stay in the saved room instead of jumping to beginning"
+    );
+    let player = core
+        .current_room
+        .as_ref()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+        .expect("player should exist after loadgame");
+    assert_eq!((player.x, player.y), (199.0, 486.0));
+}
+
+/// Same restore, reached the way a player reaches it: through the title/load
+/// menu, so `world` and `player` arrive in testRoom as carried persistent
+/// instances. That path also has to survive `testRoom`'s `playerSpawn` object,
+/// whose Create spawns a player when none exists.
+#[test]
+fn kamilia_restart_after_menu_path_keeps_the_restored_player_instance() {
+    let Some(package) = local_sample_package("gm8-core/I Wanna Kill the Kamilia Ver. Final") else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = HeadlessHost::new("sandbox");
+    for _ in 0..3 {
+        core.tick(&mut host).unwrap();
+    }
+    // room69 -> "S" -> room0 -> Shift -> ... -> testRoom
+    press_real_sample_key(&mut host, 0x53);
+    core.tick(&mut host).unwrap();
+    release_real_sample_key(&mut host, 0x53);
+    for _ in 0..5 {
+        core.tick(&mut host).unwrap();
+    }
+    press_real_sample_key(&mut host, 0x10);
+    core.tick(&mut host).unwrap();
+    release_real_sample_key(&mut host, 0x10);
+    for _ in 0..10 {
+        core.tick(&mut host).unwrap();
+    }
+    assert_eq!(core.current_room.as_ref().unwrap().room_id, 34);
+
+    let mut saved = String::from(
+        "room_goto(testRoom);\r\n\
+         if !instance_exists(player) instance_create(0,0,player);\r\n\
+         player.x = 393\r\n\
+         player.y = 567\r\n\
+         difficulty = 1\r\n",
+    );
+    for index in 0..16 {
+        saved.push_str(&format!("bosses[{index}] = 0\r\n"));
+    }
+    host.files
+        .write_temp(Path::new("IWRTK_save0"), saved.as_bytes())
+        .unwrap();
+
+    let saved_instance_id = {
+        let player = core
+            .current_room
+            .as_mut()
+            .unwrap()
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .expect("testRoom should have a live player");
+        player.x = 200.0;
+        player.y = 500.0;
+        player.instance_id
+    };
+
+    press_real_sample_key(&mut host, 0x52);
+    core.tick(&mut host).unwrap();
+    release_real_sample_key(&mut host, 0x52);
+
+    let room = core.current_room.as_ref().unwrap();
+    assert_eq!(room.room_id, 34);
+    let players = room
+        .instances
+        .iter()
+        .filter(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+        .collect::<Vec<_>>();
+    assert_eq!(players.len(), 1, "playerSpawn must not add a second player");
+    assert_eq!((players[0].x, players[0].y), (393.0, 567.0));
+    assert_eq!(
+        players[0].instance_id, saved_instance_id,
+        "the carried player instance should survive the transition"
+    );
+}
+
+/// The reported scenario end to end: shoot a SavePoint, walk away, press `R`.
+///
+/// The SavePoint's bullet-collision event runs
+/// `with(world) { savegame(savenum); writeDeaths(); }`, and `R` runs
+/// `loadgame(savenum)`, which replays the written GML through `execute_file()`.
+#[test]
+fn kamilia_shooting_a_savepoint_then_restarting_returns_to_it() {
+    let Some(package) = local_sample_package("gm8-core/I Wanna Kill the Kamilia Ver. Final") else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    core.reload_room(34).unwrap();
+    let mut host = HeadlessHost::new("sandbox");
+    core.tick(&mut host).unwrap();
+
+    // Park the player somewhere recognisable, then put a bullet on the SavePoint.
+    let (save_x, save_y) = {
+        let room = core.current_room.as_mut().unwrap();
+        let (save_x, save_y) = room
+            .instances
+            .iter()
+            .find(|instance| {
+                instance.object_name.eq_ignore_ascii_case("SavePoint") && instance.alive
+            })
+            .map(|instance| (instance.x, instance.y))
+            .expect("testRoom should contain a SavePoint");
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .expect("testRoom should have a live player");
+        player.x = 264.0;
+        player.y = 567.0;
+        (save_x, save_y)
+    };
+
+    // Offset into the SavePoint's mask, and give the bullet a few ticks so the
+    // collision pass sees it.
+    let runtime_id = core.current_room.as_ref().unwrap().instances.len();
+    let bullet = core
+        .instantiate_runtime_object(6, runtime_id, 900_001, save_x + 8.0, save_y + 8.0)
+        .expect("bullet object should instantiate");
+    core.current_room.as_mut().unwrap().instances.push(bullet);
+
+    for _ in 0..4 {
+        core.tick(&mut host).unwrap();
+    }
+
+    let saved = String::from_utf8(host.files.read(Path::new("IWRTK_save0")).unwrap()).unwrap();
+    assert!(
+        saved.contains("room_goto(testRoom)"),
+        "the save should point at the room the SavePoint was shot in: {saved}"
+    );
+    assert!(
+        saved.contains("player.x = 264"),
+        "the save should carry the player position at save time: {saved}"
+    );
+    assert!(
+        host.files.read(Path::new("IWRTK_globaldata")).is_ok(),
+        "writeDeaths() should also have flushed globaldata"
+    );
+
+    // Walk away, then press "R".
+    {
+        let player = core
+            .current_room
+            .as_mut()
+            .unwrap()
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+            .unwrap();
+        player.x = 64.0;
+        player.y = 567.0;
+    }
+    press_real_sample_key(&mut host, 0x52);
+    core.tick(&mut host).unwrap();
+    release_real_sample_key(&mut host, 0x52);
+
+    let room = core.current_room.as_ref().unwrap();
+    assert_eq!(room.room_id, 34);
+    let player = room
+        .instances
+        .iter()
+        .find(|instance| instance.object_name.eq_ignore_ascii_case("player") && instance.alive)
+        .expect("player should exist after loadgame");
+    assert_eq!(
+        (player.x, player.y),
+        (264.0, 567.0),
+        "R should return to the shot SavePoint, not the room start"
     );
 }

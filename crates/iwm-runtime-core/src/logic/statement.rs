@@ -4,7 +4,9 @@ use std::path::Path;
 use iwm_runtime_host::{
     Rgba8, RuntimeDrawCommand, RuntimeHost, RuntimeHostErrorKind, RuntimeSoundMode,
 };
-use iwm_runtime_model::{FontResource, ObjectDefinition, PathResource, SpriteResource};
+use iwm_runtime_model::{
+    FontResource, ObjectDefinition, PathResource, RoomDefinition, SpriteResource,
+};
 
 use super::assignment::{assign_runtime_value, next_room_id, runtime_value_to_room_id};
 use super::calls::{
@@ -14,7 +16,8 @@ use super::calls::{
     resolve_runtime_sound_id, runtime_value_to_i32,
 };
 use super::context::{
-    RuntimeBinaryFileState, RuntimeEvalContext, RuntimeExecutionScope, RuntimeInstanceCreateRequest,
+    RuntimeBinaryFileState, RuntimeEvalContext, RuntimeExecutionScope,
+    RuntimeInstanceCreateRequest, RuntimeTextFileState,
 };
 use super::control_flow::{
     env_has_pending_scene_change, merged_statement_overlay, sync_instance_from_updates,
@@ -67,6 +70,10 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) pending_game_restart: &'a mut bool,
     pub(crate) active_one_shot_sounds: &'a mut std::collections::HashSet<i32>,
     pub(crate) binary_files: &'a mut RuntimeBinaryFileState,
+    pub(crate) text_files: &'a mut RuntimeTextFileState,
+    /// Nesting depth of `execute_file()` / `execute_string()`, to bound recursion
+    /// through save files the runtime does not control.
+    pub(crate) execute_source_depth: &'a mut u32,
     pub(crate) host: &'a mut H,
     pub(crate) diagnostics: &'a mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
     pub(crate) object_query_scratch: Option<&'a mut RuntimeObjectQueryScratch>,
@@ -74,6 +81,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) room_instance_updates: &'a mut RuntimeSparseInstanceOverlay,
     pub(crate) room_instance_creates: &'a mut Vec<RuntimeInstanceCreateRequest>,
     pub(crate) objects: &'a [ObjectDefinition],
+    pub(crate) rooms: &'a [RoomDefinition],
     pub(crate) sprites: &'a [SpriteResource],
     pub(crate) paths: &'a [PathResource],
     pub(crate) sprite_index: &'a HashMap<usize, usize>,
@@ -738,6 +746,78 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                         );
                     }
                 }
+                "file_text_write_string" => {
+                    let handle =
+                        evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
+                    let value = args.get(1).and_then(|arg| {
+                        evaluate_with_diagnostics(
+                            arg,
+                            Some(instance),
+                            Some(scope),
+                            eval_context,
+                            env,
+                            instance,
+                        )
+                    })?;
+                    env.text_files
+                        .write_string(handle, &runtime_value_to_string_text(&value));
+                }
+                "file_text_write_real" => {
+                    let handle =
+                        evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
+                    let value = args.get(1).and_then(|arg| {
+                        evaluate_with_diagnostics(
+                            arg,
+                            Some(instance),
+                            Some(scope),
+                            eval_context,
+                            env,
+                            instance,
+                        )
+                    })?;
+                    env.text_files
+                        .write_string(handle, &runtime_value_to_string_text(&value));
+                }
+                "file_text_writeln" => {
+                    let handle =
+                        evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
+                    env.text_files.writeln(handle);
+                }
+                "file_text_readln" => {
+                    let handle =
+                        evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
+                    env.text_files.readln(handle);
+                }
+                "file_text_close" => {
+                    let handle =
+                        evaluate_file_bin_handle(args.first(), instance, scope, eval_context, env)?;
+                    if let Err(error) = env.text_files.close(env.host, handle) {
+                        record_host_diagnostic(
+                            env.host,
+                            env.diagnostics,
+                            iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                            "runtime-file-host-error",
+                            format!(
+                                "{} function=file_text_close handle={} error={}",
+                                trace_message(&env.trace, instance),
+                                handle,
+                                error
+                            ),
+                        );
+                    }
+                }
+                "execute_file" | "execute_string" => {
+                    execute_runtime_source(
+                        name,
+                        args,
+                        instance,
+                        instance_index,
+                        scope,
+                        destroy_event_entries,
+                        eval_context,
+                        env,
+                    );
+                }
                 "__iwm_action_wrap" => {
                     let context = eval_context?;
                     let mode = args
@@ -1307,6 +1387,121 @@ fn execute_runtime_script<H: RuntimeHost>(
     }
     env.trace = previous_trace;
     Some(result)
+}
+
+/// GM8 file mode for the `file_text_open_*` family, or `None` for other names.
+fn file_text_open_mode(name: &str) -> Option<i32> {
+    match name {
+        "file_text_open_read" => Some(0),
+        "file_text_open_write" => Some(1),
+        "file_text_open_append" => Some(2),
+        _ => None,
+    }
+}
+
+/// Bound on `execute_file` / `execute_string` nesting.
+///
+/// The source these run comes from the save store, which the runtime does not
+/// author, so a save that re-executes itself must not blow the stack.
+const MAX_EXECUTE_SOURCE_DEPTH: u32 = 8;
+
+/// Runs `execute_file(path)` / `execute_string(source)`.
+///
+/// GM8 executes the source as an anonymous script: `self` stays the calling
+/// instance, so bare assignments land on the caller, while `player.x = ...`
+/// routes through the normal member-assignment path. A missing file is a no-op,
+/// matching GM8.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "shared runtime statement context"
+)]
+fn execute_runtime_source<H: RuntimeHost>(
+    name: &str,
+    args: &[LoweredLogicExpr],
+    instance: &mut RuntimeInstance,
+    instance_index: usize,
+    caller_scope: &RuntimeExecutionScope,
+    destroy_event_entries: &HashMap<usize, Vec<LoweredLogicEntry>>,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+    env: &mut RuntimeStatementEnvironment<'_, H>,
+) -> Option<()> {
+    let argument = args.first().and_then(|arg| {
+        evaluate_with_diagnostics(
+            arg,
+            Some(instance),
+            Some(caller_scope),
+            eval_context,
+            env,
+            instance,
+        )
+    })?;
+    let argument = runtime_value_to_string_text(&argument);
+
+    let (label, source) = if name == "execute_string" {
+        ("<string>".to_string(), argument)
+    } else {
+        let Ok(bytes) = env.host.read(Path::new(&argument)) else {
+            return None;
+        };
+        (argument, String::from_utf8_lossy(&bytes).into_owned())
+    };
+
+    if *env.execute_source_depth >= MAX_EXECUTE_SOURCE_DEPTH {
+        record_host_diagnostic(
+            env.host,
+            env.diagnostics,
+            iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+            "runtime-execute-source-depth-limit",
+            format!(
+                "{} function={} source={}",
+                trace_message(&env.trace, instance),
+                name,
+                label
+            ),
+        );
+        return None;
+    }
+
+    let statements = iwm_gml_lowering::lower_source(&source);
+    record_host_diagnostic(
+        env.host,
+        env.diagnostics,
+        iwm_runtime_host::RuntimeDiagnosticLevel::Info,
+        "runtime-execute-source",
+        format!(
+            "{} function={} source={} statements={}",
+            trace_message(&env.trace, instance),
+            name,
+            label,
+            statements.len()
+        ),
+    );
+
+    let previous_trace = env.trace.clone();
+    env.trace.block_id = format!("{name}:{label}");
+    env.trace.event_tag = "execute-source".into();
+    *env.execute_source_depth += 1;
+
+    let mut source_scope = RuntimeExecutionScope::default();
+    for statement in &statements {
+        if apply_runtime_statement(
+            statement,
+            instance,
+            instance_index,
+            &mut source_scope,
+            destroy_event_entries,
+            eval_context,
+            env,
+        )
+        .is_some()
+        {
+            break;
+        }
+    }
+
+    *env.execute_source_depth = env.execute_source_depth.saturating_sub(1);
+    env.trace = previous_trace;
+    Some(())
 }
 
 fn evaluate_path_start_args<'a, H: RuntimeHost>(
@@ -1995,6 +2190,46 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
                 .and_then(|value| runtime_value_to_i32(&value))?;
             let byte = env.binary_files.read_byte(handle);
             return Some(RuntimeValue::Number(byte as f64));
+        }
+        if let Some(mode) = file_text_open_mode(name) {
+            let path = args.first().and_then(|arg| {
+                evaluate_runtime_expr(arg, instance, scope, eval_context, env, trace_instance)
+            })?;
+            let RuntimeValue::Text(path) = path else {
+                return None;
+            };
+            let handle = env.text_files.open(&*env.host, path, mode);
+            return Some(RuntimeValue::Number(handle as f64));
+        }
+        if matches!(
+            name.as_str(),
+            "file_text_read_string" | "file_text_read_real" | "file_text_eof" | "file_text_eoln"
+        ) {
+            let handle = args
+                .first()
+                .and_then(|arg| {
+                    evaluate_runtime_expr(arg, instance, scope, eval_context, env, trace_instance)
+                })
+                .and_then(|value| runtime_value_to_i32(&value))?;
+            return Some(match name.as_str() {
+                "file_text_read_string" => RuntimeValue::Text(env.text_files.read_string(handle)),
+                "file_text_read_real" => RuntimeValue::Number(env.text_files.read_real(handle)),
+                "file_text_eof" => RuntimeValue::Bool(env.text_files.eof(handle)),
+                _ => RuntimeValue::Bool(env.text_files.eoln(handle)),
+            });
+        }
+        if name == "room_get_name" {
+            let room_id = args
+                .first()
+                .and_then(|arg| {
+                    evaluate_runtime_expr(arg, instance, scope, eval_context, env, trace_instance)
+                })
+                .and_then(|value| runtime_value_to_room_id(&value))?;
+            return env
+                .rooms
+                .iter()
+                .find(|room| room.id == room_id)
+                .map(|room| RuntimeValue::Text(room.name.clone()));
         }
         if env.script_entries.contains_key(name) {
             let mut instance = instance?.clone();

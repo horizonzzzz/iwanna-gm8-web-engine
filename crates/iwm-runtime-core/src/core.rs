@@ -14,7 +14,10 @@ use crate::event_dispatch::{
 use crate::helpers::{
     as_number, bounds_at, collides_at, collides_with_instances_at, is_player_instance,
 };
-use crate::logic::{instance_contains_point, RuntimeBinaryFileState, RuntimeSparseInstanceOverlay};
+use crate::logic::{
+    instance_contains_point, RuntimeBinaryFileState, RuntimeSparseInstanceOverlay,
+    RuntimeTextFileState,
+};
 use crate::tick_context::{RuntimeCollisionHit, RuntimeTickContext};
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCoreError,
@@ -71,6 +74,8 @@ pub struct RuntimeCore {
     pub(crate) host_bootstrap_scripts_applied: bool,
     pub(crate) pending_bootstrap_audio_calls: Vec<(i32, Option<RuntimeSoundMode>)>,
     pub(crate) binary_files: RuntimeBinaryFileState,
+    pub(crate) text_files: RuntimeTextFileState,
+    pub(crate) execute_source_depth: u32,
     pub(crate) tick_context: RuntimeTickContext,
     pub(crate) random_state: Cell<u64>,
     /// Sound ids last played with `sound_play` (one-shot mode) that have not
@@ -193,6 +198,8 @@ impl RuntimeCore {
             host_bootstrap_scripts_applied: false,
             pending_bootstrap_audio_calls: Vec::new(),
             binary_files: RuntimeBinaryFileState::default(),
+            text_files: RuntimeTextFileState::default(),
+            execute_source_depth: 0,
             tick_context: RuntimeTickContext::default(),
             random_state: Cell::new(0x4d59_5df4_d0f3_3173),
             active_one_shot_sounds: HashSet::new(),
@@ -1497,6 +1504,8 @@ impl RuntimeCore {
                     pending_game_restart: &mut self.pending_game_restart,
                     active_one_shot_sounds: &mut self.active_one_shot_sounds,
                     binary_files: &mut self.binary_files,
+                    text_files: &mut self.text_files,
+                    execute_source_depth: &mut self.execute_source_depth,
                     host: &mut *host,
                     diagnostics: &mut self.diagnostics,
                     object_query_scratch: None,
@@ -1504,6 +1513,7 @@ impl RuntimeCore {
                     room_instance_updates: &mut with_updates,
                     room_instance_creates: &mut instance_creates,
                     objects,
+                    rooms: &self.package.rooms,
                     sprites: &self.package.resources.sprites,
                     paths: &self.package.resources.paths,
                     sprite_index: &self.sprite_index,
@@ -2294,6 +2304,19 @@ fn is_host_file_function(name: &str) -> bool {
             | "file_bin_write_byte"
             | "file_bin_seek"
             | "file_bin_close"
+            | "file_text_open_read"
+            | "file_text_open_write"
+            | "file_text_open_append"
+            | "file_text_close"
+            | "file_text_write_string"
+            | "file_text_write_real"
+            | "file_text_writeln"
+            | "file_text_read_string"
+            | "file_text_read_real"
+            | "file_text_readln"
+            | "file_text_eof"
+            | "file_text_eoln"
+            | "execute_file"
             | "file_delete"
     )
 }

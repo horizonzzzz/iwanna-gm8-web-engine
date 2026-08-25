@@ -1,15 +1,11 @@
 mod action;
-mod expression;
-mod source;
-mod statement;
-mod syntax;
 
+use iwm_gml_lowering::lower_source;
 use iwm_runtime_model::{LoweredLogicEntry, LoweredLogicFile};
 
 use crate::models::RawLogicFile;
 
 use self::action::lower_action_list;
-use self::source::lower_source;
 
 pub fn lower_raw_logic_file(raw: &RawLogicFile) -> LoweredLogicFile {
     let mut entries = Vec::new();

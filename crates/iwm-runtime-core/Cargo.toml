@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+iwm-gml-lowering = { path = "../iwm-gml-lowering" }
 iwm-runtime-host = { path = "../iwm-runtime-host" }
 iwm-runtime-model = { path = "../iwm-runtime-model" }
 serde = { workspace = true }
