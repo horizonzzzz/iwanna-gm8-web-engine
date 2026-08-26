@@ -387,6 +387,7 @@ impl RuntimeCore {
                         place_target_ids_by_name: &self.place_target_ids_by_name,
                         room_ids_by_name: &self.room_ids_by_name,
                         view_zero: crate::logic::RuntimeViewValues::from_room(room),
+                        zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
                     };
                     let mut with_target_indices = Vec::new();
                     let mut statement_env = RuntimeStatementEnvironment {

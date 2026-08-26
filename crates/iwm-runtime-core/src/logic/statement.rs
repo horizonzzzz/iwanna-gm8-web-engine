@@ -2028,6 +2028,27 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
         };
     }
     if let LoweredLogicExpr::BinaryExpr { op, left, right } = expr {
+        // GML short-circuits boolean expressions before evaluating later operands.
+        if op == "&&" {
+            let left =
+                evaluate_runtime_expr(left, instance, scope, eval_context, env, trace_instance)?;
+            if !is_truthy(Some(left)) {
+                return Some(RuntimeValue::Bool(false));
+            }
+            let right =
+                evaluate_runtime_expr(right, instance, scope, eval_context, env, trace_instance)?;
+            return Some(RuntimeValue::Bool(is_truthy(Some(right))));
+        }
+        if op == "||" {
+            let left =
+                evaluate_runtime_expr(left, instance, scope, eval_context, env, trace_instance)?;
+            if is_truthy(Some(left)) {
+                return Some(RuntimeValue::Bool(true));
+            }
+            let right =
+                evaluate_runtime_expr(right, instance, scope, eval_context, env, trace_instance)?;
+            return Some(RuntimeValue::Bool(is_truthy(Some(right))));
+        }
         let left = evaluate_runtime_binary_operand(
             left,
             instance,

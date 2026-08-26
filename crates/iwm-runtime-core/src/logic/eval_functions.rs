@@ -699,7 +699,11 @@ fn instance_target_object_ids(
         LoweredLogicExpr::Identifier(name) => context
             .place_target_ids_by_name
             .get(&name.to_ascii_lowercase())
-            .cloned(),
+            .cloned()
+            // GM8 compiles identifiers that are no object name into implicit variable
+            // reads; with "treat uninitialized as 0" enabled a dangling target
+            // (deleted object left in script source) evaluates to object index 0.
+            .or_else(|| context.zero_uninitialized_vars.then(|| vec![0usize])),
         LoweredLogicExpr::LiteralNumber(number) if number.is_finite() && *number >= 0.0 => {
             Some(vec![number.round() as usize])
         }

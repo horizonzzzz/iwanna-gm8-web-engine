@@ -572,17 +572,32 @@ fn script_owned_jump_uses_grounded_branch_after_world_grav_bootstrap() {
                 right: Box::new(LoweredLogicExpr::LiteralNumber(0.0)),
             },
             then_branch: vec![LoweredLogicStatement::Conditional {
-                condition: LoweredLogicExpr::Call {
-                    name: "place_meeting".into(),
-                    args: vec![
-                        LoweredLogicExpr::Identifier("x".into()),
-                        LoweredLogicExpr::BinaryExpr {
-                            op: "+".into(),
-                            left: Box::new(LoweredLogicExpr::Identifier("y".into())),
-                            right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
-                        },
-                        LoweredLogicExpr::Identifier("block".into()),
-                    ],
+                condition: LoweredLogicExpr::BinaryExpr {
+                    op: "||".into(),
+                    left: Box::new(LoweredLogicExpr::Call {
+                        name: "place_meeting".into(),
+                        args: vec![
+                            LoweredLogicExpr::Identifier("x".into()),
+                            LoweredLogicExpr::BinaryExpr {
+                                op: "+".into(),
+                                left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                                right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                            },
+                            LoweredLogicExpr::Identifier("block".into()),
+                        ],
+                    }),
+                    right: Box::new(LoweredLogicExpr::Call {
+                        name: "place_meeting".into(),
+                        args: vec![
+                            LoweredLogicExpr::Identifier("x".into()),
+                            LoweredLogicExpr::BinaryExpr {
+                                op: "+".into(),
+                                left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                                right: Box::new(LoweredLogicExpr::LiteralNumber(1.0)),
+                            },
+                            LoweredLogicExpr::Identifier("missing_block".into()),
+                        ],
+                    }),
                 },
                 then_branch: vec![
                     LoweredLogicStatement::Assignment {
@@ -639,6 +654,7 @@ fn script_owned_jump_uses_grounded_branch_after_world_grav_bootstrap() {
     );
 
     core.tick(&mut host).unwrap();
+    assert_no_runtime_blockers(&core);
 
     let player = core
         .current_room()
@@ -650,6 +666,11 @@ fn script_owned_jump_uses_grounded_branch_after_world_grav_bootstrap() {
     assert_eq!(
         player.vars.get("jump_branch"),
         Some(&RuntimeValue::Text("ground".into()))
+    );
+    assert!(
+        player.vspeed < 0.0,
+        "script-owned ground jump should preserve upward velocity, got {}",
+        player.vspeed
     );
 }
 
@@ -1034,4 +1055,84 @@ fn swept_platform_contact_runs_event_at_contact_height_after_spent_double_jump()
         player.vars.get("onPlatform"),
         Some(&RuntimeValue::Number(1.0))
     );
+}
+
+/// SGGK-style dangling place target (`place_meeting(x, y+4, slipblock)` where the
+/// object was deleted from the project): GM8 compiles the identifier into an
+/// implicit variable read, so with "treat uninitialized as 0" enabled the query
+/// degrades to a normal collision check against object 0 instead of erroring.
+#[test]
+fn unresolved_place_target_degrades_when_uninitialized_vars_allowed() {
+    let mut package = sample_package();
+    package.manifest.zero_uninitialized_vars = true;
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: not_place_meeting_below("slipblock"),
+            then_branch: vec![set_marker(true)],
+            else_branch: vec![set_marker(false)],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    assert_no_runtime_blockers(&core);
+    let player = player(&core);
+    assert_eq!(
+        player.vars.get("marker"),
+        Some(&RuntimeValue::Bool(true)),
+        "unresolved place target should degrade to a collision check, got vars={:?}",
+        player.vars
+    );
+}
+
+/// With "treat uninitialized as 0" disabled, real GM8 raises an error on the same
+/// implicit read; keep that path fail-closed (condition falsifies) instead of
+/// silently treating the target as object 0.
+#[test]
+fn unresolved_place_target_stays_fail_closed_when_uninitialized_vars_rejected() {
+    let mut package = sample_package();
+    package.manifest.zero_uninitialized_vars = false;
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::Conditional {
+            condition: not_place_meeting_below("slipblock"),
+            then_branch: vec![set_marker(true)],
+            else_branch: vec![set_marker(false)],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    core.tick(&mut host).unwrap();
+
+    let player = player(&core);
+    assert_eq!(player.vars.get("marker"), Some(&RuntimeValue::Bool(false)));
+}
+
+fn not_place_meeting_below(target: &str) -> LoweredLogicExpr {
+    LoweredLogicExpr::UnaryExpr {
+        op: "!".into(),
+        child: Box::new(LoweredLogicExpr::Call {
+            name: "place_meeting".into(),
+            args: vec![
+                LoweredLogicExpr::Identifier("x".into()),
+                LoweredLogicExpr::BinaryExpr {
+                    op: "+".into(),
+                    left: Box::new(LoweredLogicExpr::Identifier("y".into())),
+                    right: Box::new(LoweredLogicExpr::LiteralNumber(4.0)),
+                },
+                LoweredLogicExpr::Identifier(target.into()),
+            ],
+        }),
+    }
+}
+
+fn set_marker(value: bool) -> LoweredLogicStatement {
+    LoweredLogicStatement::Assignment {
+        target: LoweredLogicExpr::Identifier("marker".into()),
+        value: LoweredLogicExpr::LiteralBool(value),
+    }
 }

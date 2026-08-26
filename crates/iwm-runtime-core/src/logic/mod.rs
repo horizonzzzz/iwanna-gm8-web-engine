@@ -170,6 +170,7 @@ impl RuntimeCore {
                         place_target_ids_by_name: &self.place_target_ids_by_name,
                         room_ids_by_name: &self.room_ids_by_name,
                         view_zero: RuntimeViewValues::from_room(room),
+                        zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
                     };
                     tick_context.with_target_indices.clear();
                     let mut statement_env = RuntimeStatementEnvironment {
@@ -409,6 +410,7 @@ impl RuntimeCore {
                         .current_room
                         .as_ref()
                         .and_then(RuntimeViewValues::from_room),
+                    zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
                 };
                 let destroy_event_entries = &self.cached_destroy_event_entries;
                 let mut room_instance_updates = RuntimeSparseInstanceOverlay::default();

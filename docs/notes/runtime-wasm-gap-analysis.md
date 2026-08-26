@@ -18,6 +18,17 @@ This is a living note. Update it whenever parser, runtime-core, runtime-web, or 
 
 ## Current Baseline
 
+- Runtime-core now evaluates dangling object-name place targets the way GM8
+  does. Fangames can reference objects deleted from the project (SGGK's
+  `playerJump` still probes `objwater`, `solidblock`, `slipblock`); real GM8
+  compiles such identifiers into implicit variable reads that evaluate to 0
+  when "treat uninitialized as 0" is on, so `instance_target_object_ids`
+  degrades an unknown name to object id 0 under the package's
+  `zero_uninitialized_vars` flag instead of failing the whole condition chain
+  as unsupported. With the flag off the behavior stays fail-closed. The same
+  change also aligns statement-path `&&`/`||` evaluation with the existing
+  expression-path short-circuit semantics, so a truthy earlier operand no
+  longer depends on later operands evaluating cleanly.
 - The CLI provides `sample-audit` for staged local compatibility audits and
   `runtime-scenario` for input-script replay with declarative assertions. Dife
   and ArioTrials are the completed L1/L2 regression samples. Crimson v1 is the

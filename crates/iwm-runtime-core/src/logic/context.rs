@@ -426,6 +426,7 @@ pub(crate) struct RuntimeEvalContext<'a> {
     pub place_target_ids_by_name: &'a HashMap<String, Vec<usize>>,
     pub room_ids_by_name: &'a HashMap<String, usize>,
     pub view_zero: Option<RuntimeViewValues>,
+    pub zero_uninitialized_vars: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -477,6 +478,7 @@ impl<'a> RuntimeEvalContext<'a> {
             place_target_ids_by_name: self.place_target_ids_by_name,
             room_ids_by_name: self.room_ids_by_name,
             view_zero: self.view_zero,
+            zero_uninitialized_vars: self.zero_uninitialized_vars,
         }
     }
 

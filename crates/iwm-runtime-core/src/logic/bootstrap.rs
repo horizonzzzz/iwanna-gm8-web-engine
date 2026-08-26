@@ -170,6 +170,7 @@ impl RuntimeCore {
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                     room_ids_by_name: &self.room_ids_by_name,
                     view_zero: super::RuntimeViewValues::from_room(room_state),
+                    zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
                 };
                 if let Some(key) = assignable_key(
                     target,
@@ -227,6 +228,7 @@ impl RuntimeCore {
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                     room_ids_by_name: &self.room_ids_by_name,
                     view_zero: super::RuntimeViewValues::from_room(room_state),
+                    zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
                 };
                 let condition_value = evaluate_expr_with_resource_constants(
                     condition,
@@ -276,6 +278,7 @@ impl RuntimeCore {
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                     room_ids_by_name: &self.room_ids_by_name,
                     view_zero: super::RuntimeViewValues::from_room(room_state),
+                    zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
                 };
                 let branch = branches
                     .iter()
@@ -323,6 +326,7 @@ impl RuntimeCore {
                     place_target_ids_by_name: &self.place_target_ids_by_name,
                     room_ids_by_name: &self.room_ids_by_name,
                     view_zero: super::RuntimeViewValues::from_room(room_state),
+                    zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
                 };
                 let Some(value) = evaluate_expr_with_resource_constants(
                     expression,
@@ -585,6 +589,7 @@ impl RuntimeCore {
             place_target_ids_by_name: &self.place_target_ids_by_name,
             room_ids_by_name: &self.room_ids_by_name,
             view_zero: super::RuntimeViewValues::from_room(room_state),
+            zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,
         };
         let x = args
             .first()
