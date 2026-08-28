@@ -20,7 +20,8 @@ use crate::logic::{
 };
 use crate::tick_context::{RuntimeCollisionHit, RuntimeTickContext};
 use crate::{
-    LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCoreError,
+    LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCollisionParticipantTrace,
+    RuntimeCollisionTraceEntry, RuntimeCoreError, RuntimeDeathTraceEntry,
     RuntimeInputTraceSnapshot, RuntimeInstance, RuntimeJumpSnapshot, RuntimePackage,
     RuntimePlayerSnapshot, RuntimeRoomState, RuntimeSnapshot, RuntimeStatus,
     RuntimeTickPhaseSnapshot, RuntimeValue,
@@ -60,6 +61,10 @@ pub struct RuntimeCore {
     pub(crate) status: RuntimeStatus,
     pub(crate) tick: u64,
     pub(crate) diagnostics: Vec<iwm_runtime_host::RuntimeDiagnostic>,
+    pub(crate) collision_trace: Vec<RuntimeCollisionTraceEntry>,
+    pub(crate) death_trace: Vec<RuntimeDeathTraceEntry>,
+    pub(crate) collision_trace_limit: usize,
+    pub(crate) death_trace_window: usize,
     pub(crate) pending_room_transition: Option<usize>,
     pub(crate) pending_room_reset: bool,
     pub(crate) pending_game_restart: bool,
@@ -178,6 +183,10 @@ impl RuntimeCore {
             status: RuntimeStatus::Ready,
             tick: 0,
             diagnostics: Vec::new(),
+            collision_trace: Vec::new(),
+            death_trace: Vec::new(),
+            collision_trace_limit: 0,
+            death_trace_window: 0,
             pending_room_transition: None,
             pending_room_reset: false,
             pending_game_restart: false,
@@ -286,10 +295,60 @@ impl RuntimeCore {
 
     /// Count one player death, collapsing duplicate reports within one tick
     /// (e.g. overlapping hazards firing separate collision events).
-    pub(crate) fn count_player_death(&mut self) {
-        if self.last_death_tick != Some(self.tick) {
-            self.deaths += 1;
-            self.last_death_tick = Some(self.tick);
+    pub(crate) fn count_player_death(&mut self) -> bool {
+        if self.last_death_tick == Some(self.tick) {
+            return false;
+        }
+        self.deaths += 1;
+        self.last_death_tick = Some(self.tick);
+        true
+    }
+
+    pub fn set_debug_trace_limits(
+        &mut self,
+        collision_trace_limit: usize,
+        death_trace_window: usize,
+    ) {
+        self.collision_trace_limit = collision_trace_limit;
+        self.death_trace_window = death_trace_window;
+        if collision_trace_limit == 0 {
+            self.collision_trace.clear();
+        }
+        if death_trace_window == 0 {
+            self.death_trace.clear();
+        }
+    }
+
+    pub(crate) fn record_collision_trace(&mut self, entry: RuntimeCollisionTraceEntry) {
+        if self.collision_trace_limit == 0 {
+            return;
+        }
+        if self.collision_trace.len() >= self.collision_trace_limit {
+            self.collision_trace.remove(0);
+        }
+        self.collision_trace.push(entry);
+    }
+
+    pub(crate) fn record_death_trace(
+        &mut self,
+        mut entry: RuntimeDeathTraceEntry,
+        pending_collision_trace: &[RuntimeCollisionTraceEntry],
+    ) {
+        if self.death_trace_window == 0 {
+            return;
+        }
+        let retained = self
+            .collision_trace
+            .iter()
+            .chain(pending_collision_trace.iter())
+            .rev()
+            .take(self.death_trace_window)
+            .cloned()
+            .collect::<Vec<_>>();
+        entry.collision_window = retained.into_iter().rev().collect();
+        self.death_trace.push(entry);
+        if self.death_trace.len() > 8 {
+            self.death_trace.remove(0);
         }
     }
 
@@ -347,6 +406,8 @@ impl RuntimeCore {
             input_trace: self.last_input_trace.clone(),
             tick_phases: self.last_tick_phases,
             diagnostics: self.diagnostics.clone(),
+            collision_trace: self.collision_trace.clone(),
+            death_trace: self.death_trace.clone(),
         }
     }
 
@@ -1539,7 +1600,7 @@ impl RuntimeCore {
                     &mut instance,
                     instance_idx,
                     &mut scope,
-                    &destroy_event_entries,
+                    destroy_event_entries,
                     Some(&eval_context),
                     &mut statement_env,
                 );
@@ -1731,7 +1792,7 @@ impl RuntimeCore {
             .sort_by_key(|hit| !hit.solid_collision);
 
         for hit in tick_context.collision_hits.iter().copied() {
-            let mut collision_trace = Vec::new();
+            let mut collision_trace = Vec::<RuntimeCollisionTraceEntry>::new();
             let other_instance = {
                 let Some(room) = self.current_room.as_mut() else {
                     continue;
@@ -1776,6 +1837,7 @@ impl RuntimeCore {
                     &room.instances[hit.other_idx],
                     solid_collision,
                     hit.contact_y,
+                    &[],
                 );
                 if solid_collision {
                     if let Some(instance) = room.instances.get_mut(hit.instance_idx) {
@@ -1804,6 +1866,7 @@ impl RuntimeCore {
                     &room.instances[hit.other_idx],
                     solid_collision,
                     hit.contact_y,
+                    &[],
                 );
                 room.instances.get(hit.other_idx).cloned()
             };
@@ -1811,6 +1874,7 @@ impl RuntimeCore {
                 continue;
             };
             let other_was_hazard = other_instance.hazard;
+            let hazard_trace = collision_trace_participant(&other_instance);
             let block_ids = {
                 let Some(room) = self.current_room.as_ref() else {
                     continue;
@@ -1837,29 +1901,8 @@ impl RuntimeCore {
                 "collision".into(),
                 Some(&tick_context.collision_spatial_index),
             );
-            let scripted_hazard_death = self.current_room.as_ref().and_then(|room| {
-                let instance = room.instances.get(hit.instance_idx)?;
-                (other_was_hazard && instance.player_candidate && !instance.alive).then(|| {
-                    format!(
-                        "room={} tick={} object={} runtime_id={} x={} y={} reason=hazard message=player-hit-hazard-in-{}",
-                        room.room_id,
-                        self.tick,
-                        instance.object_name,
-                        instance.runtime_id,
-                        instance.x,
-                        instance.y,
-                        room.room_name
-                    )
-                })
-            });
-            if let Some(message) = scripted_hazard_death {
-                self.count_player_death();
-                self.record_diagnostic(
-                    host,
-                    iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
-                    "runtime-player-died",
-                    message,
-                );
+            for entry in &mut collision_trace {
+                entry.event_blocks = block_ids.clone();
             }
             let solid_collision = {
                 let Some(room) = self.current_room.as_ref() else {
@@ -1884,10 +1927,48 @@ impl RuntimeCore {
                         other,
                         solid_collision,
                         hit.contact_y,
+                        &block_ids,
                     );
                 }
                 solid_collision
             };
+            let scripted_hazard_death = self.current_room.as_ref().and_then(|room| {
+                let instance = room.instances.get(hit.instance_idx)?;
+                (other_was_hazard && instance.player_candidate && !instance.alive).then(|| {
+                    (
+                        format!(
+                            "room={} tick={} object={} runtime_id={} x={} y={} reason=hazard message=player-hit-hazard-in-{}",
+                            room.room_id,
+                            self.tick,
+                            instance.object_name,
+                            instance.runtime_id,
+                            instance.x,
+                            instance.y,
+                            room.room_name
+                        ),
+                        RuntimeDeathTraceEntry {
+                            tick: self.tick,
+                            room_id: room.room_id,
+                            room_name: room.room_name.clone(),
+                            reason: "hazard".into(),
+                            player: collision_trace_participant(instance),
+                            hazard: Some(hazard_trace.clone()),
+                            collision_window: Vec::new(),
+                        },
+                    )
+                })
+            });
+            if let Some((message, death_trace)) = scripted_hazard_death {
+                if self.count_player_death() {
+                    self.record_death_trace(death_trace, &collision_trace);
+                    self.record_diagnostic(
+                        host,
+                        iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                        "runtime-player-died",
+                        message,
+                    );
+                }
+            }
             if solid_collision {
                 // GM8 re-applies both instances' speeds after the event and only
                 // rolls back again if they still overlap; this is how horizontal
@@ -1936,6 +2017,7 @@ impl RuntimeCore {
                             other,
                             solid_collision,
                             hit.contact_y,
+                            &[],
                         );
                     }
                     if still_overlapping {
@@ -1994,17 +2076,19 @@ impl RuntimeCore {
                                 other,
                                 solid_collision,
                                 hit.contact_y,
+                                &[],
                             );
                         }
                     }
                 }
             }
-            for message in collision_trace {
+            for entry in collision_trace {
+                self.record_collision_trace(entry.clone());
                 self.record_diagnostic(
                     host,
                     iwm_runtime_host::RuntimeDiagnosticLevel::Info,
                     "runtime-collision-trace",
-                    message,
+                    format_player_collision_trace(&entry),
                 );
             }
         }
@@ -2077,7 +2161,7 @@ fn final_solid_overlap_resolution(
 }
 
 fn record_player_collision_trace(
-    messages: &mut Vec<String>,
+    entries: &mut Vec<RuntimeCollisionTraceEntry>,
     tick: u64,
     phase: &'static str,
     hit: RuntimeCollisionHit,
@@ -2085,40 +2169,95 @@ fn record_player_collision_trace(
     other: &RuntimeInstance,
     solid_collision: bool,
     contact_y: Option<i32>,
+    event_blocks: &[String],
 ) {
     let relevant = (instance.player_candidate || other.player_candidate)
         && (solid_collision || instance.hazard || other.hazard)
         && (instance.vspeed < 0.0 || other.vspeed < 0.0 || instance.hazard || other.hazard);
-    if messages.is_empty() && !relevant {
+    if entries.is_empty() && !relevant {
         return;
     }
 
-    messages.push(format!(
-        "tick={tick} phase={phase} owner={}#{} target={} other={}#{} solid={} contact_y={} pos=({:.3},{:.3}) prev=({:.3},{:.3}) speed=({:.3},{:.3}) other_pos=({:.3},{:.3}) other_speed=({:.3},{:.3}) flags=inst_solid:{} inst_hazard:{} other_solid:{} other_hazard:{}",
-        instance.object_name,
-        instance.runtime_id,
-        hit.target_object_id,
-        other.object_name,
-        other.runtime_id,
+    entries.push(RuntimeCollisionTraceEntry {
+        tick,
+        phase: phase.into(),
+        target_object_id: hit.target_object_id,
         solid_collision,
-        contact_y
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "none".into()),
-        instance.x,
-        instance.y,
-        instance.previous_x,
-        instance.previous_y,
-        instance.hspeed,
-        instance.vspeed,
-        other.x,
-        other.y,
-        other.hspeed,
-        other.vspeed,
-        instance.solid,
-        instance.hazard,
-        other.solid,
-        other.hazard,
-    ));
+        contact_y,
+        event_blocks: event_blocks.to_vec(),
+        owner: collision_trace_participant(instance),
+        other: collision_trace_participant(other),
+    });
+}
+
+pub(crate) fn collision_trace_participant(
+    instance: &RuntimeInstance,
+) -> RuntimeCollisionParticipantTrace {
+    let mask = instance.collision_masks.first().filter(|mask| {
+        mask.width > 0
+            && mask.height > 0
+            && mask.data.len() >= mask.width.saturating_mul(mask.height) as usize
+    });
+    let current_bounds = bounds_at(instance, instance.x, instance.y);
+    let previous_bounds = bounds_at(instance, instance.previous_x, instance.previous_y);
+    RuntimeCollisionParticipantTrace {
+        runtime_id: instance.runtime_id,
+        instance_id: instance.instance_id,
+        object_id: instance.object_id,
+        object_name: instance.object_name.clone(),
+        x: instance.x,
+        y: instance.y,
+        previous_x: instance.previous_x,
+        previous_y: instance.previous_y,
+        hspeed: instance.hspeed,
+        vspeed: instance.vspeed,
+        bounds: [
+            current_bounds.0,
+            current_bounds.1,
+            current_bounds.2,
+            current_bounds.3,
+        ],
+        previous_bounds: [
+            previous_bounds.0,
+            previous_bounds.1,
+            previous_bounds.2,
+            previous_bounds.3,
+        ],
+        solid: instance.solid,
+        hazard: instance.hazard,
+        has_collision_mask: mask.is_some(),
+        collision_mask_size: mask.map(|mask| [mask.width, mask.height]),
+    }
+}
+
+fn format_player_collision_trace(entry: &RuntimeCollisionTraceEntry) -> String {
+    format!(
+        "tick={} phase={} owner={}#{} target={} other={}#{} solid={} contact_y={} pos=({:.3},{:.3}) prev=({:.3},{:.3}) speed=({:.3},{:.3}) other_pos=({:.3},{:.3}) other_speed=({:.3},{:.3}) flags=inst_solid:{} inst_hazard:{} other_solid:{} other_hazard:{} blocks={}",
+        entry.tick,
+        entry.phase,
+        entry.owner.object_name,
+        entry.owner.runtime_id,
+        entry.target_object_id,
+        entry.other.object_name,
+        entry.other.runtime_id,
+        entry.solid_collision,
+        entry.contact_y.map(|value| value.to_string()).unwrap_or_else(|| "none".into()),
+        entry.owner.x,
+        entry.owner.y,
+        entry.owner.previous_x,
+        entry.owner.previous_y,
+        entry.owner.hspeed,
+        entry.owner.vspeed,
+        entry.other.x,
+        entry.other.y,
+        entry.other.hspeed,
+        entry.other.vspeed,
+        entry.owner.solid,
+        entry.owner.hazard,
+        entry.other.solid,
+        entry.other.hazard,
+        entry.event_blocks.join(","),
+    )
 }
 
 fn parse_alarm_slot(key: &str) -> Option<u32> {

@@ -1,10 +1,12 @@
 use iwm_runtime_core::{
-    RuntimeCoreError, RuntimeInputTraceSnapshot, RuntimeJumpSnapshot, RuntimePlayerSnapshot,
+    RuntimeCollisionParticipantTrace, RuntimeCollisionTraceEntry, RuntimeCoreError,
+    RuntimeDeathTraceEntry, RuntimeInputTraceSnapshot, RuntimeJumpSnapshot, RuntimePlayerSnapshot,
     RuntimeSnapshot, RuntimeStatus, RuntimeTickPhaseSnapshot,
 };
 use iwm_runtime_host::RuntimeDiagnostic;
 
 use crate::{
+    BridgeCollisionParticipantTrace, BridgeCollisionTraceEntry, BridgeDeathTraceEntry,
     BridgeInputTraceSnapshot, BridgeJumpSnapshot, BridgePlayerSnapshot, BridgeSnapshot,
     BridgeTickPhaseSnapshot,
 };
@@ -22,6 +24,70 @@ pub fn bridge_snapshot(snapshot: RuntimeSnapshot) -> BridgeSnapshot {
         input_trace: bridge_input_trace_snapshot(snapshot.input_trace),
         tick_phases: bridge_tick_phase_snapshot(snapshot.tick_phases),
         diagnostics: format_diagnostics(&snapshot.diagnostics),
+        collision_trace: snapshot
+            .collision_trace
+            .into_iter()
+            .map(bridge_collision_trace_entry)
+            .collect(),
+        death_trace: snapshot
+            .death_trace
+            .into_iter()
+            .map(bridge_death_trace_entry)
+            .collect(),
+    }
+}
+
+pub fn bridge_collision_participant_trace(
+    trace: RuntimeCollisionParticipantTrace,
+) -> BridgeCollisionParticipantTrace {
+    BridgeCollisionParticipantTrace {
+        runtime_id: trace.runtime_id,
+        instance_id: trace.instance_id,
+        object_id: trace.object_id,
+        object_name: trace.object_name,
+        x: trace.x,
+        y: trace.y,
+        previous_x: trace.previous_x,
+        previous_y: trace.previous_y,
+        hspeed: trace.hspeed,
+        vspeed: trace.vspeed,
+        bounds: trace.bounds,
+        previous_bounds: trace.previous_bounds,
+        solid: trace.solid,
+        hazard: trace.hazard,
+        has_collision_mask: trace.has_collision_mask,
+        collision_mask_size: trace.collision_mask_size,
+    }
+}
+
+pub fn bridge_collision_trace_entry(
+    trace: RuntimeCollisionTraceEntry,
+) -> BridgeCollisionTraceEntry {
+    BridgeCollisionTraceEntry {
+        tick: trace.tick,
+        phase: trace.phase,
+        target_object_id: trace.target_object_id,
+        solid_collision: trace.solid_collision,
+        contact_y: trace.contact_y,
+        event_blocks: trace.event_blocks,
+        owner: bridge_collision_participant_trace(trace.owner),
+        other: bridge_collision_participant_trace(trace.other),
+    }
+}
+
+pub fn bridge_death_trace_entry(trace: RuntimeDeathTraceEntry) -> BridgeDeathTraceEntry {
+    BridgeDeathTraceEntry {
+        tick: trace.tick,
+        room_id: trace.room_id,
+        room_name: trace.room_name,
+        reason: trace.reason,
+        player: bridge_collision_participant_trace(trace.player),
+        hazard: trace.hazard.map(bridge_collision_participant_trace),
+        collision_window: trace
+            .collision_window
+            .into_iter()
+            .map(bridge_collision_trace_entry)
+            .collect(),
     }
 }
 

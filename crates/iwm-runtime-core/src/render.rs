@@ -435,7 +435,7 @@ impl RuntimeCore {
                         &mut instance,
                         index,
                         &mut scope,
-                        &destroy_event_entries,
+                        destroy_event_entries,
                         Some(&eval_context),
                         &mut statement_env,
                     );

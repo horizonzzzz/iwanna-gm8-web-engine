@@ -1,8 +1,12 @@
-import type { RuntimePackage } from '../types';
-import { createWebAudioHost, type WasmAudioHost, type WasmSoundMode } from './wasmAudioHost';
+import type { RuntimePackage } from "../types";
+import {
+  createWebAudioHost,
+  type WasmAudioHost,
+  type WasmSoundMode,
+} from "./wasmAudioHost";
 
 const BRIDGE_BUFFER_MAGIC = 0x424d5749;
-const BRIDGE_BUFFER_VERSION = 3;
+const BRIDGE_BUFFER_VERSION = 4;
 const BRIDGE_INPUT_KIND = 1;
 const BRIDGE_STEP_RESULT_KIND = 2;
 const textEncoder = new TextEncoder();
@@ -25,6 +29,46 @@ export type WasmRuntimeTickPhases = {
   keyboardEventsNanos: number;
   renderSubmitNanos: number;
   totalNanos: number;
+};
+
+export type WasmRuntimeCollisionParticipantTrace = {
+  runtimeId: number;
+  instanceId: number;
+  objectId: number;
+  objectName: string;
+  x: number;
+  y: number;
+  previousX: number;
+  previousY: number;
+  hspeed: number;
+  vspeed: number;
+  bounds: [number, number, number, number];
+  previousBounds: [number, number, number, number];
+  solid: boolean;
+  hazard: boolean;
+  hasCollisionMask: boolean;
+  collisionMaskSize: [number, number] | null;
+};
+
+export type WasmRuntimeCollisionTraceEntry = {
+  tick: number;
+  phase: string;
+  targetObjectId: number;
+  solidCollision: boolean;
+  contactY: number | null;
+  eventBlocks: string[];
+  owner: WasmRuntimeCollisionParticipantTrace;
+  other: WasmRuntimeCollisionParticipantTrace;
+};
+
+export type WasmRuntimeDeathTraceEntry = {
+  tick: number;
+  roomId: number;
+  roomName: string;
+  reason: string;
+  player: WasmRuntimeCollisionParticipantTrace;
+  hazard: WasmRuntimeCollisionParticipantTrace | null;
+  collisionWindow: WasmRuntimeCollisionTraceEntry[];
 };
 
 export type WasmRuntimeBridgeSnapshot = {
@@ -64,6 +108,8 @@ export type WasmRuntimeBridgeSnapshot = {
   };
   tickPhases?: WasmRuntimeTickPhases;
   diagnostics: string[];
+  collisionTrace?: WasmRuntimeCollisionTraceEntry[];
+  deathTrace?: WasmRuntimeDeathTraceEntry[];
 };
 
 export type WasmRuntimeInputState = {
@@ -89,13 +135,63 @@ export type WasmRuntimeFrame = {
   width: number;
   height: number;
   commands: Array<
-    | { kind: 'clear'; colour: [number, number, number, number] }
-    | { kind: 'drawBackground'; backgroundId: number; x: number; y: number; stretch: boolean; tileHorz: boolean; tileVert: boolean; isForeground: boolean }
-    | { kind: 'drawTile'; backgroundId: number; x: number; y: number; tileX: number; tileY: number; width: number; height: number; xscale: number; yscale: number }
-    | { kind: 'drawSprite'; spriteId: number; frameIndex: number; x: number; y: number; originX: number; originY: number; xscale: number; yscale: number; alpha?: number; angleDegrees: number }
-    | { kind: 'fillRect'; x: number; y: number; width: number; height: number; colour: [number, number, number, number] }
-    | { kind: 'drawText'; text: string; x: number; y: number; size: number; fontName?: string | null; fontBold?: boolean; fontItalic?: boolean; colour: [number, number, number, number]; align: CanvasTextAlign }
-    | { kind: 'present' }
+    | { kind: "clear"; colour: [number, number, number, number] }
+    | {
+        kind: "drawBackground";
+        backgroundId: number;
+        x: number;
+        y: number;
+        stretch: boolean;
+        tileHorz: boolean;
+        tileVert: boolean;
+        isForeground: boolean;
+      }
+    | {
+        kind: "drawTile";
+        backgroundId: number;
+        x: number;
+        y: number;
+        tileX: number;
+        tileY: number;
+        width: number;
+        height: number;
+        xscale: number;
+        yscale: number;
+      }
+    | {
+        kind: "drawSprite";
+        spriteId: number;
+        frameIndex: number;
+        x: number;
+        y: number;
+        originX: number;
+        originY: number;
+        xscale: number;
+        yscale: number;
+        alpha?: number;
+        angleDegrees: number;
+      }
+    | {
+        kind: "fillRect";
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        colour: [number, number, number, number];
+      }
+    | {
+        kind: "drawText";
+        text: string;
+        x: number;
+        y: number;
+        size: number;
+        fontName?: string | null;
+        fontBold?: boolean;
+        fontItalic?: boolean;
+        colour: [number, number, number, number];
+        align: CanvasTextAlign;
+      }
+    | { kind: "present" }
   >;
 };
 
@@ -105,15 +201,28 @@ export type WasmRuntimeBridgeStepResult = {
 };
 
 export type WasmRuntimeBridge = {
-  backend: 'opengmk-wasm';
-  boot: (pkg: RuntimePackage, options?: { basePath?: string }) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
-  snapshot: () => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
+  backend: "opengmk-wasm";
+  boot: (
+    pkg: RuntimePackage,
+    options?: { basePath?: string },
+  ) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
+  snapshot: () =>
+    | Promise<WasmRuntimeBridgeSnapshot>
+    | WasmRuntimeBridgeSnapshot;
   frame: () => Promise<WasmRuntimeFrame> | WasmRuntimeFrame;
-  setInput: (input: WasmRuntimeInputState) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
-  step?: (input: WasmRuntimeInputState) => Promise<WasmRuntimeBridgeStepResult> | WasmRuntimeBridgeStepResult;
-  tick: (frames?: number) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
+  setInput: (
+    input: WasmRuntimeInputState,
+  ) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
+  step?: (
+    input: WasmRuntimeInputState,
+  ) => Promise<WasmRuntimeBridgeStepResult> | WasmRuntimeBridgeStepResult;
+  tick: (
+    frames?: number,
+  ) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   reset: () => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
-  selectRoom: (roomId: number) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
+  selectRoom: (
+    roomId: number,
+  ) => Promise<WasmRuntimeBridgeSnapshot> | WasmRuntimeBridgeSnapshot;
   diagnostics: () => Promise<string[]> | string[];
 };
 
@@ -122,16 +231,17 @@ export type WasmRuntimeBridgeModule = {
 };
 
 class LocalStorageWasmFileHost implements WasmFileHost {
-  private static readonly restartMarkerFiles = ['temp', 'temp.dat'];
+  private static readonly restartMarkerFiles = ["temp", "temp.dat"];
 
-  private packageKey = 'unconfigured';
+  private packageKey = "unconfigured";
   private readonly memoryFallback = new Map<string, string>();
 
-  constructor(private readonly namespace = 'iwm-runtime-save') {}
+  constructor(private readonly namespace = "iwm-runtime-save") {}
 
   configurePackage(pkg: RuntimePackage, basePath: string): void {
-    const hash = pkg.manifest.source_hash || pkg.manifest.source_name || 'package';
-    this.packageKey = `${basePath || 'default'}:${hash}`;
+    const hash =
+      pkg.manifest.source_hash || pkg.manifest.source_name || "package";
+    this.packageKey = `${basePath || "default"}:${hash}`;
     // GM8 engines mark an in-flight load-restart with a temp file ("temp" in
     // Yuuutu-style engines, "temp.dat" in Nekoron-style ones) and only delete it
     // on their own quit keys. Closing the tab skips those, so a persisted marker
@@ -150,7 +260,7 @@ class LocalStorageWasmFileHost implements WasmFileHost {
   }
 
   writeFile(path: string, bytes: Uint8Array): void {
-    let binary = '';
+    let binary = "";
     for (const byte of bytes) {
       binary += String.fromCharCode(byte);
     }
@@ -170,7 +280,11 @@ class LocalStorageWasmFileHost implements WasmFileHost {
 
   private storageGet(key: string): string | null {
     try {
-      return globalThis.localStorage?.getItem(key) ?? this.memoryFallback.get(key) ?? null;
+      return (
+        globalThis.localStorage?.getItem(key) ??
+        this.memoryFallback.get(key) ??
+        null
+      );
     } catch {
       return this.memoryFallback.get(key) ?? null;
     }
@@ -194,7 +308,9 @@ class LocalStorageWasmFileHost implements WasmFileHost {
   }
 }
 
-export function createLocalStorageWasmFileHost(namespace?: string): WasmFileHost {
+export function createLocalStorageWasmFileHost(
+  namespace?: string,
+): WasmFileHost {
   return new LocalStorageWasmFileHost(namespace);
 }
 
@@ -216,58 +332,76 @@ type WasmRuntimeExports = {
 };
 
 function isFunction(value: unknown): value is (...args: unknown[]) => unknown {
-  return typeof value === 'function';
+  return typeof value === "function";
 }
 
-export function isWasmRuntimeBridge(value: unknown): value is WasmRuntimeBridge {
-  if (!value || typeof value !== 'object') {
+export function isWasmRuntimeBridge(
+  value: unknown,
+): value is WasmRuntimeBridge {
+  if (!value || typeof value !== "object") {
     return false;
   }
 
   const candidate = value as Partial<WasmRuntimeBridge>;
-  return candidate.backend === 'opengmk-wasm'
-    && isFunction(candidate.boot)
-    && isFunction(candidate.snapshot)
-    && isFunction(candidate.frame)
-    && isFunction(candidate.setInput)
-    && isFunction(candidate.tick)
-    && isFunction(candidate.reset)
-    && isFunction(candidate.selectRoom)
-    && isFunction(candidate.diagnostics);
+  return (
+    candidate.backend === "opengmk-wasm" &&
+    isFunction(candidate.boot) &&
+    isFunction(candidate.snapshot) &&
+    isFunction(candidate.frame) &&
+    isFunction(candidate.setInput) &&
+    isFunction(candidate.tick) &&
+    isFunction(candidate.reset) &&
+    isFunction(candidate.selectRoom) &&
+    isFunction(candidate.diagnostics)
+  );
 }
 
 function isWasmRuntimeExports(value: unknown): value is WasmRuntimeExports {
-  if (!value || typeof value !== 'object') {
+  if (!value || typeof value !== "object") {
     return false;
   }
 
   const candidate = value as Partial<WasmRuntimeExports>;
-  return !!candidate.memory
-    && isFunction(candidate.iwm_alloc)
-    && isFunction(candidate.iwm_free)
-    && isFunction(candidate.iwm_boot_json)
-    && isFunction(candidate.iwm_set_input_json)
-    && isFunction(candidate.iwm_tick)
-    && isFunction(candidate.iwm_reset)
-    && isFunction(candidate.iwm_select_room)
-    && isFunction(candidate.iwm_snapshot_json)
-    && isFunction(candidate.iwm_frame_json)
-    && isFunction(candidate.iwm_diagnostics_json)
-    && isFunction(candidate.iwm_last_result_len);
+  return (
+    !!candidate.memory &&
+    isFunction(candidate.iwm_alloc) &&
+    isFunction(candidate.iwm_free) &&
+    isFunction(candidate.iwm_boot_json) &&
+    isFunction(candidate.iwm_set_input_json) &&
+    isFunction(candidate.iwm_tick) &&
+    isFunction(candidate.iwm_reset) &&
+    isFunction(candidate.iwm_select_room) &&
+    isFunction(candidate.iwm_snapshot_json) &&
+    isFunction(candidate.iwm_frame_json) &&
+    isFunction(candidate.iwm_diagnostics_json) &&
+    isFunction(candidate.iwm_last_result_len)
+  );
 }
 
 function readJsonResult<T>(exports: WasmRuntimeExports, pointer: number): T {
   const byteLength = exports.iwm_last_result_len();
   const bytes = new Uint8Array(exports.memory.buffer, pointer, byteLength);
   const decoded = textDecoder.decode(bytes);
-  const parsed = JSON.parse(decoded) as T & { error?: string };
-  if (typeof parsed === 'object' && parsed && typeof parsed.error === 'string') {
+  let parsed: T & { error?: string };
+  try {
+    parsed = JSON.parse(decoded) as T & { error?: string };
+  } catch {
+    throw new Error("WASM bridge returned invalid JSON");
+  }
+  if (
+    typeof parsed === "object" &&
+    parsed &&
+    typeof parsed.error === "string"
+  ) {
     throw new Error(parsed.error);
   }
   return parsed;
 }
 
-function writeJsonInput(exports: WasmRuntimeExports, value: unknown): { pointer: number; byteLength: number } {
+function writeJsonInput(
+  exports: WasmRuntimeExports,
+  value: unknown,
+): { pointer: number; byteLength: number } {
   const bytes = textEncoder.encode(JSON.stringify(value));
   const pointer = exports.iwm_alloc(bytes.byteLength);
   new Uint8Array(exports.memory.buffer, pointer, bytes.byteLength).set(bytes);
@@ -339,7 +473,7 @@ class BridgeBufferReader {
   expectHeader(kind: number): void {
     const magic = this.readU32();
     if (magic !== BRIDGE_BUFFER_MAGIC) {
-      throw new Error('invalid bridge buffer magic');
+      throw new Error("invalid bridge buffer magic");
     }
     const version = this.readU16();
     if (version !== BRIDGE_BUFFER_VERSION) {
@@ -400,7 +534,9 @@ class BridgeBufferReader {
   readString(): string {
     const byteLength = this.readU32();
     this.ensureAvailable(byteLength);
-    const value = textDecoder.decode(this.bytes.subarray(this.offset, this.offset + byteLength));
+    const value = textDecoder.decode(
+      this.bytes.subarray(this.offset, this.offset + byteLength),
+    );
     this.offset += byteLength;
     return value;
   }
@@ -411,6 +547,10 @@ class BridgeBufferReader {
 
   readOptionalString(): string | null {
     return this.readBool() ? this.readString() : null;
+  }
+
+  readOptionalI32(): number | null {
+    return this.readBool() ? this.readI32() : null;
   }
 
   readStringArray(): string[] {
@@ -424,12 +564,15 @@ class BridgeBufferReader {
 
   private ensureAvailable(byteLength: number): void {
     if (this.offset + byteLength > this.bytes.byteLength) {
-      throw new Error('bridge buffer ended unexpectedly');
+      throw new Error("bridge buffer ended unexpectedly");
     }
   }
 }
 
-function writeBinaryInput(exports: WasmRuntimeExports, input: WasmRuntimeInputState): { pointer: number; byteLength: number } {
+function writeBinaryInput(
+  exports: WasmRuntimeExports,
+  input: WasmRuntimeInputState,
+): { pointer: number; byteLength: number } {
   const writer = new BridgeBufferWriter();
   let flags = 0;
   flags |= input.left ? 0b0000_0001 : 0;
@@ -455,21 +598,32 @@ function writeBinaryInput(exports: WasmRuntimeExports, input: WasmRuntimeInputSt
   return { pointer, byteLength: bytes.byteLength };
 }
 
-function readBinaryStepResult(exports: WasmRuntimeExports, pointer: number): WasmRuntimeBridgeStepResult {
+function readBinaryStepResult(
+  exports: WasmRuntimeExports,
+  pointer: number,
+): WasmRuntimeBridgeStepResult {
   const byteLength = exports.iwm_last_result_len();
   const bytes = new Uint8Array(exports.memory.buffer, pointer, byteLength);
-  if (byteLength < 4 || new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0, true) !== BRIDGE_BUFFER_MAGIC) {
+  if (
+    byteLength < 4 ||
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(
+      0,
+      true,
+    ) !== BRIDGE_BUFFER_MAGIC
+  ) {
     return readJsonResult<WasmRuntimeBridgeStepResult>(exports, pointer);
   }
   const reader = new BridgeBufferReader(bytes);
   reader.expectHeader(BRIDGE_STEP_RESULT_KIND);
   return {
     snapshot: readBinarySnapshot(reader),
-    frame: readBinaryFrame(reader)
+    frame: readBinaryFrame(reader),
   };
 }
 
-function readBinarySnapshot(reader: BridgeBufferReader): WasmRuntimeBridgeSnapshot {
+function readBinarySnapshot(
+  reader: BridgeBufferReader,
+): WasmRuntimeBridgeSnapshot {
   return {
     status: reader.readString(),
     tick: reader.readU64(),
@@ -484,7 +638,7 @@ function readBinarySnapshot(reader: BridgeBufferReader): WasmRuntimeBridgeSnapsh
       jumpPressed: reader.readBool(),
       jumpJustPressed: reader.readBool(),
       jumpJustReleased: reader.readBool(),
-      activeKeys: reader.readStringArray()
+      activeKeys: reader.readStringArray(),
     },
     tickPhases: {
       inputDiagNanos: reader.readU64(),
@@ -495,13 +649,91 @@ function readBinarySnapshot(reader: BridgeBufferReader): WasmRuntimeBridgeSnapsh
       alarmsNanos: reader.readU64(),
       keyboardEventsNanos: reader.readU64(),
       renderSubmitNanos: reader.readU64(),
-      totalNanos: reader.readU64()
+      totalNanos: reader.readU64(),
     },
-    diagnostics: reader.readStringArray()
+    diagnostics: reader.readStringArray(),
+    collisionTrace: readBinaryCollisionTrace(reader),
+    deathTrace: readBinaryDeathTrace(reader),
   };
 }
 
-function readBinaryPlayer(reader: BridgeBufferReader): WasmRuntimeBridgeSnapshot['player'] {
+function readBinaryCollisionTrace(
+  reader: BridgeBufferReader,
+): WasmRuntimeCollisionTraceEntry[] {
+  const count = reader.readU32();
+  const traces: WasmRuntimeCollisionTraceEntry[] = [];
+  for (let index = 0; index < count; index += 1) {
+    traces.push({
+      tick: reader.readU64(),
+      phase: reader.readString(),
+      targetObjectId: reader.readU32(),
+      solidCollision: reader.readBool(),
+      contactY: reader.readOptionalI32(),
+      eventBlocks: reader.readStringArray(),
+      owner: readBinaryCollisionParticipant(reader),
+      other: readBinaryCollisionParticipant(reader),
+    });
+  }
+  return traces;
+}
+
+function readBinaryCollisionParticipant(
+  reader: BridgeBufferReader,
+): WasmRuntimeCollisionParticipantTrace {
+  return {
+    runtimeId: reader.readU32(),
+    instanceId: reader.readI32(),
+    objectId: reader.readU32(),
+    objectName: reader.readString(),
+    x: reader.readF64(),
+    y: reader.readF64(),
+    previousX: reader.readF64(),
+    previousY: reader.readF64(),
+    hspeed: reader.readF64(),
+    vspeed: reader.readF64(),
+    bounds: [
+      reader.readI32(),
+      reader.readI32(),
+      reader.readI32(),
+      reader.readI32(),
+    ],
+    previousBounds: [
+      reader.readI32(),
+      reader.readI32(),
+      reader.readI32(),
+      reader.readI32(),
+    ],
+    solid: reader.readBool(),
+    hazard: reader.readBool(),
+    hasCollisionMask: reader.readBool(),
+    collisionMaskSize: reader.readBool()
+      ? [reader.readU32(), reader.readU32()]
+      : null,
+  };
+}
+
+function readBinaryDeathTrace(
+  reader: BridgeBufferReader,
+): WasmRuntimeDeathTraceEntry[] {
+  const count = reader.readU32();
+  const traces: WasmRuntimeDeathTraceEntry[] = [];
+  for (let index = 0; index < count; index += 1) {
+    traces.push({
+      tick: reader.readU64(),
+      roomId: reader.readU32(),
+      roomName: reader.readString(),
+      reason: reader.readString(),
+      player: readBinaryCollisionParticipant(reader),
+      hazard: reader.readBool() ? readBinaryCollisionParticipant(reader) : null,
+      collisionWindow: readBinaryCollisionTrace(reader),
+    });
+  }
+  return traces;
+}
+
+function readBinaryPlayer(
+  reader: BridgeBufferReader,
+): WasmRuntimeBridgeSnapshot["player"] {
   if (!reader.readBool()) {
     return null;
   }
@@ -520,8 +752,8 @@ function readBinaryPlayer(reader: BridgeBufferReader): WasmRuntimeBridgeSnapshot
       grounded: reader.readBool(),
       active: reader.readBool(),
       holdFrames: reader.readU32(),
-      cutApplied: reader.readBool()
-    }
+      cutApplied: reader.readBool(),
+    },
   };
 }
 
@@ -531,7 +763,7 @@ function readBinaryFrame(reader: BridgeBufferReader): WasmRuntimeFrame {
     roomId: reader.readOptionalU32(),
     width: reader.readU32(),
     height: reader.readU32(),
-    commands: []
+    commands: [],
   };
   const commandCount = reader.readU32();
   for (let index = 0; index < commandCount; index += 1) {
@@ -540,29 +772,33 @@ function readBinaryFrame(reader: BridgeBufferReader): WasmRuntimeFrame {
   return frame;
 }
 
-function readRgba(reader: BridgeBufferReader): [number, number, number, number] {
+function readRgba(
+  reader: BridgeBufferReader,
+): [number, number, number, number] {
   return [reader.readU8(), reader.readU8(), reader.readU8(), reader.readU8()];
 }
 
-function readBinaryCommand(reader: BridgeBufferReader): WasmRuntimeFrame['commands'][number] {
+function readBinaryCommand(
+  reader: BridgeBufferReader,
+): WasmRuntimeFrame["commands"][number] {
   const kind = reader.readU8();
   switch (kind) {
     case 0:
-      return { kind: 'clear', colour: readRgba(reader) };
+      return { kind: "clear", colour: readRgba(reader) };
     case 1:
       return {
-        kind: 'drawBackground',
+        kind: "drawBackground",
         backgroundId: reader.readU32(),
         x: reader.readI32(),
         y: reader.readI32(),
         stretch: reader.readBool(),
         tileHorz: reader.readBool(),
         tileVert: reader.readBool(),
-        isForeground: reader.readBool()
+        isForeground: reader.readBool(),
       };
     case 2:
       return {
-        kind: 'drawTile',
+        kind: "drawTile",
         backgroundId: reader.readU32(),
         x: reader.readI32(),
         y: reader.readI32(),
@@ -571,11 +807,11 @@ function readBinaryCommand(reader: BridgeBufferReader): WasmRuntimeFrame['comman
         width: reader.readU32(),
         height: reader.readU32(),
         xscale: reader.readF64(),
-        yscale: reader.readF64()
+        yscale: reader.readF64(),
       };
     case 3:
       return {
-        kind: 'drawSprite',
+        kind: "drawSprite",
         spriteId: reader.readU32(),
         frameIndex: reader.readU32(),
         x: reader.readI32(),
@@ -585,20 +821,20 @@ function readBinaryCommand(reader: BridgeBufferReader): WasmRuntimeFrame['comman
         xscale: reader.readF64(),
         yscale: reader.readF64(),
         alpha: reader.readF64(),
-        angleDegrees: reader.readF64()
+        angleDegrees: reader.readF64(),
       };
     case 4:
       return {
-        kind: 'fillRect',
+        kind: "fillRect",
         x: reader.readI32(),
         y: reader.readI32(),
         width: reader.readU32(),
         height: reader.readU32(),
-        colour: readRgba(reader)
+        colour: readRgba(reader),
       };
     case 5:
       return {
-        kind: 'drawText',
+        kind: "drawText",
         text: reader.readString(),
         x: reader.readI32(),
         y: reader.readI32(),
@@ -607,36 +843,50 @@ function readBinaryCommand(reader: BridgeBufferReader): WasmRuntimeFrame['comman
         fontBold: reader.readBool(),
         fontItalic: reader.readBool(),
         colour: readRgba(reader),
-        align: reader.readString() as CanvasTextAlign
+        align: reader.readString() as CanvasTextAlign,
       };
     case 6:
-      return { kind: 'present' };
+      return { kind: "present" };
     default:
       throw new Error(`unknown bridge draw command kind: ${kind}`);
   }
 }
 
-export function makeWasmRuntimeBridge(exports: WasmRuntimeExports): WasmRuntimeBridge {
+export function makeWasmRuntimeBridge(
+  exports: WasmRuntimeExports,
+): WasmRuntimeBridge {
   return {
-    backend: 'opengmk-wasm',
+    backend: "opengmk-wasm",
     boot: async (pkg) => {
       const { pointer, byteLength } = writeJsonInput(exports, pkg);
       try {
-        return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_boot_json(pointer, byteLength));
+        return readJsonResult<WasmRuntimeBridgeSnapshot>(
+          exports,
+          exports.iwm_boot_json(pointer, byteLength),
+        );
       } finally {
         exports.iwm_free(pointer, byteLength);
       }
     },
     snapshot: async () => {
-      return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_snapshot_json());
+      return readJsonResult<WasmRuntimeBridgeSnapshot>(
+        exports,
+        exports.iwm_snapshot_json(),
+      );
     },
     frame: async () => {
-      return readJsonResult<WasmRuntimeFrame>(exports, exports.iwm_frame_json());
+      return readJsonResult<WasmRuntimeFrame>(
+        exports,
+        exports.iwm_frame_json(),
+      );
     },
     setInput: async (input) => {
       const { pointer, byteLength } = writeJsonInput(exports, input);
       try {
-        return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_set_input_json(pointer, byteLength));
+        return readJsonResult<WasmRuntimeBridgeSnapshot>(
+          exports,
+          exports.iwm_set_input_json(pointer, byteLength),
+        );
       } finally {
         exports.iwm_free(pointer, byteLength);
       }
@@ -647,55 +897,68 @@ export function makeWasmRuntimeBridge(exports: WasmRuntimeExports): WasmRuntimeB
           try {
             return readBinaryStepResult(
               exports,
-              exports.iwm_step_buffer!(pointer, byteLength)
+              exports.iwm_step_buffer!(pointer, byteLength),
             );
           } finally {
             exports.iwm_free(pointer, byteLength);
           }
         }
       : exports.iwm_step_json
-      ? async (input) => {
-          const { pointer, byteLength } = writeJsonInput(exports, input);
-          try {
-            return readJsonResult<WasmRuntimeBridgeStepResult>(
-              exports,
-              exports.iwm_step_json!(pointer, byteLength)
-            );
-          } finally {
-            exports.iwm_free(pointer, byteLength);
+        ? async (input) => {
+            const { pointer, byteLength } = writeJsonInput(exports, input);
+            try {
+              return readJsonResult<WasmRuntimeBridgeStepResult>(
+                exports,
+                exports.iwm_step_json!(pointer, byteLength),
+              );
+            } finally {
+              exports.iwm_free(pointer, byteLength);
+            }
           }
-        }
-      : undefined,
+        : undefined,
     tick: async (frames = 1) => {
-      return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_tick(Math.max(1, frames)));
+      return readJsonResult<WasmRuntimeBridgeSnapshot>(
+        exports,
+        exports.iwm_tick(Math.max(1, frames)),
+      );
     },
     reset: async () => {
-      return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_reset());
+      return readJsonResult<WasmRuntimeBridgeSnapshot>(
+        exports,
+        exports.iwm_reset(),
+      );
     },
     selectRoom: async (roomId: number) => {
-      return readJsonResult<WasmRuntimeBridgeSnapshot>(exports, exports.iwm_select_room(roomId));
+      return readJsonResult<WasmRuntimeBridgeSnapshot>(
+        exports,
+        exports.iwm_select_room(roomId),
+      );
     },
     diagnostics: async () => {
       return readJsonResult<string[]>(exports, exports.iwm_diagnostics_json());
-    }
+    },
   };
 }
 
 export async function loadWasmRuntimeBridge(
-  loader: () => Promise<unknown>
+  loader: () => Promise<unknown>,
 ): Promise<WasmRuntimeBridge> {
   const loaded = await loader();
   if (isWasmRuntimeBridge(loaded)) {
     return loaded;
   }
 
-  if (!loaded || typeof loaded !== 'object' || !isFunction((loaded as Partial<WasmRuntimeBridgeModule>).initRuntimeHost)) {
-    throw new Error('WASM bridge module is missing initRuntimeHost()');
+  if (
+    !loaded ||
+    typeof loaded !== "object" ||
+    !isFunction((loaded as Partial<WasmRuntimeBridgeModule>).initRuntimeHost)
+  ) {
+    throw new Error("WASM bridge module is missing initRuntimeHost()");
   }
 
   const bridge = await (loaded as WasmRuntimeBridgeModule).initRuntimeHost();
   if (!isWasmRuntimeBridge(bridge)) {
-    throw new Error('WASM bridge initRuntimeHost() returned an invalid bridge');
+    throw new Error("WASM bridge initRuntimeHost() returned an invalid bridge");
   }
 
   return bridge;
@@ -704,11 +967,13 @@ export async function loadWasmRuntimeBridge(
 export async function instantiateWasmRuntimeBridge(
   source: RequestInfo | URL,
   imports: WebAssembly.Imports = {},
-  options: WasmRuntimeHostImportOptions = {}
+  options: WasmRuntimeHostImportOptions = {},
 ): Promise<WasmRuntimeBridge> {
   const response = await fetch(source);
   if (!response.ok) {
-    throw new Error(`failed to fetch wasm module: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `failed to fetch wasm module: ${response.status} ${response.statusText}`,
+    );
   }
 
   const bytes = await response.arrayBuffer();
@@ -716,10 +981,15 @@ export async function instantiateWasmRuntimeBridge(
   const instantiated = await WebAssembly.instantiate(bytes, mergedImports);
   const exported = instantiated.instance.exports;
   if (!isWasmRuntimeExports(exported)) {
-    throw new Error('WASM module does not expose the expected iwm runtime bridge exports');
+    throw new Error(
+      "WASM module does not expose the expected iwm runtime bridge exports",
+    );
   }
-  const bindMemory = (mergedImports.env as { __iwm_bind_memory?: (memory: WebAssembly.Memory) => void } | undefined)
-    ?.__iwm_bind_memory;
+  const bindMemory = (
+    mergedImports.env as
+      | { __iwm_bind_memory?: (memory: WebAssembly.Memory) => void }
+      | undefined
+  )?.__iwm_bind_memory;
   if (bindMemory && exported.memory instanceof WebAssembly.Memory) {
     bindMemory(exported.memory);
   }
@@ -729,18 +999,26 @@ export async function instantiateWasmRuntimeBridge(
 
 export type WasmRuntimeHostImportOptions = {
   now?: () => number;
-  audioHost?: Pick<WasmAudioHost, 'playSound' | 'stopSound' | 'stopAllSounds' | 'isSoundPlaying'>;
+  audioHost?: Pick<
+    WasmAudioHost,
+    "playSound" | "stopSound" | "stopAllSounds" | "isSoundPlaying"
+  >;
   fileHost?: WasmFileHost;
 };
 
 export function makeWasmRuntimeHostImports(
-  options: WasmRuntimeHostImportOptions | (() => number) = {}
+  options: WasmRuntimeHostImportOptions | (() => number) = {},
 ): WebAssembly.Imports {
-  const now = typeof options === 'function'
-    ? options
-    : options.now ?? (() => globalThis.performance?.now() ?? Date.now());
-  const audioHost = typeof options === 'function' ? undefined : options.audioHost;
-  const fileHost = typeof options === 'function' ? undefined : options.fileHost ?? createLocalStorageWasmFileHost();
+  const now =
+    typeof options === "function"
+      ? options
+      : (options.now ?? (() => globalThis.performance?.now() ?? Date.now()));
+  const audioHost =
+    typeof options === "function" ? undefined : options.audioHost;
+  const fileHost =
+    typeof options === "function"
+      ? undefined
+      : (options.fileHost ?? createLocalStorageWasmFileHost());
   let memory: WebAssembly.Memory | undefined;
   const readBytes = (pointer: number, byteLength: number): Uint8Array => {
     if (!memory) {
@@ -772,7 +1050,12 @@ export function makeWasmRuntimeHostImports(
       iwm_host_is_sound_playing: (soundId: number) => {
         return audioHost?.isSoundPlaying(soundId) ? 1 : 0;
       },
-      iwm_host_read_file: (pathPtr: number, pathLen: number, outPtr: number, outLen: number) => {
+      iwm_host_read_file: (
+        pathPtr: number,
+        pathLen: number,
+        outPtr: number,
+        outLen: number,
+      ) => {
         const bytes = fileHost?.readFile(readHostPath(pathPtr, pathLen));
         if (!bytes) {
           return -1;
@@ -784,24 +1067,32 @@ export function makeWasmRuntimeHostImports(
         readBytes(outPtr, copyLen).set(bytes.subarray(0, copyLen));
         return copyLen;
       },
-      iwm_host_write_file: (pathPtr: number, pathLen: number, bytesPtr: number, bytesLen: number) => {
-        fileHost?.writeFile(readHostPath(pathPtr, pathLen), new Uint8Array(readBytes(bytesPtr, bytesLen)));
+      iwm_host_write_file: (
+        pathPtr: number,
+        pathLen: number,
+        bytesPtr: number,
+        bytesLen: number,
+      ) => {
+        fileHost?.writeFile(
+          readHostPath(pathPtr, pathLen),
+          new Uint8Array(readBytes(bytesPtr, bytesLen)),
+        );
         return 1;
       },
       iwm_host_remove_file: (pathPtr: number, pathLen: number) => {
         return fileHost?.removeFile(readHostPath(pathPtr, pathLen)) ? 1 : 0;
-      }
-    }
+      },
+    },
   };
 }
 
 function wasmSoundMode(mode: number): WasmSoundMode {
-  return mode === 1 ? 'loop' : 'once';
+  return mode === 1 ? "loop" : "once";
 }
 
 function mergeWasmRuntimeImports(
   overrides: WebAssembly.Imports,
-  options: WasmRuntimeHostImportOptions = {}
+  options: WasmRuntimeHostImportOptions = {},
 ): WebAssembly.Imports {
   const defaults = makeWasmRuntimeHostImports(options);
   return {
@@ -809,8 +1100,8 @@ function mergeWasmRuntimeImports(
     ...overrides,
     env: {
       ...(defaults.env ?? {}),
-      ...((overrides.env as WebAssembly.ModuleImports | undefined) ?? {})
-    }
+      ...((overrides.env as WebAssembly.ModuleImports | undefined) ?? {}),
+    },
   };
 }
 
@@ -818,23 +1109,26 @@ export async function loadDefaultWasmRuntimeBridge(): Promise<WasmRuntimeBridge>
   const audioHost = createWebAudioHost();
   const fileHost = createLocalStorageWasmFileHost();
   const bridge = await instantiateWasmRuntimeBridge(
-    '/wasm/iwm_runtime_web.wasm',
+    "/wasm/iwm_runtime_web.wasm",
     {},
-    { audioHost, fileHost }
+    { audioHost, fileHost },
   );
   return {
     ...bridge,
     boot: async (pkg, options) => {
-      audioHost.configurePackage(pkg, options?.basePath ?? '');
-      fileHost.configurePackage?.(pkg, options?.basePath ?? '');
+      audioHost.configurePackage(pkg, options?.basePath ?? "");
+      fileHost.configurePackage?.(pkg, options?.basePath ?? "");
       return bridge.boot(pkg);
-    }
+    },
   };
 }
 
-export function describeWasmBridgeAvailability(bridge: WasmRuntimeBridge | null, error: unknown): string {
+export function describeWasmBridgeAvailability(
+  bridge: WasmRuntimeBridge | null,
+  error: unknown,
+): string {
   if (bridge) {
-    return 'WASM bridge available; shell can drive the OpenGMK-facing runtime host through the browser bridge.';
+    return "WASM bridge available; shell can drive the OpenGMK-facing runtime host through the browser bridge.";
   }
 
   if (error instanceof Error) {
@@ -845,5 +1139,5 @@ export function describeWasmBridgeAvailability(bridge: WasmRuntimeBridge | null,
     return `WASM bridge unavailable: ${String(error)}. Shell is using the static room viewer.`;
   }
 
-  return 'No WASM bridge configured; shell is using the static room viewer.';
+  return "No WASM bridge configured; shell is using the static room viewer.";
 }

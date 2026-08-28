@@ -1,8 +1,8 @@
-import type { WasmRuntimeBridgeSnapshot } from '../../runtime/wasmBridge';
-import type { RuntimePerformanceStats } from '../traceView';
+import type { WasmRuntimeBridgeSnapshot } from "../../runtime/wasmBridge";
+import type { RuntimePerformanceStats } from "../traceView";
 
 type BuildDebugReportInput = {
-  mode: 'wasm' | 'viewer';
+  mode: "wasm" | "viewer";
   status: string;
   roomLabel: string;
   snapshot: WasmRuntimeBridgeSnapshot;
@@ -20,25 +20,26 @@ function formatPhaseMs(value: number): string {
 export function buildDebugReport(input: BuildDebugReportInput): string {
   const { snapshot, performance } = input;
   const player = snapshot.player;
-  const tickBudgetMs = snapshot.roomSpeed != null && snapshot.roomSpeed > 0
-    ? 1000 / snapshot.roomSpeed
-    : 1000 / 60;
+  const tickBudgetMs =
+    snapshot.roomSpeed != null && snapshot.roomSpeed > 0
+      ? 1000 / snapshot.roomSpeed
+      : 1000 / 60;
   const playerLines = player
     ? [
         `- x=${player.x} y=${player.y}`,
         `- hspeed=${player.hspeed} vspeed=${player.vspeed}`,
-        `- object=${player.objectName ?? 'unknown'}#${player.runtimeId ?? '?'}`,
+        `- object=${player.objectName ?? "unknown"}#${player.runtimeId ?? "?"}`,
         `- alive=${player.alive ?? true} grounded=${player.jump.grounded}`,
         `- jumpActive=${player.jump.active} hold=${player.jump.holdFrames} cut=${player.jump.cutApplied}`,
       ]
-    : ['- unavailable'];
+    : ["- unavailable"];
 
   const performanceLines = performance
     ? [
-        `- total=${formatMs(performance.totalMs)}ms budget=${performance.totalMs <= tickBudgetMs ? 'ok' : 'slow'} skipped=${performance.skippedIntervals} commands=${performance.commandCount}`,
+        `- total=${formatMs(performance.totalMs)}ms budget=${performance.totalMs <= tickBudgetMs ? "ok" : "slow"} skipped=${performance.skippedIntervals} commands=${performance.commandCount}`,
         `- input=${formatMs(performance.inputMs)} tick=${formatMs(performance.tickMs)} snapshot=${formatMs(performance.snapshotMs)} frame=${formatMs(performance.frameMs)} render=${formatMs(performance.renderMs)} runtime=${formatMs(performance.runtimeMs)}`,
       ]
-    : ['- unavailable'];
+    : ["- unavailable"];
 
   const tickPhaseLines = snapshot.tickPhases
     ? [
@@ -46,37 +47,58 @@ export function buildDebugReport(input: BuildDebugReportInput): string {
         `- inputDiag=${formatPhaseMs(snapshot.tickPhases.inputDiagNanos)} step=${formatPhaseMs(snapshot.tickPhases.stepEventsNanos)} view=${formatPhaseMs(snapshot.tickPhases.viewSyncNanos)} player=${formatPhaseMs(snapshot.tickPhases.playerMovementNanos)}`,
         `- collision=${formatPhaseMs(snapshot.tickPhases.collisionEventsNanos)} alarms=${formatPhaseMs(snapshot.tickPhases.alarmsNanos)} keyboard=${formatPhaseMs(snapshot.tickPhases.keyboardEventsNanos)} renderSubmit=${formatPhaseMs(snapshot.tickPhases.renderSubmitNanos)}`,
       ]
-    : ['- unavailable'];
+    : ["- unavailable"];
+
+  const collisionLines = (snapshot.collisionTrace ?? [])
+    .slice(-3)
+    .map(
+      (trace) =>
+        `- tick=${trace.tick} phase=${trace.phase} ${trace.owner.objectName}#${trace.owner.runtimeId} -> ${trace.other.objectName}#${trace.other.runtimeId} solid=${trace.solidCollision} hazard=${trace.other.hazard} blocks=[${trace.eventBlocks.join(",")}]`,
+    );
+  const deathLines = (snapshot.deathTrace ?? [])
+    .slice(-1)
+    .map(
+      (death) =>
+        `- tick=${death.tick} reason=${death.reason} player=${death.player.objectName}#${death.player.runtimeId} hazard=${death.hazard ? `${death.hazard.objectName}#${death.hazard.runtimeId}` : "unknown"} window=${death.collisionWindow.length}`,
+    );
 
   const recentEvents = snapshot.diagnostics
-    .filter((item) => item.includes('runtime-'))
+    .filter((item) => item.includes("runtime-"))
     .slice(-5)
     .map((item) => `- ${item}`);
 
   return [
     `Status: ${input.status}`,
     `Room: ${input.roomLabel}`,
-    `Room Speed: ${snapshot.roomSpeed != null ? `${snapshot.roomSpeed} Hz` : 'unknown'}`,
+    `Room Speed: ${snapshot.roomSpeed != null ? `${snapshot.roomSpeed} Hz` : "unknown"}`,
     `Tick: ${snapshot.tick}`,
-    '',
-    'Player:',
+    "",
+    "Player:",
     ...playerLines,
-    '',
-    'Input:',
+    "",
+    "Input:",
     `- jumpKey=0x${snapshot.inputTrace.jumpButtonKey.toString(16)}`,
     `- pressed=${snapshot.inputTrace.jumpPressed} justPressed=${snapshot.inputTrace.jumpJustPressed} justReleased=${snapshot.inputTrace.jumpJustReleased}`,
-    `- keys=[${snapshot.inputTrace.activeKeys.join(',')}]`,
-    '',
-    'Performance:',
+    `- keys=[${snapshot.inputTrace.activeKeys.join(",")}]`,
+    "",
+    "Performance:",
     ...performanceLines,
-    '',
-    'Tick Phases:',
+    "",
+    "Tick Phases:",
     ...tickPhaseLines,
-    '',
-    'Recent Events:',
-    ...(recentEvents.length > 0 ? recentEvents : ['- none']),
-    '',
-    'Diagnostics:',
-    ...(snapshot.diagnostics.length > 0 ? snapshot.diagnostics.map((item) => `- ${item}`) : ['- none']),
-  ].join('\n');
+    "",
+    "Recent Events:",
+    ...(recentEvents.length > 0 ? recentEvents : ["- none"]),
+    "",
+    "Collision Trace:",
+    ...(collisionLines.length > 0 ? collisionLines : ["- none"]),
+    "",
+    "Death Trace:",
+    ...(deathLines.length > 0 ? deathLines : ["- none"]),
+    "",
+    "Diagnostics:",
+    ...(snapshot.diagnostics.length > 0
+      ? snapshot.diagnostics.map((item) => `- ${item}`)
+      : ["- none"]),
+  ].join("\n");
 }

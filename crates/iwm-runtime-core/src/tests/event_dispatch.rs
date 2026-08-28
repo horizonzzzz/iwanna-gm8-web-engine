@@ -1525,6 +1525,7 @@ fn solid_ceiling_collision_event_clears_upward_speed_before_reapply() {
     );
 
     let mut core = RuntimeCore::load(package).unwrap();
+    core.set_debug_trace_limits(32, 0);
     let mut host = host();
     {
         let room = core.current_room.as_mut().unwrap();
@@ -1592,9 +1593,17 @@ fn solid_ceiling_collision_event_clears_upward_speed_before_reapply() {
     assert!(collision_traces
         .iter()
         .any(|message| message.contains("phase=after-event")));
-    assert!(collision_traces
-        .iter()
-        .any(|message| message.contains("phase=after-reapply")));
+    let structured_trace = core.snapshot().collision_trace;
+    assert!(structured_trace.iter().any(|entry| {
+        entry.phase == "after-event"
+            && entry.owner.object_name == "mover"
+            && entry.other.object_name == "solid"
+            && entry
+                .event_blocks
+                .iter()
+                .any(|block| block.contains("event:4:2"))
+            && entry.owner.bounds[1] <= entry.owner.bounds[3]
+    }));
 }
 
 #[test]

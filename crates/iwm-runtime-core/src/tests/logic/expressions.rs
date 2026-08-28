@@ -2269,12 +2269,18 @@ fn core_reads_back_text_files_line_by_line() {
 
     let core = run_step(statements);
 
-    assert_eq!(player_var(&core, "first_real"), Some(&RuntimeValue::Number(12.5)));
+    assert_eq!(
+        player_var(&core, "first_real"),
+        Some(&RuntimeValue::Number(12.5))
+    );
     assert_eq!(
         player_var(&core, "rest_of_line"),
         Some(&RuntimeValue::Text(" rest".into()))
     );
-    assert_eq!(player_var(&core, "at_line_end"), Some(&RuntimeValue::Bool(true)));
+    assert_eq!(
+        player_var(&core, "at_line_end"),
+        Some(&RuntimeValue::Bool(true))
+    );
     assert_eq!(
         player_var(&core, "second_line"),
         Some(&RuntimeValue::Text("second line".into()))
@@ -2315,8 +2321,14 @@ fn core_executes_saved_gml_source_through_execute_file() {
 
     let core = run_step(statements);
 
-    assert_eq!(player_var(&core, "saved_x"), Some(&RuntimeValue::Number(199.0)));
-    assert_eq!(player_var(&core, "saved_y"), Some(&RuntimeValue::Number(486.0)));
+    assert_eq!(
+        player_var(&core, "saved_x"),
+        Some(&RuntimeValue::Number(199.0))
+    );
+    assert_eq!(
+        player_var(&core, "saved_y"),
+        Some(&RuntimeValue::Number(486.0))
+    );
     assert_eq!(
         player_var(&core, "difficulty"),
         Some(&RuntimeValue::Number(2.0))
@@ -2366,7 +2378,10 @@ fn core_bounds_execute_file_recursion_through_self_executing_sources() {
         "IWRTK_loop",
         &["looped = looped + 1\r\nexecute_file(\"IWRTK_loop\");\r\n"],
     );
-    statements.insert(0, assign_var("looped", LoweredLogicExpr::LiteralNumber(0.0)));
+    statements.insert(
+        0,
+        assign_var("looped", LoweredLogicExpr::LiteralNumber(0.0)),
+    );
     statements.push(LoweredLogicStatement::FunctionCall {
         name: "execute_file".into(),
         args: vec![LoweredLogicExpr::LiteralText("IWRTK_loop".into())],

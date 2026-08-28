@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from "vitest";
 import {
   createLocalStorageWasmFileHost,
   describeWasmBridgeAvailability,
@@ -8,12 +8,16 @@ import {
   loadWasmRuntimeBridge,
   type WasmRuntimeBridge,
   type WasmFileHost,
-} from './wasmBridge';
-import { makeRuntimePackage, makeWasmFrame, makeWasmSnapshot } from '../test/packageFixtures';
+} from "./wasmBridge";
+import {
+  makeRuntimePackage,
+  makeWasmFrame,
+  makeWasmSnapshot,
+} from "../test/packageFixtures";
 
 function makeBridge(): WasmRuntimeBridge {
   return {
-    backend: 'opengmk-wasm',
+    backend: "opengmk-wasm",
     boot: async () => makeWasmSnapshot({ roomId: 0 }),
     snapshot: async () => makeWasmSnapshot({ roomId: 0 }),
     frame: async () => makeWasmFrame({ roomId: 0 }),
@@ -25,76 +29,92 @@ function makeBridge(): WasmRuntimeBridge {
   };
 }
 
-describe('wasm bridge loader', () => {
-  it('accepts a valid bridge module', async () => {
+describe("wasm bridge loader", () => {
+  it("accepts a valid bridge module", async () => {
     const bridge = await loadWasmRuntimeBridge(async () => ({
       initRuntimeHost: async () => makeBridge(),
     }));
 
     expect(isWasmRuntimeBridge(bridge)).toBe(true);
-    expect(bridge.backend).toBe('opengmk-wasm');
+    expect(bridge.backend).toBe("opengmk-wasm");
   });
 
-  it('rejects modules without the expected initializer', async () => {
+  it("rejects modules without the expected initializer", async () => {
     await expect(loadWasmRuntimeBridge(async () => ({}))).rejects.toThrow(
-      'WASM bridge module is missing initRuntimeHost()'
+      "WASM bridge module is missing initRuntimeHost()",
     );
   });
 
-  it('describes configured and missing bridge states clearly', () => {
-    expect(describeWasmBridgeAvailability(makeBridge(), null)).toContain('WASM bridge available');
-    expect(describeWasmBridgeAvailability(null, new Error('module fetch failed'))).toContain(
-      'module fetch failed'
+  it("describes configured and missing bridge states clearly", () => {
+    expect(describeWasmBridgeAvailability(makeBridge(), null)).toContain(
+      "WASM bridge available",
     );
-    expect(describeWasmBridgeAvailability(null, new Error('module fetch failed'))).toContain('static room viewer');
-    expect(describeWasmBridgeAvailability(null, null)).toContain('static room viewer');
+    expect(
+      describeWasmBridgeAvailability(null, new Error("module fetch failed")),
+    ).toContain("module fetch failed");
+    expect(
+      describeWasmBridgeAvailability(null, new Error("module fetch failed")),
+    ).toContain("static room viewer");
+    expect(describeWasmBridgeAvailability(null, null)).toContain(
+      "static room viewer",
+    );
   });
 
-  it('wraps a low-level wasm exports object into the runtime bridge contract', async () => {
+  it("wraps a low-level wasm exports object into the runtime bridge contract", async () => {
     const encodedSnapshot = new TextEncoder().encode(
-      JSON.stringify(makeWasmSnapshot({
-        tick: 3,
-        roomId: 1,
-        diagnostics: ['runtime-idle:tick advanced'],
-        inputTrace: {
-          jumpButtonKey: 16,
-          jumpPressed: true,
-          jumpJustPressed: true,
-          jumpJustReleased: false,
-          activeKeys: ['0x10:p1jp1jr0']
-        },
-        player: {
-          x: 12,
-          y: 34,
-          hspeed: 0,
-          vspeed: -8,
-          facingLeft: false,
-          jump: {
-            grounded: false,
-            active: true,
-            holdFrames: 1,
-            cutApplied: false
-          }
-        }
-      }))
+      JSON.stringify(
+        makeWasmSnapshot({
+          tick: 3,
+          roomId: 1,
+          diagnostics: ["runtime-idle:tick advanced"],
+          inputTrace: {
+            jumpButtonKey: 16,
+            jumpPressed: true,
+            jumpJustPressed: true,
+            jumpJustReleased: false,
+            activeKeys: ["0x10:p1jp1jr0"],
+          },
+          player: {
+            x: 12,
+            y: 34,
+            hspeed: 0,
+            vspeed: -8,
+            facingLeft: false,
+            jump: {
+              grounded: false,
+              active: true,
+              holdFrames: 1,
+              cutApplied: false,
+            },
+          },
+        }),
+      ),
     );
     const encodedDiagnostics = new TextEncoder().encode(
-      JSON.stringify(['runtime-idle:tick advanced'])
+      JSON.stringify(["runtime-idle:tick advanced"]),
     );
 
     const memory = {
-      buffer: new ArrayBuffer(4096)
+      buffer: new ArrayBuffer(4096),
     };
     const snapshotPointer = 2048;
     const diagnosticsPointer = 3072;
     let lastResultLength = encodedSnapshot.byteLength;
     const writeSnapshot = () => {
-      new Uint8Array(memory.buffer).fill(0, snapshotPointer, snapshotPointer + encodedSnapshot.byteLength + 1);
+      new Uint8Array(memory.buffer).fill(
+        0,
+        snapshotPointer,
+        snapshotPointer + encodedSnapshot.byteLength + 1,
+      );
       new Uint8Array(memory.buffer).set(encodedSnapshot, snapshotPointer);
       lastResultLength = encodedSnapshot.byteLength;
     };
     const writeDiagnostics = () => {
-      new Uint8Array(memory.buffer).fill(0, diagnosticsPointer, diagnosticsPointer + encodedDiagnostics.byteLength + 1);
+      new Uint8Array(memory.buffer).fill(
+        0,
+        diagnosticsPointer,
+        diagnosticsPointer + encodedDiagnostics.byteLength + 1,
+      );
       new Uint8Array(memory.buffer).set(encodedDiagnostics, diagnosticsPointer);
       lastResultLength = encodedDiagnostics.byteLength;
     };
@@ -131,6 +151,10 @@ describe('wasm bridge loader', () => {
         writeSnapshot();
         return snapshotPointer;
       },
+      iwm_frame_json: () => {
+        writeSnapshot();
+        return snapshotPointer;
+      },
       iwm_diagnostics_json: () => {
         writeDiagnostics();
         return diagnosticsPointer;
@@ -138,48 +162,67 @@ describe('wasm bridge loader', () => {
       iwm_last_result_len: () => lastResultLength,
     });
 
-    const boot = await bridge.boot(makeRuntimePackage({ roomId: 0, roomName: 'room0', width: 320, height: 240 }));
+    const boot = await bridge.boot(
+      makeRuntimePackage({
+        roomId: 0,
+        roomName: "room0",
+        width: 320,
+        height: 240,
+      }),
+    );
 
     expect(boot.tick).toBe(3);
     expect((await bridge.snapshot()).roomId).toBe(1);
     expect((await bridge.snapshot()).player?.jump?.holdFrames).toBe(1);
     expect((await bridge.tick(2)).roomId).toBe(1);
-    expect((await bridge.reset()).diagnostics[0]).toContain('runtime-idle');
+    expect((await bridge.reset()).diagnostics[0]).toContain("runtime-idle");
     expect((await bridge.selectRoom(1)).tick).toBe(3);
-    expect((await bridge.diagnostics())[0]).toContain('runtime-idle');
+    expect((await bridge.diagnostics())[0]).toContain("runtime-idle");
   });
 
-  it('wraps input submission and frame snapshot exports', async () => {
+  it("wraps input submission and frame snapshot exports", async () => {
     const encodedSnapshot = new TextEncoder().encode(
-      JSON.stringify(makeWasmSnapshot({
-        tick: 0,
-        roomId: 0,
-        player: null
-      }))
+      JSON.stringify(
+        makeWasmSnapshot({
+          tick: 0,
+          roomId: 0,
+          player: null,
+        }),
+      ),
     );
     const encodedFrame = new TextEncoder().encode(
-      JSON.stringify(makeWasmFrame({
-        tick: 1,
-        roomId: 0,
-        commands: [{ kind: 'present' }]
-      }))
+      JSON.stringify(
+        makeWasmFrame({
+          tick: 1,
+          roomId: 0,
+          commands: [{ kind: "present" }],
+        }),
+      ),
     );
 
     const memory = {
-      buffer: new ArrayBuffer(4096)
+      buffer: new ArrayBuffer(4096),
     };
     const snapshotPointer = 1024;
     const framePointer = 2048;
     let lastResultLength = encodedSnapshot.byteLength;
 
     const writeSnapshot = () => {
-      new Uint8Array(memory.buffer).fill(0, snapshotPointer, snapshotPointer + encodedSnapshot.byteLength + 1);
+      new Uint8Array(memory.buffer).fill(
+        0,
+        snapshotPointer,
+        snapshotPointer + encodedSnapshot.byteLength + 1,
+      );
       new Uint8Array(memory.buffer).set(encodedSnapshot, snapshotPointer);
       lastResultLength = encodedSnapshot.byteLength;
     };
 
     const writeFrame = () => {
-      new Uint8Array(memory.buffer).fill(0, framePointer, framePointer + encodedFrame.byteLength + 1);
+      new Uint8Array(memory.buffer).fill(
+        0,
+        framePointer,
+        framePointer + encodedFrame.byteLength + 1,
+      );
       new Uint8Array(memory.buffer).set(encodedFrame, framePointer);
       lastResultLength = encodedFrame.byteLength;
     };
@@ -235,29 +278,33 @@ describe('wasm bridge loader', () => {
     expect((await bridge.frame()).tick).toBe(1);
   });
 
-  it('wraps combined step export when wasm provides it', async () => {
+  it("wraps combined step export when wasm provides it", async () => {
     const encodedStep = new TextEncoder().encode(
       JSON.stringify({
         snapshot: makeWasmSnapshot({
           tick: 1,
           roomId: 0,
-          player: null
+          player: null,
         }),
         frame: makeWasmFrame({
           tick: 1,
           roomId: 0,
-          commands: [{ kind: 'present' }]
-        })
-      })
+          commands: [{ kind: "present" }],
+        }),
+      }),
     );
 
     const memory = {
-      buffer: new ArrayBuffer(4096)
+      buffer: new ArrayBuffer(4096),
     };
     const pointer = 1024;
     let lastResultLength = encodedStep.byteLength;
     const writeStep = () => {
-      new Uint8Array(memory.buffer).fill(0, pointer, pointer + encodedStep.byteLength + 1);
+      new Uint8Array(memory.buffer).fill(
+        0,
+        pointer,
+        pointer + encodedStep.byteLength + 1,
+      );
       new Uint8Array(memory.buffer).set(encodedStep, pointer);
       lastResultLength = encodedStep.byteLength;
     };
@@ -292,12 +339,12 @@ describe('wasm bridge loader', () => {
 
     expect(result?.snapshot.tick).toBe(1);
     expect(result?.frame.tick).toBe(1);
-    expect(result?.frame.commands[0]?.kind).toBe('present');
+    expect(result?.frame.commands[0]?.kind).toBe("present");
   });
 
-  it('prefers binary combined step export when wasm provides it', async () => {
+  it("prefers binary combined step export when wasm provides it", async () => {
     const memory = {
-      buffer: new ArrayBuffer(4096)
+      buffer: new ArrayBuffer(4096),
     };
     const pointer = 1024;
     const encoder = new TextEncoder();
@@ -349,12 +396,12 @@ describe('wasm bridge loader', () => {
     };
 
     pushU32(0x424d5749);
-    pushU16(3);
+    pushU16(4);
     pushU16(2);
-    pushString('ready');
+    pushString("ready");
     pushU64(1);
     pushOptionU32(0);
-    pushOptionString('room0');
+    pushOptionString("room0");
     pushOptionU32(60);
     pushU32(4);
     pushU64(3);
@@ -363,11 +410,13 @@ describe('wasm bridge loader', () => {
     pushU8(1);
     pushU8(1);
     pushU8(0);
-    pushStringArray(['0x10:p1jp1jr0']);
+    pushStringArray(["0x10:p1jp1jr0"]);
     for (const nanos of [1, 2, 3, 4, 5, 6, 7, 8, 36]) {
       pushU64(nanos);
     }
-    pushStringArray(['runtime-idle:tick advanced']);
+    pushStringArray(["runtime-idle:tick advanced"]);
+    pushU32(0);
+    pushU32(0);
     pushU64(1);
     pushOptionU32(0);
     pushU32(320);
@@ -417,18 +466,18 @@ describe('wasm bridge loader', () => {
     pushU8(252);
     pushU8(253);
     pushU8(5);
-    pushString('GAME OVER');
+    pushString("GAME OVER");
     pushI32(160);
     pushI32(88);
     pushU32(32);
-    pushOptionString('font32');
+    pushOptionString("font32");
     pushU8(1);
     pushU8(0);
     pushU8(232);
     pushU8(36);
     pushU8(48);
     pushU8(220);
-    pushString('center');
+    pushString("center");
     pushU8(6);
 
     const encodedStep = Uint8Array.from(bytes);
@@ -440,10 +489,14 @@ describe('wasm bridge loader', () => {
     };
 
     const legacyStep = vi.fn(() => {
-      throw new Error('legacy JSON step should not be used');
+      throw new Error("legacy JSON step should not be used");
     });
     const binaryStep = vi.fn((inputPointer: number, inputLength: number) => {
-      capturedInput.push(new Uint8Array(memory.buffer.slice(inputPointer, inputPointer + inputLength)));
+      capturedInput.push(
+        new Uint8Array(
+          memory.buffer.slice(inputPointer, inputPointer + inputLength),
+        ),
+      );
       writeStep();
       return pointer;
     });
@@ -488,36 +541,45 @@ describe('wasm bridge loader', () => {
     const inputView = new DataView(
       capturedInput[0]!.buffer,
       capturedInput[0]!.byteOffset,
-      capturedInput[0]!.byteLength
+      capturedInput[0]!.byteLength,
     );
-    expect(inputView.getUint16(4, true)).toBe(3);
+    expect(inputView.getUint16(4, true)).toBe(4);
     expect(inputView.getInt32(12, true)).toBe(-12);
     expect(inputView.getInt32(16, true)).toBe(345);
     expect([...capturedInput[0]!.slice(-15)]).toEqual([
-      1, 0, 0, 0, 1,
-      1, 0, 0, 0, 1,
-      1, 0, 0, 0, 0,
+      1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0,
     ]);
-    expect(result?.snapshot.inputTrace.activeKeys).toEqual(['0x10:p1jp1jr0']);
+    expect(result?.snapshot.inputTrace.activeKeys).toEqual(["0x10:p1jp1jr0"]);
     expect(result?.snapshot.deaths).toBe(3);
+    expect(result?.snapshot.collisionTrace).toEqual([]);
+    expect(result?.snapshot.deathTrace).toEqual([]);
     expect(result?.frame.commands.map((command) => command.kind)).toEqual([
-      'clear',
-      'drawBackground',
-      'drawTile',
-      'drawSprite',
-      'fillRect',
-      'drawText',
-      'present',
+      "clear",
+      "drawBackground",
+      "drawTile",
+      "drawSprite",
+      "fillRect",
+      "drawText",
+      "present",
     ]);
-    expect(result?.frame.commands[3]).toMatchObject({ kind: 'drawSprite', spriteId: 7, alpha: 0.5 });
-    expect(result?.frame.commands[5]).toMatchObject({ kind: 'drawText', text: 'GAME OVER', fontName: 'font32', align: 'center' });
+    expect(result?.frame.commands[3]).toMatchObject({
+      kind: "drawSprite",
+      spriteId: 7,
+      alpha: 0.5,
+    });
+    expect(result?.frame.commands[5]).toMatchObject({
+      kind: "drawText",
+      text: "GAME OVER",
+      fontName: "font32",
+      align: "center",
+    });
   });
 });
 
-describe('wasm bridge file imports', () => {
-  it('clears stale restart temp state on a fresh package boot while preserving saves', () => {
+describe("wasm bridge file imports", () => {
+  it("clears stale restart temp state on a fresh package boot while preserving saves", () => {
     const storage = new Map<string, string>();
-    vi.stubGlobal('localStorage', {
+    vi.stubGlobal("localStorage", {
       getItem: vi.fn((key: string) => storage.get(key) ?? null),
       setItem: vi.fn((key: string, value: string) => {
         storage.set(key, value);
@@ -526,23 +588,23 @@ describe('wasm bridge file imports', () => {
         storage.delete(key);
       }),
     });
-    const host = createLocalStorageWasmFileHost('test-runtime-save');
-    const pkg = makeRuntimePackage({ sourceHash: 'hash' });
+    const host = createLocalStorageWasmFileHost("test-runtime-save");
+    const pkg = makeRuntimePackage({ sourceHash: "hash" });
 
-    host.configurePackage?.(pkg, '/packages/sample');
-    host.writeFile('temp', Uint8Array.of(1));
-    host.writeFile('temp.dat', Uint8Array.of(1));
-    host.writeFile('save1', Uint8Array.of(7, 8, 9));
-    host.writeFile('save1.dat', Uint8Array.of(4, 5, 6));
-    host.configurePackage?.(pkg, '/packages/sample');
+    host.configurePackage?.(pkg, "/packages/sample");
+    host.writeFile("temp", Uint8Array.of(1));
+    host.writeFile("temp.dat", Uint8Array.of(1));
+    host.writeFile("save1", Uint8Array.of(7, 8, 9));
+    host.writeFile("save1.dat", Uint8Array.of(4, 5, 6));
+    host.configurePackage?.(pkg, "/packages/sample");
 
-    expect(host.readFile('temp')).toBeNull();
-    expect(host.readFile('temp.dat')).toBeNull();
-    expect([...(host.readFile('save1') ?? [])]).toEqual([7, 8, 9]);
-    expect([...(host.readFile('save1.dat') ?? [])]).toEqual([4, 5, 6]);
+    expect(host.readFile("temp")).toBeNull();
+    expect(host.readFile("temp.dat")).toBeNull();
+    expect([...(host.readFile("save1") ?? [])]).toEqual([7, 8, 9]);
+    expect([...(host.readFile("save1.dat") ?? [])]).toEqual([4, 5, 6]);
   });
 
-  it('reads, writes, and removes package save bytes through the configured file host', () => {
+  it("reads, writes, and removes package save bytes through the configured file host", () => {
     const files = new Map<string, Uint8Array>();
     const fileHost: WasmFileHost = {
       readFile: (path) => files.get(path),
@@ -552,19 +614,26 @@ describe('wasm bridge file imports', () => {
       removeFile: (path) => files.delete(path),
     };
     const imports = makeWasmRuntimeHostImports({ fileHost });
-    const env = imports.env as Record<string, (...args: number[]) => number | void>;
+    const env = imports.env as Record<
+      string,
+      (...args: number[]) => number | void
+    >;
     const memory = new WebAssembly.Memory({ initial: 1 });
-    (env.__iwm_bind_memory as unknown as (memory: WebAssembly.Memory) => void)(memory);
+    (env.__iwm_bind_memory as unknown as (memory: WebAssembly.Memory) => void)(
+      memory,
+    );
 
     const bytes = new Uint8Array(memory.buffer);
     const encoder = new TextEncoder();
-    const path = encoder.encode('save1');
+    const path = encoder.encode("save1");
     const payload = Uint8Array.of(7, 8, 9);
     bytes.set(path, 16);
     bytes.set(payload, 64);
 
-    expect(env.iwm_host_write_file(16, path.byteLength, 64, payload.byteLength)).toBe(1);
-    expect([...files.get('save1')!]).toEqual([7, 8, 9]);
+    expect(
+      env.iwm_host_write_file(16, path.byteLength, 64, payload.byteLength),
+    ).toBe(1);
+    expect([...files.get("save1")!]).toEqual([7, 8, 9]);
     expect(env.iwm_host_read_file(16, path.byteLength, 0, 0)).toBe(3);
     expect(env.iwm_host_read_file(16, path.byteLength, 96, 3)).toBe(3);
     expect([...bytes.slice(96, 99)]).toEqual([7, 8, 9]);

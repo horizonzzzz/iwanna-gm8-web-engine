@@ -103,10 +103,10 @@ pub(super) fn evaluate_identifier(
             return Some(value.clone());
         }
         match name {
-            "x" => return Some(RuntimeValue::Number(instance.x as f64)),
-            "y" => return Some(RuntimeValue::Number(instance.y as f64)),
-            "hspeed" => return Some(RuntimeValue::Number(instance.hspeed as f64)),
-            "vspeed" => return Some(RuntimeValue::Number(instance.vspeed as f64)),
+            "x" => return Some(RuntimeValue::Number(instance.x)),
+            "y" => return Some(RuntimeValue::Number(instance.y)),
+            "hspeed" => return Some(RuntimeValue::Number(instance.hspeed)),
+            "vspeed" => return Some(RuntimeValue::Number(instance.vspeed)),
             _ => {}
         }
         if let Some(value) = default_instance_variable(name) {

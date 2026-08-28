@@ -132,7 +132,14 @@ The CLI remains the compatibility investigation tool:
 ```powershell
 cargo run -p iwm-cli -- sample-audit --input "C:\path\to\game" --package-output .\runtime\public\packages\candidate --report-output .\target\sample-audits\candidate.json --ticks 600
 cargo run -p iwm-cli -- runtime-scenario --input .\runtime\public\packages\candidate --scenario .\docs\notes\runtime-scenarios\candidate-title-idle.json --ticks 600
+cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\candidate --ticks 240 --trace-collisions --trace-on-death --trace-output .\target\runtime-collision.json
 ```
+
+`runtime-diagnostics --trace-collisions` exports structured collision pairs,
+geometry, mask metadata, resolution phases, and collision block candidates.
+`--trace-on-death` retains a bounded preceding collision window in the portable
+JSON artifact; scenario files can assert `"no_player_death": true`. In `/shell`,
+the Debug Report can enable `Collision bounds` to draw the latest traced pair.
 
 Local copyrighted samples belong under `samples/local/iwanna-examples/` and
 must not be committed. `IWBT_Dife`, ArioTrials, and Crimson v1 are the shared

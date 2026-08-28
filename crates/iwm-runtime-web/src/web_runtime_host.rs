@@ -51,6 +51,7 @@ impl WebRuntimeHost {
 
     pub fn boot(&mut self, package: RuntimePackage) -> Result<BridgeSnapshot, String> {
         let mut core = RuntimeCore::load(package.clone()).map_err(format_core_error)?;
+        core.set_debug_trace_limits(128, 12);
         let mut host = WebRuntimeHostBoundary::new();
         sync_host_tick_rate_from_core(&mut host, &core);
         core.render(&mut host).map_err(format_core_error)?;
@@ -214,6 +215,7 @@ impl WebRuntimeHost {
 
         let mut host = WebRuntimeHostBoundary::new();
         let mut core = RuntimeCore::load(package).map_err(format_core_error)?;
+        core.set_debug_trace_limits(128, 12);
         sync_host_tick_rate_from_core(&mut host, &core);
         core.render(&mut host).map_err(format_core_error)?;
         let snapshot = bridge_snapshot(core.snapshot());

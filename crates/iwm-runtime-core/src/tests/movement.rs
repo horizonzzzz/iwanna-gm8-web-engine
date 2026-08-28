@@ -208,6 +208,7 @@ fn core_hazard_death_waits_for_restart_button_before_room_reset() {
             is_checkpoint: false,
         });
     let mut core = RuntimeCore::load(package).unwrap();
+    core.set_debug_trace_limits(16, 8);
     let mut host = host();
 
     core.tick(&mut host).unwrap();
@@ -229,6 +230,17 @@ fn core_hazard_death_waits_for_restart_button_before_room_reset() {
         .diagnostics()
         .iter()
         .any(|diagnostic| diagnostic.code == "runtime-room-changed"));
+    let death_trace = core.snapshot().death_trace;
+    assert_eq!(death_trace.len(), 1);
+    assert_eq!(death_trace[0].reason, "hazard");
+    assert_eq!(death_trace[0].player.object_name, "obj_player");
+    assert_eq!(
+        death_trace[0]
+            .hazard
+            .as_ref()
+            .map(|hazard| hazard.object_id),
+        Some(1)
+    );
 
     host.input.replace_button_states([(
         RuntimeButton::Restart,

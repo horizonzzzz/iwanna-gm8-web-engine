@@ -218,7 +218,7 @@ impl RuntimeCore {
                         &mut instance,
                         index,
                         &mut scope,
-                        &destroy_event_entries,
+                        destroy_event_entries,
                         Some(&eval_context),
                         &mut statement_env,
                     );
@@ -392,7 +392,7 @@ impl RuntimeCore {
                     random_state: &self.random_state,
                     button_states: &button_states,
                     room_instances,
-                    room_instance_indices_by_object_id: &room_instance_indices_by_object_id,
+                    room_instance_indices_by_object_id,
                     object_index: None,
                     collision_spatial_index: None,
                     room_instance_overlay: RuntimeRoomInstanceOverlay::with_current(
@@ -465,7 +465,7 @@ impl RuntimeCore {
                             &mut instance,
                             create.runtime_id,
                             &mut scope,
-                            &destroy_event_entries,
+                            destroy_event_entries,
                             Some(&eval_context),
                             &mut statement_env,
                         );

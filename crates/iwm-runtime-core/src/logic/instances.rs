@@ -315,7 +315,7 @@ fn create_member_value(
         .post_create_vars
         .get(member)
         .cloned()
-        .or_else(|| match member {
+        .or(match member {
             "x" => Some(RuntimeValue::Number(create.x)),
             "y" => Some(RuntimeValue::Number(create.y)),
             _ => None,

@@ -11,11 +11,24 @@ Expected command shape:
 
 ```powershell
 cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\gm8-core\IWBT_Dife --preselect-ticks 2 --select-room 143 --ticks 240 --trace-player --trace-every 20 --input-script docs\notes\runtime-scenarios\dife-room143-hold-jump.json
+
+# Capture structured collision pairs and the final 12 collision phases at death.
+cargo run -p iwm-cli -- runtime-diagnostics --input .\runtime\public\packages\gm8-core\IWBT_Dife --preselect-ticks 2 --select-room 151 --ticks 180 --trace-collisions --trace-on-death --death-trace-window 12 --input-script docs\notes\runtime-scenarios\dife-room151-death-right.json --trace-output target\dife-room151-collision.json
 ```
 
 Script `tick` values are relative to the main diagnostics run after any
 `--preselect-ticks` warmup and manual room selection. A script entry at `tick: 0`
 therefore applies to the first tick after the selected room has been settled.
+
+`--trace-collisions` adds structured `collision_trace` entries with both
+participants' runtime/object IDs, current and previous positions, bounds,
+mask presence, solid/hazard flags, collision phase, and collision event block
+IDs. `--trace-on-death` records `death_trace` entries, each retaining the last
+`--death-trace-window` collision phases. The JSON output is portable evidence;
+replaying it still requires the same locally generated package.
+
+Scenario assertions may set `"no_player_death": true` to turn an input script
+into a portable no-death regression without committing sample assets.
 
 Current Dife scenarios:
 

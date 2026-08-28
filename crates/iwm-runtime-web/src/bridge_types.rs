@@ -83,6 +83,52 @@ pub struct BridgeTickPhaseSnapshot {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BridgeCollisionParticipantTrace {
+    pub runtime_id: usize,
+    pub instance_id: i32,
+    pub object_id: usize,
+    pub object_name: String,
+    pub x: f64,
+    pub y: f64,
+    pub previous_x: f64,
+    pub previous_y: f64,
+    pub hspeed: f64,
+    pub vspeed: f64,
+    pub bounds: [i32; 4],
+    pub previous_bounds: [i32; 4],
+    pub solid: bool,
+    pub hazard: bool,
+    pub has_collision_mask: bool,
+    pub collision_mask_size: Option<[u32; 2]>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeCollisionTraceEntry {
+    pub tick: u64,
+    pub phase: String,
+    pub target_object_id: usize,
+    pub solid_collision: bool,
+    pub contact_y: Option<i32>,
+    pub event_blocks: Vec<String>,
+    pub owner: BridgeCollisionParticipantTrace,
+    pub other: BridgeCollisionParticipantTrace,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeDeathTraceEntry {
+    pub tick: u64,
+    pub room_id: usize,
+    pub room_name: String,
+    pub reason: String,
+    pub player: BridgeCollisionParticipantTrace,
+    pub hazard: Option<BridgeCollisionParticipantTrace>,
+    pub collision_window: Vec<BridgeCollisionTraceEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BridgeSnapshot {
     pub status: String,
     pub tick: u64,
@@ -95,6 +141,8 @@ pub struct BridgeSnapshot {
     pub input_trace: BridgeInputTraceSnapshot,
     pub tick_phases: BridgeTickPhaseSnapshot,
     pub diagnostics: Vec<String>,
+    pub collision_trace: Vec<BridgeCollisionTraceEntry>,
+    pub death_trace: Vec<BridgeDeathTraceEntry>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -4,7 +4,7 @@ use crate::helpers::{
     as_number, collides_at, collision_candidates_near, is_player_instance, move_instance_axis,
     player_out_of_bounds, Axis,
 };
-use crate::{RuntimeCore, RuntimeCoreError};
+use crate::{RuntimeCore, RuntimeCoreError, RuntimeDeathTraceEntry};
 
 const RUN_SPEED: f64 = 4.0;
 const JUMP_SPEED: f64 = 8.0;
@@ -342,13 +342,35 @@ impl RuntimeCore {
             player.y,
             room.room_name
         );
-        self.count_player_death();
-        self.record_diagnostic(
-            host,
-            iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
-            "runtime-player-died",
-            death_message,
-        );
+        let death_trace = RuntimeDeathTraceEntry {
+            tick: self.tick,
+            room_id: room.room_id,
+            room_name: room.room_name.clone(),
+            reason: "hazard".into(),
+            player: crate::core::collision_trace_participant(player),
+            hazard: hazards
+                .iter()
+                .find(|hazard| {
+                    collides_at(
+                        player,
+                        player.x,
+                        player.y,
+                        std::slice::from_ref(*hazard),
+                        Some(player.runtime_id),
+                    )
+                })
+                .map(crate::core::collision_trace_participant),
+            collision_window: Vec::new(),
+        };
+        if self.count_player_death() {
+            self.record_death_trace(death_trace, &[]);
+            self.record_diagnostic(
+                host,
+                iwm_runtime_host::RuntimeDiagnosticLevel::Warning,
+                "runtime-player-died",
+                death_message,
+            );
+        }
         self.death_waiting_for_restart = true;
         Ok(())
     }
@@ -401,10 +423,11 @@ fn final_solid_contact_shadows_hazard(
 }
 
 pub(crate) fn apply_gm_motion_vars(instance: &mut crate::RuntimeInstance) {
-    if instance.hspeed == 0.0 && instance.vspeed == 0.0 {
-        if instance.vars.contains_key("speed") || instance.vars.contains_key("direction") {
-            instance.sync_hvspeed_from_speed_direction();
-        }
+    if instance.hspeed == 0.0
+        && instance.vspeed == 0.0
+        && (instance.vars.contains_key("speed") || instance.vars.contains_key("direction"))
+    {
+        instance.sync_hvspeed_from_speed_direction();
     }
 
     if let Some(friction) = instance.vars.get("friction").and_then(as_number) {

@@ -1,36 +1,40 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { loadPackage } from '../../loadPackage';
-import { makeBackgroundPathMap, makeSpriteFrameMap, ResourceCache } from '../../render/resourceCache';
-import { renderStaticRoom } from '../../render/staticRoomRenderer';
-import { renderWasmFrame } from '../../render/wasmFrameRenderer';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { loadPackage } from "../../loadPackage";
+import {
+  makeBackgroundPathMap,
+  makeSpriteFrameMap,
+  ResourceCache,
+} from "../../render/resourceCache";
+import { renderStaticRoom } from "../../render/staticRoomRenderer";
+import { renderWasmFrame } from "../../render/wasmFrameRenderer";
 import {
   describeWasmBridgeAvailability,
   loadDefaultWasmRuntimeBridge,
   type WasmRuntimeBridge,
   type WasmRuntimeBridgeSnapshot,
-} from '../../runtime/wasmBridge';
-import { WasmRuntimeSession } from '../../runtime/wasmSession';
-import type { RuntimePackage } from '../../types';
-import type { RuntimePerformanceStats } from '../traceView';
-import type { KeyboardInputState } from './useKeyboardInput';
+} from "../../runtime/wasmBridge";
+import { WasmRuntimeSession } from "../../runtime/wasmSession";
+import type { RuntimePackage } from "../../types";
+import type { RuntimePerformanceStats } from "../traceView";
+import type { KeyboardInputState } from "./useKeyboardInput";
 
 const DEFAULT_ROOM_SPEED_HZ = 30;
 const SHELL_TELEMETRY_INTERVAL_MS = 1000;
 
 type ShellBackend =
   | {
-      kind: 'viewer';
+      kind: "viewer";
       roomId: number | null;
       diagnostics: string[];
     }
   | {
-      kind: 'wasm';
+      kind: "wasm";
       bridge: WasmRuntimeBridge;
       session: WasmRuntimeSession;
     };
 
 type KeyboardInputSource = KeyboardInputState | { current: KeyboardInputState };
-type RuntimeTelemetryMode = 'immediate' | 'throttled';
+type RuntimeTelemetryMode = "immediate" | "throttled";
 type MouseInputState = {
   x: number;
   y: number;
@@ -45,7 +49,7 @@ type RuntimeShellOptions = {
 };
 
 function currentKeyboardInput(source: KeyboardInputSource): KeyboardInputState {
-  return 'current' in source ? source.current : source;
+  return "current" in source ? source.current : source;
 }
 
 function gmMouseButton(button: number): number | null {
@@ -56,7 +60,7 @@ function nowMs(): number {
   return globalThis.performance?.now() ?? Date.now();
 }
 
-function defaultInputTrace(): WasmRuntimeBridgeSnapshot['inputTrace'] {
+function defaultInputTrace(): WasmRuntimeBridgeSnapshot["inputTrace"] {
   return {
     jumpButtonKey: 0x20,
     jumpPressed: false,
@@ -66,47 +70,89 @@ function defaultInputTrace(): WasmRuntimeBridgeSnapshot['inputTrace'] {
   };
 }
 
-function clearCanvas(canvas: HTMLCanvasElement, width = 800, height = 600): void {
+function clearCanvas(
+  canvas: HTMLCanvasElement,
+  width = 800,
+  height = 600,
+): void {
   canvas.width = width;
   canvas.height = height;
-  const context = canvas.getContext('2d');
+  const context = canvas.getContext("2d");
   if (!context) {
     return;
   }
   context.clearRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = '#0c1118';
+  context.fillStyle = "#0c1118";
   context.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-function validRoomSpeedHz(speed: number | null | undefined): number | null {
-  return Number.isFinite(speed) && speed != null && speed > 0
-    ? speed
-    : null;
+function drawCollisionOverlay(
+  canvas: HTMLCanvasElement,
+  snapshot: WasmRuntimeBridgeSnapshot,
+): void {
+  const trace = snapshot.collisionTrace?.at(-1);
+  if (!trace) {
+    return;
+  }
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return;
+  }
+  context.save();
+  context.lineWidth = 1;
+  for (const [participant, colour] of [
+    [trace.owner, "#38bdf8"],
+    [trace.other, "#fb7185"],
+  ] as const) {
+    const [left, top, right, bottom] = participant.bounds;
+    context.strokeStyle = colour;
+    context.strokeRect(
+      left + 0.5,
+      top + 0.5,
+      Math.max(1, right - left),
+      Math.max(1, bottom - top),
+    );
+    context.fillStyle = colour;
+    context.font = "11px monospace";
+    context.fillText(
+      `${participant.objectName}#${participant.runtimeId}`,
+      left,
+      top - 3,
+    );
+  }
+  context.restore();
 }
 
-function snapshotRoomSpeedHz(snapshot: WasmRuntimeBridgeSnapshot): number | null {
+function validRoomSpeedHz(speed: number | null | undefined): number | null {
+  return Number.isFinite(speed) && speed != null && speed > 0 ? speed : null;
+}
+
+function snapshotRoomSpeedHz(
+  snapshot: WasmRuntimeBridgeSnapshot,
+): number | null {
   return validRoomSpeedHz(snapshot.roomSpeed);
 }
 
 function roomTickRateHz(
   pkg: RuntimePackage | null,
   roomId: number | null,
-  runtimeRoomSpeed: number | null
+  runtimeRoomSpeed: number | null,
 ): number {
   const runtimeSpeed = validRoomSpeedHz(runtimeRoomSpeed);
   if (runtimeSpeed != null) {
     return runtimeSpeed;
   }
-  const speed = roomId == null
-    ? undefined
-    : pkg?.rooms.find((room) => room.id === roomId)?.speed;
+  const speed =
+    roomId == null
+      ? undefined
+      : pkg?.rooms.find((room) => room.id === roomId)?.speed;
   return validRoomSpeedHz(speed) ?? DEFAULT_ROOM_SPEED_HZ;
 }
 
 function autoTickIntervalMs(
   pkg: RuntimePackage | null,
   roomId: number | null,
-  runtimeRoomSpeed: number | null
+  runtimeRoomSpeed: number | null,
 ): number {
   return 1000 / roomTickRateHz(pkg, roomId, runtimeRoomSpeed);
 }
@@ -115,7 +161,9 @@ function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function minimalRuntimeSnapshot(snapshot: WasmRuntimeBridgeSnapshot): WasmRuntimeBridgeSnapshot {
+function minimalRuntimeSnapshot(
+  snapshot: WasmRuntimeBridgeSnapshot,
+): WasmRuntimeBridgeSnapshot {
   return {
     ...snapshot,
     tickPhases: undefined,
@@ -128,7 +176,7 @@ async function renderRuntimeRoom(
   canvas: HTMLCanvasElement,
   roomId: number,
   pkg: RuntimePackage,
-  cache: ResourceCache
+  cache: ResourceCache,
 ): Promise<void> {
   const room = pkg.rooms.find((candidate) => candidate.id === roomId);
   if (!room) {
@@ -136,28 +184,41 @@ async function renderRuntimeRoom(
   }
   const backgroundPaths = makeBackgroundPathMap(basePath, pkg.resources);
   const spritePaths = makeSpriteFrameMap(basePath, pkg.resources);
-  await renderStaticRoom(canvas, room, pkg.objects, backgroundPaths, spritePaths, cache);
+  await renderStaticRoom(
+    canvas,
+    room,
+    pkg.objects,
+    backgroundPaths,
+    spritePaths,
+    cache,
+  );
 }
 
 export function useRuntimeShell(options: RuntimeShellOptions = {}) {
   const {
     allowStaticFallback = true,
-    initialPackagePath = '/packages/gm8-core/IWBT_Dife',
+    initialPackagePath = "/packages/gm8-core/IWBT_Dife",
   } = options;
   const [packagePath, setPackagePath] = useState(initialPackagePath);
-  const [loadedPackage, setLoadedPackage] = useState<RuntimePackage | null>(null);
+  const [loadedPackage, setLoadedPackage] = useState<RuntimePackage | null>(
+    null,
+  );
   const [backendStatus, setBackendStatus] = useState(
-    'Execution path: static room viewer until a WASM bridge is configured.'
+    "Execution path: static room viewer until a WASM bridge is configured.",
   );
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [autoTickRunning, setAutoTickRunning] = useState(false);
-  const [snapshot, setSnapshot] = useState<WasmRuntimeBridgeSnapshot | null>(null);
-  const [performanceStats, setPerformanceStats] = useState<RuntimePerformanceStats | null>(null);
+  const [collisionOverlayEnabled, setCollisionOverlayEnabled] = useState(false);
+  const [snapshot, setSnapshot] = useState<WasmRuntimeBridgeSnapshot | null>(
+    null,
+  );
+  const [performanceStats, setPerformanceStats] =
+    useState<RuntimePerformanceStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [runtimeReady, setRuntimeReady] = useState(false);
-  const [mode, setMode] = useState<'viewer' | 'wasm'>('viewer');
+  const [mode, setMode] = useState<"viewer" | "wasm">("viewer");
   const [viewerDiagnostics, setViewerDiagnostics] = useState<string[]>([
-    'Static room viewer idle. Load a package to inspect resources.',
+    "Static room viewer idle. Load a package to inspect resources.",
   ]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -173,9 +234,11 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
   const currentRoomIdRef = useRef<number | null>(null);
   const currentRoomSpeedRef = useRef<number | null>(null);
   const backendRef = useRef<ShellBackend>({
-    kind: 'viewer',
+    kind: "viewer",
     roomId: null,
-    diagnostics: ['Static room viewer idle. Load a package to inspect resources.'],
+    diagnostics: [
+      "Static room viewer idle. Load a package to inspect resources.",
+    ],
   });
   const renderCacheRef = useRef(new ResourceCache());
   const autoTickHandleRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -201,8 +264,12 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
       if (rect.width <= 0 || rect.height <= 0) {
         return;
       }
-      mouseInputRef.current.x = Math.floor((event.clientX - rect.left) * canvas.width / rect.width);
-      mouseInputRef.current.y = Math.floor((event.clientY - rect.top) * canvas.height / rect.height);
+      mouseInputRef.current.x = Math.floor(
+        ((event.clientX - rect.left) * canvas.width) / rect.width,
+      );
+      mouseInputRef.current.y = Math.floor(
+        ((event.clientY - rect.top) * canvas.height) / rect.height,
+      );
     }
 
     function handleMouseDown(event: MouseEvent): void {
@@ -232,15 +299,15 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
       }
     }
 
-    window.addEventListener('mousemove', updatePosition);
-    window.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('contextmenu', handleContextMenu);
+    window.addEventListener("mousemove", updatePosition);
+    window.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("contextmenu", handleContextMenu);
     return () => {
-      window.removeEventListener('mousemove', updatePosition);
-      window.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('contextmenu', handleContextMenu);
+      window.removeEventListener("mousemove", updatePosition);
+      window.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("contextmenu", handleContextMenu);
     };
   }, []);
 
@@ -249,8 +316,10 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
   }, [packagePath]);
 
   const roomOptions = useMemo(
-    () => loadedPackage?.rooms.map((room) => ({ id: room.id, name: room.name })) ?? [],
-    [loadedPackage]
+    () =>
+      loadedPackage?.rooms.map((room) => ({ id: room.id, name: room.name })) ??
+      [],
+    [loadedPackage],
   );
 
   const draw = useCallback(
@@ -258,22 +327,31 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
       pkg: RuntimePackage,
       backend: ShellBackend,
       currentPath: string,
-      nextPerformance: RuntimePerformanceStats | null = null
+      nextPerformance: RuntimePerformanceStats | null = null,
     ): Promise<void> => {
       const canvas = canvasRef.current;
       if (!canvas) {
         return;
       }
 
-      if (backend.kind === 'wasm') {
+      if (backend.kind === "wasm") {
         const nextSnapshot = await backend.bridge.snapshot();
         const frame = await backend.bridge.frame();
-        await renderWasmFrame(canvas, frame, pkg.resources, currentPath, renderCacheRef.current);
+        await renderWasmFrame(
+          canvas,
+          frame,
+          pkg.resources,
+          currentPath,
+          renderCacheRef.current,
+        );
+        if (collisionOverlayEnabled) {
+          drawCollisionOverlay(canvas, nextSnapshot);
+        }
         const nextRoomId = nextSnapshot.roomId ?? null;
         currentRoomIdRef.current = nextRoomId;
         currentRoomSpeedRef.current = snapshotRoomSpeedHz(nextSnapshot);
         setSnapshot(nextSnapshot);
-        setMode('wasm');
+        setMode("wasm");
         setViewerDiagnostics([]);
         if (nextPerformance) {
           setPerformanceStats(nextPerformance);
@@ -282,52 +360,67 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
         return;
       }
 
-      setMode('viewer');
+      setMode("viewer");
       setPerformanceStats(null);
       setViewerDiagnostics(backend.diagnostics);
-      const room = backend.roomId != null
-        ? pkg.rooms.find((candidate) => candidate.id === backend.roomId)
-        : null;
+      const room =
+        backend.roomId != null
+          ? pkg.rooms.find((candidate) => candidate.id === backend.roomId)
+          : null;
       currentRoomIdRef.current = backend.roomId;
       currentRoomSpeedRef.current = validRoomSpeedHz(room?.speed);
       setSnapshot({
         tick: 0,
         roomId: backend.roomId,
-        roomName: room?.name ?? (backend.roomId != null ? 'Static room viewer' : null),
+        roomName:
+          room?.name ?? (backend.roomId != null ? "Static room viewer" : null),
         diagnostics: backend.diagnostics,
         inputTrace: defaultInputTrace(),
         player: null,
       });
 
       if (backend.roomId != null) {
-        await renderRuntimeRoom(currentPath, canvas, backend.roomId, pkg, renderCacheRef.current);
+        await renderRuntimeRoom(
+          currentPath,
+          canvas,
+          backend.roomId,
+          pkg,
+          renderCacheRef.current,
+        );
         return;
       }
 
-      clearCanvas(canvas, pkg.manifest.display_width, pkg.manifest.display_height);
+      clearCanvas(
+        canvas,
+        pkg.manifest.display_width,
+        pkg.manifest.display_height,
+      );
     },
-    []
+    [collisionOverlayEnabled],
   );
 
-  const commitRuntimeTelemetry = useCallback((
-    nextSnapshot: WasmRuntimeBridgeSnapshot,
-    nextPerformance: RuntimePerformanceStats | null,
-    nextRoomId: number | null,
-    commitTimeMs = nowMs(),
-    clearPending = true
-  ) => {
-    if (clearPending) {
-      pendingSnapshotRef.current = null;
-      pendingPerformanceRef.current = null;
-      pendingRoomIdRef.current = null;
-    }
-    lastTelemetryCommitMsRef.current = commitTimeMs;
-    setSnapshot(nextSnapshot);
-    setPerformanceStats(nextPerformance);
-    currentRoomIdRef.current = nextRoomId;
-    currentRoomSpeedRef.current = snapshotRoomSpeedHz(nextSnapshot);
-    setSelectedRoomId(nextRoomId);
-  }, []);
+  const commitRuntimeTelemetry = useCallback(
+    (
+      nextSnapshot: WasmRuntimeBridgeSnapshot,
+      nextPerformance: RuntimePerformanceStats | null,
+      nextRoomId: number | null,
+      commitTimeMs = nowMs(),
+      clearPending = true,
+    ) => {
+      if (clearPending) {
+        pendingSnapshotRef.current = null;
+        pendingPerformanceRef.current = null;
+        pendingRoomIdRef.current = null;
+      }
+      lastTelemetryCommitMsRef.current = commitTimeMs;
+      setSnapshot(nextSnapshot);
+      setPerformanceStats(nextPerformance);
+      currentRoomIdRef.current = nextRoomId;
+      currentRoomSpeedRef.current = snapshotRoomSpeedHz(nextSnapshot);
+      setSelectedRoomId(nextRoomId);
+    },
+    [],
+  );
 
   const flushPendingRuntimeTelemetry = useCallback(() => {
     if (!pendingSnapshotRef.current) {
@@ -340,41 +433,45 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
     );
   }, [commitRuntimeTelemetry]);
 
-  const publishRuntimeTelemetry = useCallback((
-    nextSnapshot: WasmRuntimeBridgeSnapshot,
-    nextPerformance: RuntimePerformanceStats | null,
-    nextRoomId: number | null,
-    mode: RuntimeTelemetryMode
-  ) => {
-    const previousRoomId = currentRoomIdRef.current;
-    currentRoomIdRef.current = nextRoomId;
-    currentRoomSpeedRef.current = snapshotRoomSpeedHz(nextSnapshot);
+  const publishRuntimeTelemetry = useCallback(
+    (
+      nextSnapshot: WasmRuntimeBridgeSnapshot,
+      nextPerformance: RuntimePerformanceStats | null,
+      nextRoomId: number | null,
+      mode: RuntimeTelemetryMode,
+    ) => {
+      const previousRoomId = currentRoomIdRef.current;
+      currentRoomIdRef.current = nextRoomId;
+      currentRoomSpeedRef.current = snapshotRoomSpeedHz(nextSnapshot);
 
-    if (mode === 'immediate') {
-      commitRuntimeTelemetry(nextSnapshot, nextPerformance, nextRoomId);
-      return;
-    }
+      if (mode === "immediate") {
+        commitRuntimeTelemetry(nextSnapshot, nextPerformance, nextRoomId);
+        return;
+      }
 
-    pendingSnapshotRef.current = nextSnapshot;
-    pendingPerformanceRef.current = nextPerformance;
-    pendingRoomIdRef.current = nextRoomId;
+      pendingSnapshotRef.current = nextSnapshot;
+      pendingPerformanceRef.current = nextPerformance;
+      pendingRoomIdRef.current = nextRoomId;
 
-    const commitTimeMs = nowMs();
-    const lastCommitMs = lastTelemetryCommitMsRef.current;
-    const shouldCommit = lastCommitMs == null
-      || commitTimeMs - lastCommitMs >= SHELL_TELEMETRY_INTERVAL_MS
-      || previousRoomId !== nextRoomId;
+      const commitTimeMs = nowMs();
+      const lastCommitMs = lastTelemetryCommitMsRef.current;
+      const shouldCommit =
+        lastCommitMs == null ||
+        commitTimeMs - lastCommitMs >= SHELL_TELEMETRY_INTERVAL_MS ||
+        previousRoomId !== nextRoomId;
 
-    if (shouldCommit) {
-      commitRuntimeTelemetry(
-        minimalRuntimeSnapshot(nextSnapshot),
-        null,
-        nextRoomId,
-        commitTimeMs,
-        false
-      );
-    }
-  }, [commitRuntimeTelemetry]);
+      if (shouldCommit) {
+        commitRuntimeTelemetry(
+          minimalRuntimeSnapshot(nextSnapshot),
+          null,
+          nextRoomId,
+          commitTimeMs,
+          false,
+        );
+      }
+    },
+    [commitRuntimeTelemetry],
+  );
 
   const stopAutoTick = useCallback(() => {
     if (autoTickHandleRef.current != null) {
@@ -391,9 +488,12 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
   }, [flushPendingRuntimeTelemetry]);
 
   const tickRuntimeOnce = useCallback(
-    async (keyboard: KeyboardInputState, telemetryMode: RuntimeTelemetryMode = 'immediate') => {
+    async (
+      keyboard: KeyboardInputState,
+      telemetryMode: RuntimeTelemetryMode = "immediate",
+    ) => {
       const currentPackage = loadedPackageRef.current;
-      if (!currentPackage || backendRef.current.kind !== 'wasm') {
+      if (!currentPackage || backendRef.current.kind !== "wasm") {
         return;
       }
 
@@ -413,16 +513,29 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
         mouseButtonsPressed: [...mouse.pressed],
         mouseButtonsReleased: [...mouse.released],
       });
-      const collectPerformance = telemetryMode === 'immediate';
+      const collectPerformance = telemetryMode === "immediate";
       const frameStart = collectPerformance ? nowMs() : 0;
-      const { snapshot: nextSnapshot, frame, timings } = await backend.session.stepOnce();
+      const {
+        snapshot: nextSnapshot,
+        frame,
+        timings,
+      } = await backend.session.stepOnce();
       keyboard.clearEdgeKeys();
       mouse.pressed.clear();
       mouse.released.clear();
       const renderStart = collectPerformance ? nowMs() : 0;
       const canvas = canvasRef.current;
       if (canvas) {
-        await renderWasmFrame(canvas, frame, currentPackage.resources, packagePathRef.current, renderCacheRef.current);
+        await renderWasmFrame(
+          canvas,
+          frame,
+          currentPackage.resources,
+          packagePathRef.current,
+          renderCacheRef.current,
+        );
+        if (collisionOverlayEnabled) {
+          drawCollisionOverlay(canvas, nextSnapshot);
+        }
       }
       if (!mountedRef.current) {
         return;
@@ -441,14 +554,19 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
           }
         : null;
       const nextRoomId = nextSnapshot.roomId ?? null;
-      publishRuntimeTelemetry(nextSnapshot, nextPerformance, nextRoomId, telemetryMode);
+      publishRuntimeTelemetry(
+        nextSnapshot,
+        nextPerformance,
+        nextRoomId,
+        telemetryMode,
+      );
     },
-    [publishRuntimeTelemetry]
+    [collisionOverlayEnabled, publishRuntimeTelemetry],
   );
 
   const scheduleAutoTickInterval = useCallback(
     (keyboardSource: KeyboardInputSource) => {
-      if (!loadedPackageRef.current || backendRef.current.kind !== 'wasm') {
+      if (!loadedPackageRef.current || backendRef.current.kind !== "wasm") {
         return;
       }
 
@@ -458,7 +576,7 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
       const delayMs = autoTickIntervalMs(
         loadedPackageRef.current,
         currentRoomIdRef.current,
-        currentRoomSpeedRef.current
+        currentRoomSpeedRef.current,
       );
       autoTickDelayMsRef.current = delayMs;
       autoTickHandleRef.current = globalThis.setInterval(() => {
@@ -468,7 +586,10 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
         }
 
         autoTickInFlightRef.current = true;
-        autoTickInFlightPromiseRef.current = tickRuntimeOnce(currentKeyboardInput(keyboardSource), 'throttled')
+        autoTickInFlightPromiseRef.current = tickRuntimeOnce(
+          currentKeyboardInput(keyboardSource),
+          "throttled",
+        )
           .catch((tickError) => {
             stopAutoTick();
             if (mountedRef.current) {
@@ -478,16 +599,20 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
           .finally(() => {
             autoTickInFlightRef.current = false;
             autoTickInFlightPromiseRef.current = null;
-        });
+          });
         void autoTickInFlightPromiseRef.current;
       }, delayMs);
     },
-    [stopAutoTick, tickRuntimeOnce]
+    [stopAutoTick, tickRuntimeOnce],
   );
 
   const startAutoTick = useCallback(
     (keyboardSource: KeyboardInputSource) => {
-      if (!loadedPackageRef.current || backendRef.current.kind !== 'wasm' || autoTickHandleRef.current != null) {
+      if (
+        !loadedPackageRef.current ||
+        backendRef.current.kind !== "wasm" ||
+        autoTickHandleRef.current != null
+      ) {
         return;
       }
 
@@ -495,132 +620,159 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
       scheduleAutoTickInterval(keyboardSource);
       setAutoTickRunning(true);
     },
-    [scheduleAutoTickInterval]
+    [scheduleAutoTickInterval],
   );
 
   useEffect(() => {
-    if (!autoTickRunning || !autoTickKeyboardSourceRef.current || backendRef.current.kind !== 'wasm') {
+    if (
+      !autoTickRunning ||
+      !autoTickKeyboardSourceRef.current ||
+      backendRef.current.kind !== "wasm"
+    ) {
       return;
     }
     const nextDelayMs = autoTickIntervalMs(
       loadedPackageRef.current,
       currentRoomIdRef.current,
-      currentRoomSpeedRef.current
+      currentRoomSpeedRef.current,
     );
-    if (autoTickDelayMsRef.current == null || Math.abs(autoTickDelayMsRef.current - nextDelayMs) > 0.001) {
+    if (
+      autoTickDelayMsRef.current == null ||
+      Math.abs(autoTickDelayMsRef.current - nextDelayMs) > 0.001
+    ) {
       scheduleAutoTickInterval(autoTickKeyboardSourceRef.current);
     }
-  }, [autoTickRunning, scheduleAutoTickInterval, selectedRoomId, snapshot?.roomSpeed]);
+  }, [
+    autoTickRunning,
+    scheduleAutoTickInterval,
+    selectedRoomId,
+    snapshot?.roomSpeed,
+  ]);
 
-  const loadCurrentPackage = useCallback(async (
-    keyboardSource?: KeyboardInputSource,
-    requestedPath = packagePath
-  ) => {
-    setError(null);
-    setRuntimeReady(false);
-    stopAutoTick();
-    pendingSnapshotRef.current = null;
-    pendingPerformanceRef.current = null;
-    pendingRoomIdRef.current = null;
-    currentRoomSpeedRef.current = null;
-    lastTelemetryCommitMsRef.current = null;
-    skippedAutoTickIntervalsRef.current = 0;
-    packagePathRef.current = requestedPath;
-    setPackagePath(requestedPath);
-
-    try {
-      const pkg = await loadPackage(requestedPath);
-      loadedPackageRef.current = pkg;
-      setLoadedPackage(pkg);
-
-      const defaultRoomId = pkg.manifest.default_room_id ?? pkg.rooms[0]?.id ?? null;
-      let nextBackend: ShellBackend = {
-        kind: 'viewer',
-        roomId: defaultRoomId,
-        diagnostics: ['Static room viewer active. Gameplay execution requires the WASM bridge.'],
-      };
-      let roomId = defaultRoomId;
-      let wasmBridgeError: unknown = null;
+  const loadCurrentPackage = useCallback(
+    async (
+      keyboardSource?: KeyboardInputSource,
+      requestedPath = packagePath,
+    ) => {
+      setError(null);
+      setRuntimeReady(false);
+      stopAutoTick();
+      pendingSnapshotRef.current = null;
+      pendingPerformanceRef.current = null;
+      pendingRoomIdRef.current = null;
+      currentRoomSpeedRef.current = null;
+      lastTelemetryCommitMsRef.current = null;
+      skippedAutoTickIntervalsRef.current = 0;
+      packagePathRef.current = requestedPath;
+      setPackagePath(requestedPath);
 
       try {
-        const wasmBridge = await loadDefaultWasmRuntimeBridge();
-        const bootSnapshot = await wasmBridge.boot(pkg, { basePath: requestedPath });
-        nextBackend = {
-          kind: 'wasm',
-          bridge: wasmBridge,
-          session: new WasmRuntimeSession(wasmBridge),
-        };
-        roomId = bootSnapshot.roomId ?? roomId;
-        setRuntimeReady(true);
-      } catch (bootError) {
-        if (!allowStaticFallback) {
-          throw new Error(`WASM runtime unavailable: ${formatErrorMessage(bootError)}`);
-        }
-        wasmBridgeError = bootError;
-        setRuntimeReady(false);
-        nextBackend = {
-          kind: 'viewer',
+        const pkg = await loadPackage(requestedPath);
+        loadedPackageRef.current = pkg;
+        setLoadedPackage(pkg);
+
+        const defaultRoomId =
+          pkg.manifest.default_room_id ?? pkg.rooms[0]?.id ?? null;
+        let nextBackend: ShellBackend = {
+          kind: "viewer",
           roomId: defaultRoomId,
           diagnostics: [
-            `WASM runtime unavailable: ${formatErrorMessage(bootError)}`,
-            'Static room viewer active. Gameplay execution requires the WASM bridge.',
+            "Static room viewer active. Gameplay execution requires the WASM bridge.",
           ],
         };
-      }
+        let roomId = defaultRoomId;
+        let wasmBridgeError: unknown = null;
 
-      backendRef.current = nextBackend;
-      setBackendStatus(
-        `Execution path: ${describeWasmBridgeAvailability(
-          nextBackend.kind === 'wasm' ? nextBackend.bridge : null,
-          wasmBridgeError
-        )}`
-      );
-      setSelectedRoomId(roomId);
-      await draw(pkg, nextBackend, requestedPath);
-      if (nextBackend.kind === 'wasm' && keyboardSource) {
-        startAutoTick(keyboardSource);
-      }
-      return pkg;
-    } catch (loadError) {
-      loadedPackageRef.current = null;
-      currentRoomSpeedRef.current = null;
-      setLoadedPackage(null);
-      setRuntimeReady(false);
-      backendRef.current = {
-        kind: 'viewer',
-        roomId: null,
-        diagnostics: ['Static room viewer idle. Load a package to inspect resources.'],
-      };
-      setSnapshot({
-        tick: 0,
-        roomId: null,
-        roomName: null,
-        diagnostics: [`Load failed: ${formatErrorMessage(loadError)}`],
-        inputTrace: defaultInputTrace(),
-        player: null,
-      });
-      setError(`Load failed: ${formatErrorMessage(loadError)}`);
-      const canvas = canvasRef.current;
-      if (canvas) {
-        clearCanvas(canvas);
-      }
-      throw loadError;
-    }
-  }, [allowStaticFallback, draw, packagePath, startAutoTick, stopAutoTick]);
+        try {
+          const wasmBridge = await loadDefaultWasmRuntimeBridge();
+          const bootSnapshot = await wasmBridge.boot(pkg, {
+            basePath: requestedPath,
+          });
+          nextBackend = {
+            kind: "wasm",
+            bridge: wasmBridge,
+            session: new WasmRuntimeSession(wasmBridge),
+          };
+          roomId = bootSnapshot.roomId ?? roomId;
+          setRuntimeReady(true);
+        } catch (bootError) {
+          if (!allowStaticFallback) {
+            throw new Error(
+              `WASM runtime unavailable: ${formatErrorMessage(bootError)}`,
+            );
+          }
+          wasmBridgeError = bootError;
+          setRuntimeReady(false);
+          nextBackend = {
+            kind: "viewer",
+            roomId: defaultRoomId,
+            diagnostics: [
+              `WASM runtime unavailable: ${formatErrorMessage(bootError)}`,
+              "Static room viewer active. Gameplay execution requires the WASM bridge.",
+            ],
+          };
+        }
 
-  const runExclusiveWithAutoTick = useCallback(async (operation: () => Promise<void>): Promise<void> => {
-    // Hold a guard the auto-tick interval also honours, then wait for any
-    // in-flight tick to settle before touching the shared wasm instance.
-    exclusiveOpRef.current = true;
-    try {
-      if (autoTickInFlightPromiseRef.current) {
-        await autoTickInFlightPromiseRef.current.catch(() => undefined);
+        backendRef.current = nextBackend;
+        setBackendStatus(
+          `Execution path: ${describeWasmBridgeAvailability(
+            nextBackend.kind === "wasm" ? nextBackend.bridge : null,
+            wasmBridgeError,
+          )}`,
+        );
+        setSelectedRoomId(roomId);
+        await draw(pkg, nextBackend, requestedPath);
+        if (nextBackend.kind === "wasm" && keyboardSource) {
+          startAutoTick(keyboardSource);
+        }
+        return pkg;
+      } catch (loadError) {
+        loadedPackageRef.current = null;
+        currentRoomSpeedRef.current = null;
+        setLoadedPackage(null);
+        setRuntimeReady(false);
+        backendRef.current = {
+          kind: "viewer",
+          roomId: null,
+          diagnostics: [
+            "Static room viewer idle. Load a package to inspect resources.",
+          ],
+        };
+        setSnapshot({
+          tick: 0,
+          roomId: null,
+          roomName: null,
+          diagnostics: [`Load failed: ${formatErrorMessage(loadError)}`],
+          inputTrace: defaultInputTrace(),
+          player: null,
+        });
+        setError(`Load failed: ${formatErrorMessage(loadError)}`);
+        const canvas = canvasRef.current;
+        if (canvas) {
+          clearCanvas(canvas);
+        }
+        throw loadError;
       }
-      await operation();
-    } finally {
-      exclusiveOpRef.current = false;
-    }
-  }, []);
+    },
+    [allowStaticFallback, draw, packagePath, startAutoTick, stopAutoTick],
+  );
+
+  const runExclusiveWithAutoTick = useCallback(
+    async (operation: () => Promise<void>): Promise<void> => {
+      // Hold a guard the auto-tick interval also honours, then wait for any
+      // in-flight tick to settle before touching the shared wasm instance.
+      exclusiveOpRef.current = true;
+      try {
+        if (autoTickInFlightPromiseRef.current) {
+          await autoTickInFlightPromiseRef.current.catch(() => undefined);
+        }
+        await operation();
+      } finally {
+        exclusiveOpRef.current = false;
+      }
+    },
+    [],
+  );
 
   const selectRoom = useCallback(
     async (roomId: number) => {
@@ -629,9 +781,9 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
         return;
       }
 
-      if (backendRef.current.kind === 'wasm') {
+      if (backendRef.current.kind === "wasm") {
         await runExclusiveWithAutoTick(async () => {
-          if (backendRef.current.kind !== 'wasm') {
+          if (backendRef.current.kind !== "wasm") {
             return;
           }
           await backendRef.current.bridge.selectRoom(roomId);
@@ -647,12 +799,12 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
       backendRef.current = nextBackend;
       await draw(loadedPackage, nextBackend, packagePath);
     },
-    [draw, loadedPackage, packagePath, runExclusiveWithAutoTick]
+    [draw, loadedPackage, packagePath, runExclusiveWithAutoTick],
   );
 
   const togglePause = useCallback(
     (keyboard: KeyboardInputSource) => {
-      if (!loadedPackageRef.current || backendRef.current.kind !== 'wasm') {
+      if (!loadedPackageRef.current || backendRef.current.kind !== "wasm") {
         return;
       }
       if (autoTickRunning) {
@@ -661,15 +813,15 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
       }
       startAutoTick(keyboard);
     },
-    [autoTickRunning, startAutoTick, stopAutoTick]
+    [autoTickRunning, startAutoTick, stopAutoTick],
   );
 
   const resetRuntime = useCallback(async () => {
-    if (!loadedPackage || backendRef.current.kind !== 'wasm') {
+    if (!loadedPackage || backendRef.current.kind !== "wasm") {
       return;
     }
     await runExclusiveWithAutoTick(async () => {
-      if (backendRef.current.kind !== 'wasm') {
+      if (backendRef.current.kind !== "wasm") {
         return;
       }
       await backendRef.current.bridge.reset();
@@ -696,6 +848,8 @@ export function useRuntimeShell(options: RuntimeShellOptions = {}) {
     selectedRoomId,
     setSelectedRoomId: selectRoom,
     autoTickRunning,
+    collisionOverlayEnabled,
+    setCollisionOverlayEnabled,
     snapshot,
     performance: performanceStats,
     error,

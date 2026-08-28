@@ -53,6 +53,12 @@ enum Commands {
         trace_player: bool,
         #[arg(long, default_value_t = 1)]
         trace_every: u32,
+        #[arg(long, default_value_t = false)]
+        trace_collisions: bool,
+        #[arg(long, default_value_t = false)]
+        trace_on_death: bool,
+        #[arg(long, default_value_t = 12)]
+        death_trace_window: usize,
         #[arg(long)]
         trace_output: Option<PathBuf>,
     },
@@ -160,10 +166,19 @@ fn main() {
             preselect_ticks,
             trace_player,
             trace_every,
+            trace_collisions,
+            trace_on_death,
+            death_trace_window,
             trace_output,
         } => {
             if trace_player && trace_every == 0 {
                 eprintln!("--trace-every must be greater than 0");
+                std::process::exit(2);
+            }
+            if trace_on_death && death_trace_window == 0 {
+                eprintln!(
+                    "--death-trace-window must be greater than 0 when --trace-on-death is set"
+                );
                 std::process::exit(2);
             }
             let package = match read_runtime_package_dir(&input) {
@@ -200,6 +215,16 @@ fn main() {
                 }
             };
             let mut host = HeadlessHost::new("runtime-diagnostics");
+            if trace_collisions || trace_on_death {
+                core.set_debug_trace_limits(
+                    256,
+                    if trace_on_death {
+                        death_trace_window
+                    } else {
+                        0
+                    },
+                );
+            }
             let input_script = match input_script {
                 Some(path) => match read_runtime_input_script(&path) {
                     Ok(script) => Some(script),
@@ -289,16 +314,22 @@ fn main() {
                     .then_with(|| left.key.cmp(&right.key))
             });
 
+            let snapshot = core.snapshot();
             let mut output = json!({
                 "ticks": ticks,
-                "current_room": core.snapshot().room_name,
-                "current_room_id": core.snapshot().room_id,
+                "current_room": snapshot.room_name,
+                "current_room_id": snapshot.room_id,
                 "current_tick": core.tick_count(),
                 "runtime_blockers": ranked,
                 "runtime_events": runtime_events,
             });
+            if trace_collisions {
+                output["collision_trace"] = json!(snapshot.collision_trace);
+            }
+            if trace_on_death {
+                output["death_trace"] = json!(snapshot.death_trace);
+            }
             if trace_player {
-                output["trace_every"] = json!(trace_every);
                 output["trace_summary"] = json!(summarize_player_trace(&player_trace));
                 output["player_trace"] = json!(player_trace);
             }
@@ -518,6 +549,13 @@ fn run_runtime_scenario_command(
     if let Some(room_id) = select_room {
         command.arg("--select-room").arg(room_id.to_string());
     }
+    if scenario_value
+        .pointer("/assertions/no_player_death")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+    {
+        command.arg("--trace-on-death");
+    }
     if trace_player
         || scenario_value
             .get("assertions")
@@ -578,6 +616,24 @@ fn evaluate_scenario_assertions(
             .as_array()
             .map_or(0, Vec::len);
         results.push(json!({"name":"no_runtime_blockers","passed":actual == 0,"actual":actual}));
+    }
+    if assertions
+        .get("no_player_death")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+    {
+        let actual = diagnostics["runtime_events"]
+            .as_array()
+            .map_or(0, |events| {
+                events
+                    .iter()
+                    .filter(|event| {
+                        event.get("code").and_then(serde_json::Value::as_str)
+                            == Some("runtime-player-died")
+                    })
+                    .count()
+            });
+        results.push(json!({"name":"no_player_death","passed":actual == 0,"actual":actual}));
     }
     if let Some(expected) = assertions
         .get("final_room_id")
@@ -934,7 +990,7 @@ fn maybe_collect_player_trace(
     player_trace: &mut Vec<PlayerTraceEntry>,
 ) {
     let tick = core.tick_count();
-    if tick % u64::from(trace_every) != 0 {
+    if !tick.is_multiple_of(u64::from(trace_every)) {
         return;
     }
 

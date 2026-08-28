@@ -13,6 +13,7 @@ fn runtime_scenario_accepts_existing_input_script_with_assertions() {
           "ticks": [],
           "assertions": {
             "no_runtime_blockers": true,
+            "no_player_death": true,
             "final_room_id": 300,
             "visited_room_ids": [300]
           }

@@ -1,12 +1,13 @@
 use std::convert::TryInto;
 
 use crate::{
+    BridgeCollisionParticipantTrace, BridgeCollisionTraceEntry, BridgeDeathTraceEntry,
     BridgeDrawCommand, BridgeFrameSnapshot, BridgePlayerSnapshot, BridgeRgba8, BridgeSnapshot,
     BridgeStepResult, WebInputState,
 };
 
 const MAGIC: u32 = 0x424d5749;
-const VERSION: u16 = 3;
+const VERSION: u16 = 4;
 const INPUT_KIND: u16 = 1;
 const STEP_RESULT_KIND: u16 = 2;
 
@@ -155,7 +156,85 @@ impl BinaryWriter {
         self.write_u64(snapshot.tick_phases.keyboard_events_nanos);
         self.write_u64(snapshot.tick_phases.render_submit_nanos);
         self.write_u64(snapshot.tick_phases.total_nanos);
-        self.write_string_array(&snapshot.diagnostics)
+        self.write_string_array(&snapshot.diagnostics)?;
+        self.write_collision_trace(&snapshot.collision_trace)?;
+        self.write_death_trace(&snapshot.death_trace)
+    }
+
+    fn write_collision_trace(
+        &mut self,
+        traces: &[BridgeCollisionTraceEntry],
+    ) -> Result<(), String> {
+        self.write_u32(usize_to_u32(traces.len(), "collision_trace")?);
+        for trace in traces {
+            self.write_collision_trace_entry(trace)?;
+        }
+        Ok(())
+    }
+
+    fn write_collision_trace_entry(
+        &mut self,
+        trace: &BridgeCollisionTraceEntry,
+    ) -> Result<(), String> {
+        self.write_u64(trace.tick);
+        self.write_string(&trace.phase)?;
+        self.write_u32(usize_to_u32(
+            trace.target_object_id,
+            "collision.target_object_id",
+        )?);
+        self.write_bool(trace.solid_collision);
+        self.write_option_i32(trace.contact_y);
+        self.write_string_array(&trace.event_blocks)?;
+        self.write_collision_participant(&trace.owner)?;
+        self.write_collision_participant(&trace.other)
+    }
+
+    fn write_collision_participant(
+        &mut self,
+        trace: &BridgeCollisionParticipantTrace,
+    ) -> Result<(), String> {
+        self.write_u32(usize_to_u32(trace.runtime_id, "collision.runtime_id")?);
+        self.write_i32(trace.instance_id);
+        self.write_u32(usize_to_u32(trace.object_id, "collision.object_id")?);
+        self.write_string(&trace.object_name)?;
+        self.write_f64(trace.x);
+        self.write_f64(trace.y);
+        self.write_f64(trace.previous_x);
+        self.write_f64(trace.previous_y);
+        self.write_f64(trace.hspeed);
+        self.write_f64(trace.vspeed);
+        for value in trace.bounds {
+            self.write_i32(value);
+        }
+        for value in trace.previous_bounds {
+            self.write_i32(value);
+        }
+        self.write_bool(trace.solid);
+        self.write_bool(trace.hazard);
+        self.write_bool(trace.has_collision_mask);
+        self.write_bool(trace.collision_mask_size.is_some());
+        if let Some([width, height]) = trace.collision_mask_size {
+            self.write_u32(width);
+            self.write_u32(height);
+        }
+        Ok(())
+    }
+
+    fn write_death_trace(&mut self, traces: &[BridgeDeathTraceEntry]) -> Result<(), String> {
+        self.write_u32(usize_to_u32(traces.len(), "death_trace")?);
+        for trace in traces {
+            self.write_u64(trace.tick);
+            self.write_u32(usize_to_u32(trace.room_id, "death.room_id")?);
+            self.write_string(&trace.room_name)?;
+            self.write_string(&trace.reason)?;
+            self.write_collision_participant(&trace.player)?;
+            self.write_bool(trace.hazard.is_some());
+            if let Some(hazard) = &trace.hazard {
+                self.write_collision_participant(hazard)?;
+            }
+            self.write_collision_trace(&trace.collision_window)?;
+        }
+        Ok(())
     }
 
     fn write_player(&mut self, player: Option<&BridgePlayerSnapshot>) -> Result<(), String> {
@@ -347,6 +426,13 @@ impl BinaryWriter {
         self.write_u8(colour.g);
         self.write_u8(colour.b);
         self.write_u8(colour.a);
+    }
+
+    fn write_option_i32(&mut self, value: Option<i32>) {
+        self.write_bool(value.is_some());
+        if let Some(value) = value {
+            self.write_i32(value);
+        }
     }
 
     fn write_bool(&mut self, value: bool) {

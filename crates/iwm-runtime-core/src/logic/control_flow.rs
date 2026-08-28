@@ -47,7 +47,6 @@ pub(super) fn write_with_target_indices(
     match target {
         LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("self") => {
             output.push(instance_index);
-            return;
         }
         LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("other") => {
             if let Some(index) = context.other_instance().and_then(|other| {
@@ -58,7 +57,6 @@ pub(super) fn write_with_target_indices(
             }) {
                 output.push(index);
             }
-            return;
         }
         LoweredLogicExpr::Identifier(name) if name.eq_ignore_ascii_case("all") => {
             output.extend(
@@ -67,7 +65,6 @@ pub(super) fn write_with_target_indices(
                     .filter(|(_, instance)| instance.is_active())
                     .map(|(index, _)| index),
             );
-            return;
         }
         LoweredLogicExpr::Call { name, args } if name == "__iwm_object" => {
             let Some(object_id) = args.first().and_then(|arg| match arg {

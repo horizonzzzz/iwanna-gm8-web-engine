@@ -247,6 +247,49 @@ pub struct RuntimeRoomState {
     pub instances: Vec<RuntimeInstance>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeCollisionParticipantTrace {
+    pub runtime_id: usize,
+    pub instance_id: i32,
+    pub object_id: usize,
+    pub object_name: String,
+    pub x: f64,
+    pub y: f64,
+    pub previous_x: f64,
+    pub previous_y: f64,
+    pub hspeed: f64,
+    pub vspeed: f64,
+    pub bounds: [i32; 4],
+    pub previous_bounds: [i32; 4],
+    pub solid: bool,
+    pub hazard: bool,
+    pub has_collision_mask: bool,
+    pub collision_mask_size: Option<[u32; 2]>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeCollisionTraceEntry {
+    pub tick: u64,
+    pub phase: String,
+    pub target_object_id: usize,
+    pub solid_collision: bool,
+    pub contact_y: Option<i32>,
+    pub event_blocks: Vec<String>,
+    pub owner: RuntimeCollisionParticipantTrace,
+    pub other: RuntimeCollisionParticipantTrace,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeDeathTraceEntry {
+    pub tick: u64,
+    pub room_id: usize,
+    pub room_name: String,
+    pub reason: String,
+    pub player: RuntimeCollisionParticipantTrace,
+    pub hazard: Option<RuntimeCollisionParticipantTrace>,
+    pub collision_window: Vec<RuntimeCollisionTraceEntry>,
+}
+
 #[derive(Debug, Clone)]
 pub struct RuntimePlayerSnapshot {
     pub runtime_id: usize,
@@ -298,6 +341,8 @@ pub struct RuntimeSnapshot {
     pub input_trace: RuntimeInputTraceSnapshot,
     pub tick_phases: RuntimeTickPhaseSnapshot,
     pub diagnostics: Vec<RuntimeDiagnostic>,
+    pub collision_trace: Vec<RuntimeCollisionTraceEntry>,
+    pub death_trace: Vec<RuntimeDeathTraceEntry>,
 }
 
 #[derive(Debug)]

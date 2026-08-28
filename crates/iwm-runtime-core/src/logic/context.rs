@@ -514,8 +514,7 @@ impl<'a> RuntimeEvalContext<'a> {
             })
             .chain(
                 self.room_instance_overlay
-                    .extra_current_instance(self.room_instances.len())
-                    .into_iter(),
+                    .extra_current_instance(self.room_instances.len()),
             )
     }
 

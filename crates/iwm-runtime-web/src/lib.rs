@@ -10,6 +10,7 @@ mod web_runtime_host;
 pub use audio_host::WebAudioHost;
 pub use bridge_buffer::{decode_web_input_state_from_buffer, encode_bridge_step_result_to_buffer};
 pub use bridge_types::{
+    BridgeCollisionParticipantTrace, BridgeCollisionTraceEntry, BridgeDeathTraceEntry,
     BridgeDrawCommand, BridgeFrameSnapshot, BridgeInputTraceSnapshot, BridgeJumpSnapshot,
     BridgePlayerSnapshot, BridgeRgba8, BridgeSnapshot, BridgeStepResult, BridgeTickPhaseSnapshot,
     WebInputState,
