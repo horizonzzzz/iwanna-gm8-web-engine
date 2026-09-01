@@ -61,6 +61,7 @@ pub struct RuntimeCore {
     pub(crate) status: RuntimeStatus,
     pub(crate) tick: u64,
     pub(crate) diagnostics: Vec<iwm_runtime_host::RuntimeDiagnostic>,
+    pub(crate) last_player_event: Option<String>,
     pub(crate) collision_trace: Vec<RuntimeCollisionTraceEntry>,
     pub(crate) death_trace: Vec<RuntimeDeathTraceEntry>,
     pub(crate) collision_trace_limit: usize,
@@ -183,6 +184,7 @@ impl RuntimeCore {
             status: RuntimeStatus::Ready,
             tick: 0,
             diagnostics: Vec::new(),
+            last_player_event: None,
             collision_trace: Vec::new(),
             death_trace: Vec::new(),
             collision_trace_limit: 0,
@@ -353,6 +355,14 @@ impl RuntimeCore {
     }
 
     pub fn snapshot(&self) -> RuntimeSnapshot {
+        let mut diagnostics = self.diagnostics.clone();
+        if let Some(message) = &self.last_player_event {
+            diagnostics.push(iwm_runtime_host::RuntimeDiagnostic {
+                level: iwm_runtime_host::RuntimeDiagnosticLevel::Info,
+                code: "runtime-player-lifecycle".into(),
+                message: message.clone(),
+            });
+        }
         RuntimeSnapshot {
             status: self.status,
             tick: self.tick,
@@ -405,7 +415,7 @@ impl RuntimeCore {
             }),
             input_trace: self.last_input_trace.clone(),
             tick_phases: self.last_tick_phases,
-            diagnostics: self.diagnostics.clone(),
+            diagnostics,
             collision_trace: self.collision_trace.clone(),
             death_trace: self.death_trace.clone(),
         }
@@ -1570,6 +1580,7 @@ impl RuntimeCore {
                     execute_source_depth: &mut self.execute_source_depth,
                     host: &mut *host,
                     diagnostics: &mut self.diagnostics,
+                    last_player_event: &mut self.last_player_event,
                     object_query_scratch: None,
                     with_target_indices: &mut with_target_indices,
                     room_instance_updates: &mut with_updates,
@@ -2173,7 +2184,11 @@ fn record_player_collision_trace(
 ) {
     let relevant = (instance.player_candidate || other.player_candidate)
         && (solid_collision || instance.hazard || other.hazard)
-        && (instance.vspeed < 0.0 || other.vspeed < 0.0 || instance.hazard || other.hazard);
+        && (instance.vspeed < 0.0
+            || other.vspeed < 0.0
+            || instance.hazard
+            || other.hazard
+            || (instance.player_candidate && hit.target_object_id == 6));
     if entries.is_empty() && !relevant {
         return;
     }

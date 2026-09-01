@@ -405,6 +405,7 @@ impl RuntimeCore {
                         execute_source_depth: &mut self.execute_source_depth,
                         host: &mut *host,
                         diagnostics: &mut self.diagnostics,
+                        last_player_event: &mut self.last_player_event,
                         object_query_scratch: None,
                         with_target_indices: &mut with_target_indices,
                         room_instance_updates: &mut with_updates,

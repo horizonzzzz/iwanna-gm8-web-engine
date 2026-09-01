@@ -70,6 +70,7 @@ describe('buildDebugReport', () => {
     expect(report).toContain('Room: 143 sampleroom01');
     expect(report).toContain('Room Speed: 30 Hz');
     expect(report).toContain('Tick: 240');
+    expect(report).toContain('Deaths: 0');
     expect(report).toContain('Player:');
     expect(report).toContain('Performance:');
     expect(report).toContain('total=25.0ms budget=ok');

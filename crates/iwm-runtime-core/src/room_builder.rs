@@ -6,6 +6,20 @@ use crate::helpers::{adjusted_spawn_for_player, is_preferred_player_name};
 use crate::types::{RuntimeCollisionMask, RuntimeJumpState, RuntimeRoomView};
 use crate::{RuntimeCore, RuntimeCoreError, RuntimeInstance, RuntimeRoomState, RuntimeValue};
 
+pub(crate) fn object_is_hazard(objects: &[ObjectDefinition], object_id: usize) -> bool {
+    let mut current_object_id = Some(object_id);
+    while let Some(id) = current_object_id {
+        let Some(object) = objects.iter().find(|object| object.id == id) else {
+            return false;
+        };
+        if let Some(is_hazard) = object.is_hazard {
+            return is_hazard;
+        }
+        current_object_id = usize::try_from(object.parent_index).ok();
+    }
+    false
+}
+
 impl RuntimeCore {
     pub fn boot_default_room(&mut self) -> Result<(), RuntimeCoreError> {
         let room_id = self
@@ -100,7 +114,8 @@ impl RuntimeCore {
                     active: true,
                     persistent: object.persistent,
                     solid: instance.is_solid || object.solid,
-                    hazard: instance.is_hazard || object.is_hazard.unwrap_or(false),
+                    hazard: instance.is_hazard
+                        || object_is_hazard(&self.package.objects, object.id),
                     checkpoint: instance.is_checkpoint || object.is_checkpoint.unwrap_or(false),
                     player_candidate: object.is_player,
                     jump: RuntimeJumpState::default(),
@@ -189,7 +204,7 @@ impl RuntimeCore {
             active: true,
             persistent: object.persistent,
             solid: object.solid,
-            hazard: object.is_hazard.unwrap_or(false),
+            hazard: object_is_hazard(&self.package.objects, object.id),
             checkpoint: object.is_checkpoint.unwrap_or(false),
             player_candidate: object.is_player,
             jump: RuntimeJumpState::default(),

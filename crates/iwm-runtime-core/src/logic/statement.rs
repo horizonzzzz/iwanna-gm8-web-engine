@@ -42,9 +42,9 @@ use super::overlay::RuntimeSparseInstanceOverlay;
 use crate::event_dispatch::{
     event_owner_id_for_block_id, inherited_event_block_id, RuntimeEventSelector,
 };
-use crate::helpers::{as_number, record_host_diagnostic};
+use crate::helpers::{as_number, collides_at, record_host_diagnostic};
 use crate::path::start_path;
-use crate::room_builder::sprite_metrics_for_object;
+use crate::room_builder::{object_is_hazard, sprite_metrics_for_object};
 use crate::tick_context::RuntimeObjectQueryScratch;
 use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeInstance, RuntimeValue,
@@ -76,6 +76,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) execute_source_depth: &'a mut u32,
     pub(crate) host: &'a mut H,
     pub(crate) diagnostics: &'a mut Vec<iwm_runtime_host::RuntimeDiagnostic>,
+    pub(crate) last_player_event: &'a mut Option<String>,
     pub(crate) object_query_scratch: Option<&'a mut RuntimeObjectQueryScratch>,
     pub(crate) with_target_indices: &'a mut Vec<usize>,
     pub(crate) room_instance_updates: &'a mut RuntimeSparseInstanceOverlay,
@@ -899,6 +900,20 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                 }
                 "instance_destroy" => {
                     if instance.alive {
+                        if instance.player_candidate {
+                            let message = format!(
+                                "{} function=instance_destroy",
+                                trace_message(&env.trace, instance)
+                            );
+                            let same_tick_kill =
+                                env.last_player_event.as_deref().is_some_and(|previous| {
+                                    previous.contains(&format!("tick={}", env.trace.tick))
+                                        && previous.contains("function=killPlayer")
+                                });
+                            if !same_tick_kill {
+                                *env.last_player_event = Some(message);
+                            }
+                        }
                         let entries = destroy_event_entries
                             .get(&instance.object_id)
                             .cloned()
@@ -1010,7 +1025,7 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     instance.visible = object.visible;
                     instance.persistent = object.persistent;
                     instance.solid = object.solid;
-                    instance.hazard = object.is_hazard.unwrap_or(false);
+                    instance.hazard = object_is_hazard(env.objects, object.id);
                     instance.checkpoint = object.is_checkpoint.unwrap_or(false);
                     instance.player_candidate = object.is_player;
                     instance.vars.insert(
@@ -1054,6 +1069,50 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
                     }
                 }
                 _ => {
+                    if name == "killPlayer" {
+                        let shadowed = kill_player_is_shadowed_by_solid(
+                            env.event_selector.as_ref(),
+                            instance,
+                            eval_context,
+                        );
+                        let other = eval_context
+                            .and_then(RuntimeEvalContext::other_instance)
+                            .map(|other| {
+                                format!(
+                                    " other={}#{} other_pos=({},{}) other_prev=({},{}) other_hazard={}",
+                                    other.object_name,
+                                    other.runtime_id,
+                                    other.x,
+                                    other.y,
+                                    other.previous_x,
+                                    other.previous_y,
+                                    other.hazard,
+                                )
+                            })
+                            .unwrap_or_default();
+                        let message = format!(
+                            "{} function=killPlayer shadowed={} event={} pos=({},{}) prev=({},{}){}",
+                            trace_message(&env.trace, instance),
+                            shadowed,
+                            runtime_event_selector_label(env.event_selector.as_ref()),
+                            instance.x,
+                            instance.y,
+                            instance.previous_x,
+                            instance.previous_y,
+                            other,
+                        );
+                        if shadowed {
+                            return None;
+                        }
+                        *env.last_player_event = Some(message.clone());
+                        record_host_diagnostic(
+                            env.host,
+                            env.diagnostics,
+                            iwm_runtime_host::RuntimeDiagnosticLevel::Info,
+                            "runtime-kill-player-requested",
+                            message,
+                        );
+                    }
                     if execute_runtime_script(
                         name,
                         args,
@@ -1324,6 +1383,75 @@ pub(crate) fn apply_runtime_statement<H: RuntimeHost>(
         }
     }
     None
+}
+
+fn runtime_event_selector_label(selector: Option<&RuntimeEventSelector>) -> &'static str {
+    match selector {
+        Some(RuntimeEventSelector::Collision { .. }) => "collision",
+        Some(RuntimeEventSelector::OtherOutside) => "other:outside",
+        Some(RuntimeEventSelector::OtherBoundary) => "other:boundary",
+        Some(RuntimeEventSelector::Step) => "step",
+        Some(RuntimeEventSelector::StepBegin) => "step:begin",
+        Some(RuntimeEventSelector::StepEnd) => "step:end",
+        Some(RuntimeEventSelector::Alarm(_)) => "alarm",
+        _ => "other",
+    }
+}
+
+fn kill_player_is_shadowed_by_solid(
+    event_selector: Option<&RuntimeEventSelector>,
+    instance: &RuntimeInstance,
+    eval_context: Option<&RuntimeEvalContext<'_>>,
+) -> bool {
+    let Some(context) = eval_context else {
+        return false;
+    };
+    let Some(event_selector) = event_selector else {
+        return false;
+    };
+    if !instance.player_candidate
+        || !matches!(
+            event_selector,
+            RuntimeEventSelector::Collision { .. }
+                | RuntimeEventSelector::OtherOutside
+                | RuntimeEventSelector::OtherBoundary
+        )
+    {
+        return false;
+    }
+
+    let hazards = match event_selector {
+        RuntimeEventSelector::Collision { .. } => context
+            .other_instance()
+            .filter(|other| other.hazard)
+            .map(|hazard| vec![hazard.clone()]),
+        RuntimeEventSelector::OtherOutside | RuntimeEventSelector::OtherBoundary => Some(
+            context
+                .room_instances_iter()
+                .filter(|(_, other)| other.is_active() && other.hazard)
+                .map(|(_, other)| other.clone())
+                .collect::<Vec<_>>(),
+        ),
+        _ => None,
+    };
+    let Some(hazards) = hazards.filter(|hazards| {
+        !hazards.is_empty()
+            && collides_at(
+                instance,
+                instance.x,
+                instance.y,
+                hazards,
+                Some(instance.runtime_id),
+            )
+    }) else {
+        return false;
+    };
+    let solids = context
+        .room_instances_iter()
+        .filter(|(_, other)| other.is_active() && other.solid)
+        .map(|(_, other)| other.clone())
+        .collect::<Vec<_>>();
+    crate::movement::final_solid_contact_shadows_hazard(instance, &hazards, &solids)
 }
 
 #[expect(

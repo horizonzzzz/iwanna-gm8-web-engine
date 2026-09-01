@@ -19,6 +19,54 @@ fn crimson_count_killed_bosses_script_returns_without_unsupported_diagnostics() 
     }));
 }
 
+#[cfg(feature = "local-sample-tests")]
+#[test]
+fn orbit_stage01_block_spike_corner_does_not_kill_player() {
+    let Some(package) = local_sample_package("gm8-core/28_I wanna be the Orbit") else {
+        return;
+    };
+    let mut core = RuntimeCore::load(package).unwrap();
+    core.reload_room(150).unwrap();
+    core.set_debug_trace_limits(128, 12);
+    let mut host = HeadlessHost::new("orbit-corner");
+
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let player = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name.eq_ignore_ascii_case("player"))
+            .expect("room should include the player");
+        player.x = 100.0;
+        player.y = 410.0;
+        player.previous_x = 100.0;
+        player.previous_y = 409.0;
+        player.hspeed = 0.0;
+        player.vspeed = 0.0;
+    }
+
+    assert!(core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .filter(|instance| instance.object_name == "rise path")
+        .all(|instance| instance.hazard));
+
+    core.tick(&mut host).unwrap();
+
+    let snapshot = core.snapshot();
+    assert!(
+        snapshot.player.is_some(),
+        "Orbit corner should keep player alive"
+    );
+    assert_eq!(snapshot.deaths, 0, "safe block-spike corner must not kill");
+    assert!(snapshot
+        .collision_trace
+        .iter()
+        .any(|trace| trace.target_object_id == 6 && trace.other.object_name == "spikeLeft"));
+}
+
 fn move_real_sample_player_onto_savepoint(core: &mut RuntimeCore) {
     move_real_sample_player_onto_target(
         core,

@@ -50,10 +50,10 @@ export function buildDebugReport(input: BuildDebugReportInput): string {
     : ["- unavailable"];
 
   const collisionLines = (snapshot.collisionTrace ?? [])
-    .slice(-3)
+    .slice(-12)
     .map(
       (trace) =>
-        `- tick=${trace.tick} phase=${trace.phase} ${trace.owner.objectName}#${trace.owner.runtimeId} -> ${trace.other.objectName}#${trace.other.runtimeId} solid=${trace.solidCollision} hazard=${trace.other.hazard} blocks=[${trace.eventBlocks.join(",")}]`,
+        `- tick=${trace.tick} phase=${trace.phase} ${trace.owner.objectName}#${trace.owner.runtimeId} -> ${trace.other.objectName}#${trace.other.runtimeId} solid=${trace.solidCollision} hazard=${trace.other.hazard} ownerPos=(${trace.owner.x},${trace.owner.y}) ownerPrev=(${trace.owner.previousX},${trace.owner.previousY}) otherPos=(${trace.other.x},${trace.other.y}) blocks=[${trace.eventBlocks.join(",")}]`,
     );
   const deathLines = (snapshot.deathTrace ?? [])
     .slice(-1)
@@ -70,8 +70,9 @@ export function buildDebugReport(input: BuildDebugReportInput): string {
   return [
     `Status: ${input.status}`,
     `Room: ${input.roomLabel}`,
-    `Room Speed: ${snapshot.roomSpeed != null ? `${snapshot.roomSpeed} Hz` : "unknown"}`,
+    `Room Speed: ${snapshot.roomSpeed == null ? "unknown" : `${snapshot.roomSpeed} Hz`}`,
     `Tick: ${snapshot.tick}`,
+    `Deaths: ${snapshot.deaths ?? 0}`,
     "",
     "Player:",
     ...playerLines,

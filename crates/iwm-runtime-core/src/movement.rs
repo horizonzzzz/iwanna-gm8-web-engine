@@ -376,7 +376,7 @@ impl RuntimeCore {
     }
 }
 
-fn final_solid_contact_shadows_hazard(
+pub(crate) fn final_solid_contact_shadows_hazard(
     player: &crate::RuntimeInstance,
     hazards: &[crate::RuntimeInstance],
     solids: &[crate::RuntimeInstance],
@@ -384,12 +384,14 @@ fn final_solid_contact_shadows_hazard(
     let ignore_runtime_id = Some(player.runtime_id);
     let related_contact_planes = hazards.iter().any(|hazard| {
         solids.iter().any(|solid| {
-            let (hazard_left, _, hazard_right, _) =
+            let (hazard_left, hazard_top, hazard_right, hazard_bottom) =
                 crate::helpers::bounds_at(hazard, hazard.x, hazard.y);
-            let (solid_left, _, solid_right, _) =
+            let (solid_left, solid_top, solid_right, solid_bottom) =
                 crate::helpers::bounds_at(solid, solid.x, solid.y);
-            hazard_left == solid_right
-                || hazard_right == solid_left
+            let side_contact = (hazard_left == solid_right || hazard_right == solid_left)
+                && hazard_top <= solid_bottom
+                && solid_top <= hazard_bottom;
+            side_contact
                 || crate::helpers::collides_with_instance_at(
                     hazard,
                     hazard.x,
@@ -403,23 +405,32 @@ fn final_solid_contact_shadows_hazard(
     if !related_contact_planes {
         return false;
     }
-    [(0.0, -1.0), (0.0, 1.0), (-1.0, 0.0), (1.0, 0.0)]
-        .into_iter()
-        .any(|(separate_x, separate_y)| {
-            !collides_at(
-                player,
-                player.x + separate_x,
-                player.y + separate_y,
-                hazards,
-                ignore_runtime_id,
-            ) && collides_at(
-                player,
-                player.x - separate_x,
-                player.y - separate_y,
-                solids,
-                ignore_runtime_id,
-            )
-        })
+    [
+        (0.0, -1.0),
+        (0.0, 1.0),
+        (-1.0, 0.0),
+        (1.0, 0.0),
+        (-1.0, -1.0),
+        (-1.0, 1.0),
+        (1.0, -1.0),
+        (1.0, 1.0),
+    ]
+    .into_iter()
+    .any(|(separate_x, separate_y)| {
+        !collides_at(
+            player,
+            player.x + separate_x,
+            player.y + separate_y,
+            hazards,
+            ignore_runtime_id,
+        ) && collides_at(
+            player,
+            player.x - separate_x,
+            player.y - separate_y,
+            solids,
+            ignore_runtime_id,
+        )
+    })
 }
 
 pub(crate) fn apply_gm_motion_vars(instance: &mut crate::RuntimeInstance) {

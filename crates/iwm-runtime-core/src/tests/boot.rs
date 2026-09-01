@@ -37,6 +37,34 @@ fn core_preserves_sparse_object_ids_in_room_instances() {
 }
 
 #[test]
+fn object_hazard_inherits_from_parent_when_child_is_unspecified() {
+    let mut package = sample_package();
+    let mut parent = package.objects[2].clone();
+    parent.id = 900;
+    parent.name = "hazard_parent".into();
+    parent.is_hazard = Some(true);
+
+    let mut child = parent.clone();
+    child.id = 901;
+    child.name = "hazard_child".into();
+    child.parent_index = parent.id as i32;
+    child.is_hazard = None;
+
+    let mut explicit_safe_child = child.clone();
+    explicit_safe_child.id = 902;
+    explicit_safe_child.name = "explicit_safe_child".into();
+    explicit_safe_child.is_hazard = Some(false);
+
+    package.objects.extend([parent, child, explicit_safe_child]);
+
+    assert!(crate::room_builder::object_is_hazard(&package.objects, 901));
+    assert!(!crate::room_builder::object_is_hazard(
+        &package.objects,
+        902
+    ));
+}
+
+#[test]
 fn runtime_room_state_copies_package_view_state() {
     let mut package = sample_package();
     package.rooms[0].views_enabled = true;

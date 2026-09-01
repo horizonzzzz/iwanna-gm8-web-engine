@@ -6,8 +6,8 @@ use iwm_runtime_model::{
 
 use super::support::{
     add_alarm_block, add_collision_block, add_create_block, add_keyboard_block,
-    add_keyboard_press_block, add_keyboard_release_block, add_step_block, append_lowered_entry,
-    host, player, sample_package,
+    add_keyboard_press_block, add_keyboard_release_block, add_script_block, add_step_block,
+    append_lowered_entry, host, player, sample_package,
 };
 use crate::event_dispatch::{
     collision_event_target_object_ids, object_event_block_ids,
@@ -1223,6 +1223,124 @@ fn resolved_block_spike_seam_contact_does_not_leave_player_in_frozen_death_state
 }
 
 #[test]
+fn scripted_kill_player_is_shadowed_at_block_spike_side_seam() {
+    let mut package = sample_package();
+    package.objects[0].name = "player".into();
+    package.objects[1].name = "spikeLeft".into();
+    package.objects[1].sprite_index = 1;
+    package.objects[1].solid = false;
+    package.objects[1].is_hazard = Some(true);
+    package.objects[2].name = "block".into();
+    package.resources.sprites[0].width = 32;
+    package.resources.sprites[0].height = 32;
+    package.resources.sprites[0].origin_x = 17;
+    package.resources.sprites[0].origin_y = 23;
+    package.resources.sprites[0].bbox_left = 12;
+    package.resources.sprites[0].bbox_right = 22;
+    package.resources.sprites[0].bbox_top = 11;
+    package.resources.sprites[0].bbox_bottom = 31;
+    package.resources.sprites[0].collision_masks = vec![rect_mask(32, 32, 12, 22, 11, 31)];
+    package.resources.sprites[1].width = 32;
+    package.resources.sprites[1].height = 32;
+    package.resources.sprites[1].bbox_right = 31;
+    package.resources.sprites[1].bbox_bottom = 31;
+    package.resources.sprites[1].collision_masks = vec![left_spike_mask(32)];
+    let mut block_sprite = package.resources.sprites[1].clone();
+    block_sprite.id = 2;
+    block_sprite.collision_masks = vec![filled_mask(32, 32)];
+    package.resources.sprites.push(block_sprite);
+    package.objects[2].sprite_index = 2;
+
+    add_step_block(
+        &mut package,
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("previous_x".into()),
+                value: LoweredLogicExpr::LiteralNumber(420.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("previous_y".into()),
+                value: LoweredLogicExpr::LiteralNumber(473.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("x".into()),
+                value: LoweredLogicExpr::LiteralNumber(420.0),
+            },
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("y".into()),
+                value: LoweredLogicExpr::LiteralNumber(474.0),
+            },
+        ],
+    );
+    add_collision_block(
+        &mut package,
+        1,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "killPlayer".into(),
+            args: vec![],
+        }],
+    );
+    add_collision_block(
+        &mut package,
+        2,
+        vec![LoweredLogicStatement::Assignment {
+            target: LoweredLogicExpr::Identifier("solid_hit".into()),
+            value: LoweredLogicExpr::LiteralBool(true),
+        }],
+    );
+    add_script_block(
+        &mut package,
+        1,
+        "killPlayer",
+        vec![LoweredLogicStatement::With {
+            target: LoweredLogicExpr::Identifier("player".into()),
+            body: vec![LoweredLogicStatement::FunctionCall {
+                name: "instance_destroy".into(),
+                args: vec![],
+            }],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let mut host = host();
+    {
+        let room = core.current_room.as_mut().unwrap();
+        let spike = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "spikeLeft")
+            .unwrap();
+        spike.x = 384.0;
+        spike.y = 480.0;
+        let block = room
+            .instances
+            .iter_mut()
+            .find(|instance| instance.object_name == "block")
+            .unwrap();
+        block.x = 416.0;
+        block.y = 480.0;
+    }
+
+    core.tick(&mut host).unwrap();
+
+    let player = core
+        .current_room()
+        .unwrap()
+        .instances
+        .iter()
+        .find(|instance| instance.object_name == "player")
+        .unwrap();
+    assert_eq!(
+        player.vars.get("solid_hit"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert!(!core
+        .diagnostics()
+        .iter()
+        .any(|entry| entry.code == "runtime-player-died"));
+}
+
+#[test]
 fn script_owned_floor_contact_preserves_safe_horizontal_motion_at_block_spike_boundary() {
     let mut package = sample_package();
     package.objects[0].name = "player".into();
@@ -1755,6 +1873,29 @@ fn top_spike_mask(size: u32) -> SpriteCollisionMask {
         }
     }
 
+    SpriteCollisionMask {
+        width: size,
+        height: size,
+        bbox_left: 0,
+        bbox_right: size - 1,
+        bbox_top: 0,
+        bbox_bottom: size - 1,
+        data,
+    }
+}
+
+fn left_spike_mask(size: u32) -> SpriteCollisionMask {
+    let mut data = vec![false; (size * size) as usize];
+    for y in 0..size {
+        let width = if y < size / 2 {
+            (y + 1) * 2
+        } else {
+            (size - y) * 2
+        };
+        for x in size.saturating_sub(width)..size {
+            data[(y * size + x) as usize] = true;
+        }
+    }
     SpriteCollisionMask {
         width: size,
         height: size,
