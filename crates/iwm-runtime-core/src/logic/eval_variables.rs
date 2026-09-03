@@ -23,6 +23,7 @@ pub(super) fn evaluate_expr_with_sprite_constants(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn evaluate_expr_with_resource_constants(
     expr: &LoweredLogicExpr,
     instance: Option<&RuntimeInstance>,
@@ -31,6 +32,7 @@ pub(super) fn evaluate_expr_with_resource_constants(
     eval_context: Option<&RuntimeEvalContext<'_>>,
     sprite_ids_by_name: &HashMap<String, usize>,
     sound_ids_by_name: &HashMap<String, i32>,
+    path_ids_by_name: &HashMap<String, usize>,
 ) -> Option<RuntimeValue> {
     evaluate_expr_with_sprite_constants(
         expr,
@@ -48,6 +50,29 @@ pub(super) fn evaluate_expr_with_resource_constants(
             .get(&name.to_ascii_lowercase())
             .map(|sound_id| RuntimeValue::Number(*sound_id as f64))
     })
+    .or_else(|| {
+        let LoweredLogicExpr::Identifier(name) = expr else {
+            return None;
+        };
+        path_ids_by_name
+            .get(&name.to_ascii_lowercase())
+            .map(|path_id| RuntimeValue::Number(*path_id as f64))
+    })
+}
+
+pub(super) fn runtime_value_to_path_id(
+    value: &RuntimeValue,
+    path_ids_by_name: &HashMap<String, usize>,
+) -> Option<usize> {
+    if let RuntimeValue::Text(name) = value {
+        if let Some(path_id) = path_ids_by_name.get(&name.to_ascii_lowercase()) {
+            return Some(*path_id);
+        }
+    }
+
+    crate::helpers::as_number(value)
+        .filter(|number| number.is_finite() && *number >= 0.0)
+        .map(|number| number.round() as usize)
 }
 
 pub(crate) fn assignable_key(

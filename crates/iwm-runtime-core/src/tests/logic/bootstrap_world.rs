@@ -1,4 +1,5 @@
 use super::*;
+use iwm_runtime_model::PathResource;
 
 #[test]
 fn core_applies_room_create_script_calls_to_globals_for_control_bootstrap() {
@@ -34,6 +35,14 @@ fn core_applies_room_create_script_calls_to_globals_for_control_bootstrap() {
 #[test]
 fn manual_room_reload_hydrates_globals_from_create_script_calls() {
     let mut package = sample_package();
+    package.resources.paths.push(PathResource {
+        id: 8,
+        name: "path_bootstrap".into(),
+        smooth: false,
+        precision: 4,
+        closed: false,
+        points: vec![],
+    });
     package.rooms.push(package.rooms[0].clone());
     package.rooms[1].id = 42;
     package.rooms[1].name = "target".into();
@@ -52,22 +61,36 @@ fn manual_room_reload_hydrates_globals_from_create_script_calls() {
         &mut package,
         16,
         "defControls",
-        vec![LoweredLogicStatement::Assignment {
-            target: LoweredLogicExpr::MemberAccess {
-                target: Box::new(LoweredLogicExpr::Identifier("global".into())),
-                member: "jumpbutton".into(),
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                    member: "jumpbutton".into(),
+                },
+                value: LoweredLogicExpr::Identifier("vk_shift".into()),
             },
-            value: LoweredLogicExpr::Identifier("vk_shift".into()),
-        }],
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::MemberAccess {
+                    target: Box::new(LoweredLogicExpr::Identifier("global".into())),
+                    member: "bootstrap_path".into(),
+                },
+                value: LoweredLogicExpr::Identifier("path_bootstrap".into()),
+            },
+        ],
     );
 
     let mut core = RuntimeCore::load(package).unwrap();
+    core.package_bootstrap_globals.clear();
     core.globals.clear();
     core.reload_room(42).unwrap();
 
     assert_eq!(
         core.globals.get("global.jumpbutton"),
         Some(&RuntimeValue::Number(0x10 as f64))
+    );
+    assert_eq!(
+        core.globals.get("global.bootstrap_path"),
+        Some(&RuntimeValue::Number(8.0))
     );
 }
 

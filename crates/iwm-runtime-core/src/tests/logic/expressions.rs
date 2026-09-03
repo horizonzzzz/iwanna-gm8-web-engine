@@ -1,4 +1,5 @@
 use super::*;
+use iwm_runtime_model::{PathPointResource, PathResource};
 
 fn tick_package(package: crate::RuntimePackage) -> RuntimeCore {
     let mut core = RuntimeCore::load(package).unwrap();
@@ -17,6 +18,28 @@ fn assign_var(name: &str, value: LoweredLogicExpr) -> LoweredLogicStatement {
     LoweredLogicStatement::Assignment {
         target: LoweredLogicExpr::Identifier(name.into()),
         value,
+    }
+}
+
+fn test_path(id: usize, name: &str) -> PathResource {
+    PathResource {
+        id,
+        name: name.into(),
+        smooth: false,
+        precision: 4,
+        closed: false,
+        points: vec![
+            PathPointResource {
+                x: 0.0,
+                y: 0.0,
+                speed: 100.0,
+            },
+            PathPointResource {
+                x: 100.0,
+                y: 0.0,
+                speed: 100.0,
+            },
+        ],
     }
 }
 
@@ -59,6 +82,114 @@ fn core_resolves_named_sound_constants_in_expressions() {
         player_var(&core, "stage_bgm"),
         Some(&RuntimeValue::Number(42.0))
     );
+}
+
+#[test]
+fn core_path_start_evaluates_instance_variable_before_path_constant() {
+    let mut package = sample_package();
+    package.resources.paths = vec![test_path(4, "selected_path"), test_path(5, "path_target")];
+    add_create_block(
+        &mut package,
+        vec![assign_var(
+            "selected_path",
+            LoweredLogicExpr::Identifier("path_target".into()),
+        )],
+    );
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "path_start".into(),
+            args: vec![
+                LoweredLogicExpr::Identifier("selected_path".into()),
+                LoweredLogicExpr::LiteralNumber(10.0),
+                LoweredLogicExpr::LiteralNumber(0.0),
+                LoweredLogicExpr::LiteralBool(false),
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    assert_eq!(
+        player_var(&core, "selected_path"),
+        Some(&RuntimeValue::Number(5.0))
+    );
+    let initial_x = player(&core).x;
+    core.tick(&mut host()).unwrap();
+
+    let player = player(&core);
+    assert_eq!(
+        player.vars.get("path_index"),
+        Some(&RuntimeValue::Number(5.0))
+    );
+    assert_eq!(player.x, initial_x + 10.0);
+}
+
+#[test]
+fn core_path_start_accepts_named_text_argument() {
+    let mut package = sample_package();
+    package.resources.paths.push(test_path(6, "path_text"));
+    add_step_block(
+        &mut package,
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "path_start".into(),
+            args: vec![
+                LoweredLogicExpr::LiteralText("path_text".into()),
+                LoweredLogicExpr::LiteralNumber(10.0),
+                LoweredLogicExpr::LiteralNumber(0.0),
+                LoweredLogicExpr::LiteralBool(false),
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let initial_x = player(&core).x;
+    core.tick(&mut host()).unwrap();
+
+    let player = player(&core);
+    assert_eq!(
+        player.vars.get("path_index"),
+        Some(&RuntimeValue::Number(6.0))
+    );
+    assert_eq!(player.x, initial_x + 10.0);
+}
+
+#[test]
+fn core_non_player_step_path_start_initializes_and_moves_instance() {
+    let mut package = sample_package();
+    package.resources.paths.push(test_path(4, "path_step"));
+    package.objects[1]
+        .events
+        .push(iwm_runtime_model::ObjectEventEntry {
+            event_type: 3,
+            sub_event: 0,
+            event_tag: "step".into(),
+            block_id: "object:1:event:3:0".into(),
+            action_count: 1,
+        });
+    append_lowered_entry(
+        &mut package,
+        "object:1:event:3:0".into(),
+        vec![LoweredLogicStatement::FunctionCall {
+            name: "path_start".into(),
+            args: vec![
+                LoweredLogicExpr::Identifier("path_step".into()),
+                LoweredLogicExpr::LiteralNumber(10.0),
+                LoweredLogicExpr::LiteralNumber(0.0),
+                LoweredLogicExpr::LiteralBool(false),
+            ],
+        }],
+    );
+
+    let mut core = RuntimeCore::load(package).unwrap();
+    let initial_x = core.current_room().unwrap().instances[1].x;
+    core.tick(&mut host()).unwrap();
+
+    let marker = &core.current_room().unwrap().instances[1];
+    assert_eq!(
+        marker.vars.get("path_index"),
+        Some(&RuntimeValue::Number(4.0))
+    );
+    assert_eq!(marker.x, initial_x + 10.0);
 }
 
 #[test]

@@ -37,6 +37,7 @@ pub struct RuntimeCore {
     /// instance.
     pub(crate) sprite_index: HashMap<usize, usize>,
     pub(crate) sprite_ids_by_name: HashMap<String, usize>,
+    pub(crate) path_ids_by_name: HashMap<String, usize>,
     pub(crate) font_index_by_name: HashMap<String, usize>,
     pub(crate) sound_index: HashMap<String, i32>,
     pub(crate) lowered_logic_index: HashMap<String, usize>,
@@ -123,6 +124,12 @@ impl RuntimeCore {
             .iter()
             .map(|sprite| (sprite.name.to_ascii_lowercase(), sprite.id))
             .collect::<HashMap<_, _>>();
+        let path_ids_by_name = package
+            .resources
+            .paths
+            .iter()
+            .map(|path| (path.name.to_ascii_lowercase(), path.id))
+            .collect::<HashMap<_, _>>();
         let font_index_by_name = package
             .resources
             .fonts
@@ -166,6 +173,7 @@ impl RuntimeCore {
             room_index,
             sprite_index,
             sprite_ids_by_name,
+            path_ids_by_name,
             font_index_by_name,
             sound_index,
             lowered_logic_index: HashMap::new(),
@@ -1591,6 +1599,7 @@ impl RuntimeCore {
                     paths: &self.package.resources.paths,
                     sprite_index: &self.sprite_index,
                     sprite_ids_by_name: &self.sprite_ids_by_name,
+                    path_ids_by_name: &self.path_ids_by_name,
                     fonts: &self.package.resources.fonts,
                     font_index_by_name: &self.font_index_by_name,
                     zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,

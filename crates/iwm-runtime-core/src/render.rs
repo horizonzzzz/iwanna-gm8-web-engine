@@ -416,6 +416,7 @@ impl RuntimeCore {
                         paths: &self.package.resources.paths,
                         sprite_index: &self.sprite_index,
                         sprite_ids_by_name: &self.sprite_ids_by_name,
+                        path_ids_by_name: &self.path_ids_by_name,
                         fonts: &self.package.resources.fonts,
                         font_index_by_name: &self.font_index_by_name,
                         zero_uninitialized_vars: self.package.manifest.zero_uninitialized_vars,

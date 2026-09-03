@@ -27,15 +27,21 @@ fn creation_code_path_start_initializes_and_moves_instance_on_tick() {
     append_lowered_entry(
         &mut package,
         "instance:1:create".into(),
-        vec![LoweredLogicStatement::FunctionCall {
-            name: "path_start".into(),
-            args: vec![
-                LoweredLogicExpr::Identifier("pathCrimson".into()),
-                LoweredLogicExpr::LiteralNumber(10.0),
-                LoweredLogicExpr::LiteralNumber(0.0),
-                LoweredLogicExpr::LiteralBool(false),
-            ],
-        }],
+        vec![
+            LoweredLogicStatement::Assignment {
+                target: LoweredLogicExpr::Identifier("path".into()),
+                value: LoweredLogicExpr::Identifier("pathCrimson".into()),
+            },
+            LoweredLogicStatement::FunctionCall {
+                name: "path_start".into(),
+                args: vec![
+                    LoweredLogicExpr::Identifier("path".into()),
+                    LoweredLogicExpr::LiteralNumber(10.0),
+                    LoweredLogicExpr::LiteralNumber(0.0),
+                    LoweredLogicExpr::LiteralBool(false),
+                ],
+            },
+        ],
     );
 
     let mut core = RuntimeCore::load(package).unwrap();
@@ -113,7 +119,7 @@ fn path_endpoint_dispatches_end_of_path_event_even_when_reversing() {
             then_branch: vec![LoweredLogicStatement::FunctionCall {
                 name: "path_start".into(),
                 args: vec![
-                    LoweredLogicExpr::LiteralNumber(5.0),
+                    LoweredLogicExpr::Identifier("pathShort".into()),
                     LoweredLogicExpr::LiteralNumber(2.0),
                     LoweredLogicExpr::LiteralNumber(3.0),
                     LoweredLogicExpr::LiteralBool(false),

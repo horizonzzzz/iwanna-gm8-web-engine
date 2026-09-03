@@ -33,7 +33,9 @@ use super::eval_functions::{
     evaluate_distance_to_object_with_scratch, evaluate_instance_number_with_scratch,
     evaluate_irandom_call,
 };
-use super::eval_variables::{evaluate_expr_with_resource_constants, instance_member_access};
+use super::eval_variables::{
+    evaluate_expr_with_resource_constants, instance_member_access, runtime_value_to_path_id,
+};
 use super::instances::{
     assign_runtime_member_reference, pending_create_member_value,
     pending_create_member_value_by_object_target, runtime_instance_create_request,
@@ -87,6 +89,7 @@ pub(crate) struct RuntimeStatementEnvironment<'a, H: RuntimeHost> {
     pub(crate) paths: &'a [PathResource],
     pub(crate) sprite_index: &'a HashMap<usize, usize>,
     pub(crate) sprite_ids_by_name: &'a HashMap<String, usize>,
+    pub(crate) path_ids_by_name: &'a HashMap<String, usize>,
     pub(crate) fonts: &'a [FontResource],
     pub(crate) font_index_by_name: &'a HashMap<String, usize>,
     pub(crate) zero_uninitialized_vars: bool,
@@ -1639,25 +1642,21 @@ fn evaluate_path_start_args<'a, H: RuntimeHost>(
     eval_context: Option<&RuntimeEvalContext<'_>>,
     env: &mut RuntimeStatementEnvironment<'a, H>,
 ) -> Option<(iwm_runtime_model::PathResource, f64, i32, bool)> {
-    let path = match args.first()? {
-        LoweredLogicExpr::Identifier(name) | LoweredLogicExpr::LiteralText(name) => env
-            .paths
-            .iter()
-            .find(|path| path.name.eq_ignore_ascii_case(name)),
-        expr => evaluate_with_diagnostics(
-            expr,
-            Some(instance),
-            Some(scope),
-            eval_context,
-            env,
-            instance,
-        )
-        .and_then(|value| as_number(&value))
-        .filter(|value| value.is_finite() && *value >= 0.0)
-        .map(|value| value.round() as usize)
-        .and_then(|path_id| env.paths.iter().find(|path| path.id == path_id)),
-    }?
-    .clone();
+    let path = args
+        .first()
+        .and_then(|expr| {
+            evaluate_with_diagnostics(
+                expr,
+                Some(instance),
+                Some(scope),
+                eval_context,
+                env,
+                instance,
+            )
+        })
+        .and_then(|value| runtime_value_to_path_id(&value, env.path_ids_by_name))
+        .and_then(|path_id| env.paths.iter().find(|path| path.id == path_id))
+        .cloned()?;
     let speed = args
         .get(1)
         .and_then(|arg| {
@@ -2426,6 +2425,7 @@ fn evaluate_runtime_expr<H: RuntimeHost>(
         eval_context,
         env.sprite_ids_by_name,
         env.sound_index,
+        env.path_ids_by_name,
     )
     .or_else(|| {
         (env.zero_uninitialized_vars

@@ -9,6 +9,7 @@ use super::context::RuntimeEvalContext;
 use super::eval::{assignable_key, is_truthy};
 use super::eval_variables::{
     evaluate_expr_with_resource_constants, evaluate_expr_with_sprite_constants,
+    runtime_value_to_path_id,
 };
 use super::statement::runtime_values_equal;
 use crate::helpers::as_number;
@@ -17,6 +18,12 @@ use crate::{
     LoweredLogicEntry, LoweredLogicExpr, LoweredLogicStatement, RuntimeCore, RuntimeInstance,
     RuntimeRoomState, RuntimeValue,
 };
+
+struct RuntimeResourceConstants<'a> {
+    sprite_ids_by_name: &'a HashMap<String, usize>,
+    sound_ids_by_name: &'a HashMap<String, i32>,
+    path_ids_by_name: &'a HashMap<String, usize>,
+}
 
 impl RuntimeCore {
     pub(crate) fn apply_create_logic_with_visible_instances(
@@ -75,19 +82,24 @@ impl RuntimeCore {
             index += 1;
         }
     }
+
     fn apply_lowered_block_to_globals(&mut self, block_id: &str, mut room_speed: Option<&mut u32>) {
         let Some(entry) = self.lowered_logic_entry(block_id).cloned() else {
             return;
         };
-
         let script_entries = self.lowered_script_entries();
+        let resource_constants = RuntimeResourceConstants {
+            sprite_ids_by_name: &self.sprite_ids_by_name,
+            sound_ids_by_name: &self.sound_index,
+            path_ids_by_name: &self.path_ids_by_name,
+        };
         for statement in &entry.statements {
             apply_statement_to_globals_map(
                 statement,
                 &script_entries,
                 &mut self.globals,
                 room_speed.as_deref_mut(),
-                &self.sprite_ids_by_name,
+                &resource_constants,
             );
         }
     }
@@ -96,6 +108,11 @@ impl RuntimeCore {
         target_room_id: usize,
     ) -> HashMap<String, RuntimeValue> {
         let script_entries = self.lowered_script_entries();
+        let resource_constants = RuntimeResourceConstants {
+            sprite_ids_by_name: &self.sprite_ids_by_name,
+            sound_ids_by_name: &self.sound_index,
+            path_ids_by_name: &self.path_ids_by_name,
+        };
         let mut globals = HashMap::new();
 
         for room in &self.package.rooms {
@@ -115,7 +132,7 @@ impl RuntimeCore {
                         &script_entries,
                         &mut globals,
                         None,
-                        &self.sprite_ids_by_name,
+                        &resource_constants,
                     );
                 }
             }
@@ -187,6 +204,7 @@ impl RuntimeCore {
                         Some(&eval_context),
                         &self.sprite_ids_by_name,
                         &self.sound_index,
+                        &self.path_ids_by_name,
                     ) {
                         if let Some(instance) = room_state.instances.get_mut(instance_index) {
                             assign_instance_or_global(
@@ -238,6 +256,7 @@ impl RuntimeCore {
                     Some(&eval_context),
                     &self.sprite_ids_by_name,
                     &self.sound_index,
+                    &self.path_ids_by_name,
                 );
                 let branch = if is_truthy(condition_value) {
                     then_branch
@@ -291,6 +310,7 @@ impl RuntimeCore {
                             Some(&eval_context),
                             &self.sprite_ids_by_name,
                             &self.sound_index,
+                            &self.path_ids_by_name,
                         ))
                     })
                     .map(|branch| branch.body.as_slice())
@@ -336,6 +356,7 @@ impl RuntimeCore {
                     Some(&eval_context),
                     &self.sprite_ids_by_name,
                     &self.sound_index,
+                    &self.path_ids_by_name,
                 ) else {
                     return;
                 };
@@ -354,6 +375,7 @@ impl RuntimeCore {
                         Some(&eval_context),
                         &self.sprite_ids_by_name,
                         &self.sound_index,
+                        &self.path_ids_by_name,
                     )
                     .is_some_and(|case_value| runtime_values_equal(&value, &case_value))
                     {
@@ -412,65 +434,66 @@ impl RuntimeCore {
                     }
                 }
                 "path_start" => {
-                    let path = match args.first() {
-                        Some(LoweredLogicExpr::Identifier(name))
-                        | Some(LoweredLogicExpr::LiteralText(name)) => self
-                            .package
-                            .resources
-                            .paths
-                            .iter()
-                            .find(|path| path.name.eq_ignore_ascii_case(name)),
-                        Some(expr) => evaluate_expr_with_sprite_constants(
-                            expr,
-                            Some(&instance_snapshot),
-                            &self.globals,
-                            None,
-                            None,
-                            &self.sprite_ids_by_name,
-                        )
-                        .and_then(|value| as_number(&value))
-                        .map(|value| value.round() as usize)
+                    let path = args
+                        .first()
+                        .and_then(|expr| {
+                            evaluate_expr_with_resource_constants(
+                                expr,
+                                Some(&instance_snapshot),
+                                &self.globals,
+                                None,
+                                None,
+                                &self.sprite_ids_by_name,
+                                &self.sound_index,
+                                &self.path_ids_by_name,
+                            )
+                        })
+                        .and_then(|value| runtime_value_to_path_id(&value, &self.path_ids_by_name))
                         .and_then(|id| {
                             self.package
                                 .resources
                                 .paths
                                 .iter()
                                 .find(|path| path.id == id)
-                        }),
-                        None => None,
-                    }
-                    .cloned();
+                        })
+                        .cloned();
                     let speed = args.get(1).and_then(|expr| {
-                        evaluate_expr_with_sprite_constants(
+                        evaluate_expr_with_resource_constants(
                             expr,
                             Some(&instance_snapshot),
                             &self.globals,
                             None,
                             None,
                             &self.sprite_ids_by_name,
+                            &self.sound_index,
+                            &self.path_ids_by_name,
                         )
                         .and_then(|value| as_number(&value))
                     });
                     let end_action = args.get(2).and_then(|expr| {
-                        evaluate_expr_with_sprite_constants(
+                        evaluate_expr_with_resource_constants(
                             expr,
                             Some(&instance_snapshot),
                             &self.globals,
                             None,
                             None,
                             &self.sprite_ids_by_name,
+                            &self.sound_index,
+                            &self.path_ids_by_name,
                         )
                         .and_then(|value| as_number(&value))
                         .map(|value| value.round() as i32)
                     });
                     let absolute = args.get(3).and_then(|expr| {
-                        evaluate_expr_with_sprite_constants(
+                        evaluate_expr_with_resource_constants(
                             expr,
                             Some(&instance_snapshot),
                             &self.globals,
                             None,
                             None,
                             &self.sprite_ids_by_name,
+                            &self.sound_index,
+                            &self.path_ids_by_name,
                         )
                     });
                     if let (Some(path), Some(speed), Some(end_action), Some(absolute)) =
@@ -759,18 +782,20 @@ fn apply_statement_to_globals_map(
     script_entries: &HashMap<String, LoweredLogicEntry>,
     globals: &mut HashMap<String, RuntimeValue>,
     mut room_speed: Option<&mut u32>,
-    sprite_ids_by_name: &HashMap<String, usize>,
+    resource_constants: &RuntimeResourceConstants<'_>,
 ) {
     match statement {
         LoweredLogicStatement::Assignment { target, value } => {
             if let Some(key) = assignable_key(target, None, globals, None, None) {
-                if let Some(value) = evaluate_expr_with_sprite_constants(
+                if let Some(value) = evaluate_expr_with_resource_constants(
                     value,
                     None,
                     globals,
                     None,
                     None,
-                    sprite_ids_by_name,
+                    resource_constants.sprite_ids_by_name,
+                    resource_constants.sound_ids_by_name,
+                    resource_constants.path_ids_by_name,
                 ) {
                     if assign_room_speed(&key, &value, room_speed.as_deref_mut()) {
                         return;
@@ -784,13 +809,15 @@ fn apply_statement_to_globals_map(
             then_branch,
             else_branch,
         } => {
-            let condition_value = evaluate_expr_with_sprite_constants(
+            let condition_value = evaluate_expr_with_resource_constants(
                 condition,
                 None,
                 globals,
                 None,
                 None,
-                sprite_ids_by_name,
+                resource_constants.sprite_ids_by_name,
+                resource_constants.sound_ids_by_name,
+                resource_constants.path_ids_by_name,
             );
             let branch = if is_truthy(condition_value) {
                 then_branch
@@ -803,7 +830,7 @@ fn apply_statement_to_globals_map(
                     script_entries,
                     globals,
                     room_speed.as_deref_mut(),
-                    sprite_ids_by_name,
+                    resource_constants,
                 );
             }
         }
@@ -814,13 +841,15 @@ fn apply_statement_to_globals_map(
             let branch = branches
                 .iter()
                 .find(|branch| {
-                    is_truthy(evaluate_expr_with_sprite_constants(
+                    is_truthy(evaluate_expr_with_resource_constants(
                         &branch.condition,
                         None,
                         globals,
                         None,
                         None,
-                        sprite_ids_by_name,
+                        resource_constants.sprite_ids_by_name,
+                        resource_constants.sound_ids_by_name,
+                        resource_constants.path_ids_by_name,
                     ))
                 })
                 .map(|branch| branch.body.as_slice())
@@ -831,18 +860,20 @@ fn apply_statement_to_globals_map(
                     script_entries,
                     globals,
                     room_speed.as_deref_mut(),
-                    sprite_ids_by_name,
+                    resource_constants,
                 );
             }
         }
         LoweredLogicStatement::Switch { expression, cases } => {
-            let Some(value) = evaluate_expr_with_sprite_constants(
+            let Some(value) = evaluate_expr_with_resource_constants(
                 expression,
                 None,
                 globals,
                 None,
                 None,
-                sprite_ids_by_name,
+                resource_constants.sprite_ids_by_name,
+                resource_constants.sound_ids_by_name,
+                resource_constants.path_ids_by_name,
             ) else {
                 return;
             };
@@ -853,13 +884,15 @@ fn apply_statement_to_globals_map(
                     default_index.get_or_insert(index);
                     continue;
                 };
-                if evaluate_expr_with_sprite_constants(
+                if evaluate_expr_with_resource_constants(
                     case_value,
                     None,
                     globals,
                     None,
                     None,
-                    sprite_ids_by_name,
+                    resource_constants.sprite_ids_by_name,
+                    resource_constants.sound_ids_by_name,
+                    resource_constants.path_ids_by_name,
                 )
                 .is_some_and(|case_value| runtime_values_equal(&value, &case_value))
                 {
@@ -875,7 +908,7 @@ fn apply_statement_to_globals_map(
                             script_entries,
                             globals,
                             room_speed.as_deref_mut(),
-                            sprite_ids_by_name,
+                            resource_constants,
                         );
                     }
                     if switch_case.break_after {
@@ -894,7 +927,7 @@ fn apply_statement_to_globals_map(
                     script_entries,
                     globals,
                     room_speed.as_deref_mut(),
-                    sprite_ids_by_name,
+                    resource_constants,
                 );
             }
         }
@@ -906,7 +939,7 @@ fn apply_statement_to_globals_map(
                         script_entries,
                         globals,
                         room_speed.as_deref_mut(),
-                        sprite_ids_by_name,
+                        resource_constants,
                     );
                 }
             }
