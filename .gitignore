@@ -33,6 +33,10 @@ game_errors.log
 # Local assistant integrations
 /.claude/
 /.codex/
+/.pi/
 
 # graphify
 /graphify-out
+
+# wiki
+.llm-wiki
